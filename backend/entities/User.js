@@ -1,10 +1,11 @@
+// src/entities/User.js
 const { UserRole, AccountStatus } = require('../enums/AuthEnums');
 
 class User {
   constructor(userId, email, passwordHash, displayName, avatarUrl, role, status, createdAt, updatedAt) {
     this.userId = userId;
     this.email = email;
-    this.passwordHash = passwordHash; 
+    this.passwordHash = passwordHash; // Supabase quản lý ngầm, nhưng giữ theo Class Diagram
     this.displayName = displayName;
     this.avatarUrl = avatarUrl;
     this.role = role || UserRole.LEARNER;
