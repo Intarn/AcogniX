@@ -23,7 +23,7 @@ class AuthenticationService {
       throw err;
     }
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({email, password});
+    const { data: authData, error: authError } = await supabase.auth.signUp({email, password0});
     
     if (authError) {
       const err = new Error('SIGNUP_FAILED');
@@ -65,7 +65,6 @@ class AuthenticationService {
   static async logIn(email, password) {
     // Find account + Check password
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-    console.error("LOGIN ERROR:", authError);
     if (authError) {
       const err = new Error('INVALID_CREDENTIALS');
       err.status = 401;

@@ -35,7 +35,6 @@ class AuthController {
         redirectTo: "/login" 
       }); 
     } catch (error) {
-      console.error("SIGNUP ERROR:", error);
       if (error.message === 'EMAIL_ALREADY_REGISTERED') {
         return res.status(409).json({ message: "This email address is already registered." }); // Alternative flow 3
       }
