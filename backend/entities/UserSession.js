@@ -1,4 +1,3 @@
-// src/entities/UserSession.js
 class UserSession {
   constructor(sessionId, tokenHash, createdAt, expiresAt, revokedAt) {
     this.sessionId = sessionId;

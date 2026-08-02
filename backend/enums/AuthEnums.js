@@ -1,4 +1,3 @@
-// src/enums/AuthEnums.js
 const UserRole = {
   LEARNER: 'LEARNER',
   EDUCATOR: 'EDUCATOR',
