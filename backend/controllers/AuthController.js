@@ -1,8 +1,10 @@
-const AuthenticationService = require('../services/AuthenticationService');
+const AuthenticationService = require('../service/AuthenticationService');
 const { UserRole } = require('../enums/AuthEnums');
 const User = require('../entities/User');
 
 // Alternative flow 2 (UC-22): Regex check email format
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 class AuthController {
   
   static async register(req, res) {
@@ -33,8 +35,8 @@ class AuthController {
         redirectTo: "/login" 
       }); 
     } catch (error) {
-      if (error.message === 'EMAIL_ALREADY_RESGISTERED') {
-        return res.status(409).json({ message: "This email address is already registered." }); // Alternatvie flow 3
+      if (error.message === 'EMAIL_ALREADY_REGISTERED') {
+        return res.status(409).json({ message: "This email address is already registered." }); // Alternative flow 3
       }
       return res.status(500).json({ message: "Unable to create your account. Please try again." }); 
     }
@@ -63,7 +65,7 @@ class AuthController {
       }
 
       if (error.message === 'SESSION_CREATION_FAILED') {
-        return res.status(500).json({ message: "Your account has been banned. Please contact the System Administrator for assistance." }); // Alternative flow 3
+        return res.status(500).json({ message: "Unable to log in at this time. Please try again." }); // Alternative flow 4
       }
 
       return res.status(401).json({ message: "Incorrect email or password." }); // Alternative flow 2
