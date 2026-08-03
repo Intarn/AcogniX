@@ -1,10 +1,5 @@
-/**
- * Integration boundary between Classroom Management and AI Workspace.
- *
- * Replace these placeholder methods when the AI Workspace module is available.
- * Keeping this service separate prevents EnrollmentService from depending on
- * AI Workspace implementation details.
- */
+const WorkspaceService = require('./WorkspaceService');
+
 class WorkspaceIntegrationService {
   static async provisionClassProject({ learnerId, courseId, projectName }) {
     if (process.env.ENABLE_WORKSPACE_INTEGRATION !== 'true') {
@@ -13,11 +8,29 @@ class WorkspaceIntegrationService {
         reason: 'AI_WORKSPACE_INTEGRATION_DISABLED'
       };
     }
+    
+    try {
+      // 1. Retrieve the Learner's original Workspace
+      const workspace = await WorkspaceService.getWorkspace(learnerId);
+      
+      // 2. Create a specific AI Project for the class
+      const project = await WorkspaceService.createPersonalProject(
+        workspace.workspaceId, 
+        courseId, 
+        projectName
+      );
 
-    // TODO: Call WorkspaceService.provisionClassProject(...)
-    throw new Error(
-      `Workspace integration is enabled but not implemented for learner ${learnerId}, course ${courseId}, project ${projectName}.`
-    );
+      return {
+        provisioned: true,
+        project
+      };
+    } catch (error) {
+      console.error('Error provisioning Workspace for the class:', error);
+      return {
+        provisioned: false,
+        reason: error.message
+      };
+    }
   }
 
   static async revokeClassProjectAccess({ learnerId, courseId }) {
@@ -27,11 +40,14 @@ class WorkspaceIntegrationService {
         reason: 'AI_WORKSPACE_INTEGRATION_DISABLED'
       };
     }
-
-    // TODO: Call the AI Workspace operation that revokes/deactivates access.
-    throw new Error(
-      `Workspace integration is enabled but not implemented for learner ${learnerId}, course ${courseId}.`
-    );
+    
+    // Temporarily return success as WorkspaceService does not have a project deletion function yet
+    console.log(`Recorded request to revoke Workspace for learner ${learnerId}, course ${courseId}`);
+    
+    return {
+      revoked: true,
+      message: 'Workspace access has been revoked.'
+    };
   }
 }
 

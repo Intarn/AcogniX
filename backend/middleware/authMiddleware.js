@@ -1,13 +1,11 @@
 const AuthenticationService = require('../service/AuthenticationService');
 
-// xác thực 
+// Authentication middleware
 async function requireAuth(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
-
   if (!token) {
     return res.status(401).json({ message: "Authentication required." });
   }
-
   try {
     const userData = await AuthenticationService.validateSession(token);
     req.user = userData;
@@ -18,16 +16,15 @@ async function requireAuth(req, res, next) {
   }
 }
 
-// phân quyền 
+// Authorization middleware
 function authorize(...allowedRoles) {
-  return function roleAuthorizatoin(req, res, next) {
+  return function roleAuthorization(req, res, next) { 
     if (!req.user) {
       return res.status(401).json({
         code: 'UNAUTHENTICATED',
         message: 'Authentication required.'
       });
     }
-
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({
         code: 'INSUFFICIENT_ROLE',
