@@ -1,11 +1,11 @@
 const express = require('express');
 const CourseController = require('../controllers/CourseController');
-const requireAuth = require('../middleware/authMiddleware');
-const requireRole = require('../middleware/requireRole');
+const { requireAuth, authorize } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-router.use(requireAuth, requireRole('EDUCATOR'));
+router.use(requireAuth);
+router.use(authorize('EDUCATOR'));
 
 router.get('/', CourseController.list);
 router.post('/', CourseController.create);

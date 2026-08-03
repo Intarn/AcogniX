@@ -1,11 +1,11 @@
 const express = require('express');
 const UserManagementController = require('../controllers/UserManagementController');
-const requireAuth = require('../middleware/authMiddleware');
-const requireRole = require('../middleware/requireRole');
+const { requireAuth, authorize } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-router.use(requireAuth, requireRole('SYSTEM_ADMINISTRATOR'));
+router.use(requireAuth);
+router.use(authorize('SYSTEM_ADMINISTRATOR'));
 
 router.get('/users', UserManagementController.search);
 router.post('/users/:userId/reset-password', UserManagementController.resetPassword);
