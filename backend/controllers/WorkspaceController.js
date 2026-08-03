@@ -3,36 +3,36 @@ const WorkspaceService = require('../service/WorkspaceService');
 class WorkspaceController {
   static async getWorkspaceData(req, res) {
     try {
-      // req.user lấy từ authMiddleware
+      // req.user is extracted from authMiddleware
       const learnerId = req.user.userId; 
       const workspace = await WorkspaceService.getWorkspace(learnerId);
       return res.status(200).json(workspace);
     } catch (error) {
-      return res.status(404).json({ message: "Không tìm thấy Workspace." });
+      return res.status(404).json({ message: "Workspace not found." });
     }
   }
 
   static async createProject(req, res) {
     try {
       const { workspaceId, courseId, name } = req.body;
-      if (!name) return res.status(400).json({ message: "Tên dự án không được để trống." });
+      if (!name) return res.status(400).json({ message: "Project name cannot be empty." });
       
       const newProject = await WorkspaceService.createPersonalProject(workspaceId, courseId, name);
-      return res.status(201).json({ message: "Tạo dự án thành công.", project: newProject });
+      return res.status(201).json({ message: "Project created successfully.", project: newProject });
     } catch (error) {
       if (error.message === 'PROJECT_NAME_EXISTS') {
-        return res.status(409).json({ message: "Tên dự án đã tồn tại. Vui lòng chọn tên khác." });
+        return res.status(409).json({ message: "Project name already exists. Please choose another name." });
       }
-      return res.status(500).json({ message: "Lỗi server khi tạo dự án." });
+      return res.status(500).json({ message: "Server error while creating project." });
     }
   }
 
   static async uploadMaterial(req, res) {
     try {
       const { projectId } = req.params;
-      const file = req.file; // Lấy từ multer
+      const file = req.file; // Extracted by multer
       
-      if (!file) return res.status(400).json({ message: "Vui lòng chọn file để upload." });
+      if (!file) return res.status(400).json({ message: "Please select a file to upload." });
 
       const material = await WorkspaceService.uploadPersonalMaterial(
         projectId, 
@@ -41,12 +41,12 @@ class WorkspaceController {
         file.mimetype, 
         file.size
       );
-      return res.status(201).json({ message: "Upload thành công.", material });
+      return res.status(201).json({ message: "Upload successful.", material });
     } catch (error) {
       if (error.message === 'FILE_TOO_LARGE') {
-        return res.status(400).json({ message: "File vượt quá giới hạn 50MB." });
+        return res.status(400).json({ message: "File size exceeds the 50MB limit." });
       }
-      return res.status(500).json({ message: "Lỗi server khi upload file." });
+      return res.status(500).json({ message: "Server error while uploading file." });
     }
   }
 }

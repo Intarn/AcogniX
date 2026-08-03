@@ -10,10 +10,10 @@ class WorkspaceIntegrationService {
     }
     
     try {
-      // 1. Lấy thông tin Workspace gốc của Learner
+      // 1. Retrieve the Learner's original Workspace
       const workspace = await WorkspaceService.getWorkspace(learnerId);
       
-      // 2. Tạo AI Project riêng cho lớp học đó
+      // 2. Create a specific AI Project for the class
       const project = await WorkspaceService.createPersonalProject(
         workspace.workspaceId, 
         courseId, 
@@ -25,7 +25,7 @@ class WorkspaceIntegrationService {
         project
       };
     } catch (error) {
-      console.error('Lỗi khi cấp phát Workspace cho lớp học:', error);
+      console.error('Error provisioning Workspace for the class:', error);
       return {
         provisioned: false,
         reason: error.message
@@ -41,12 +41,12 @@ class WorkspaceIntegrationService {
       };
     }
     
-    // Tạm thời trả về thành công vì WorkspaceService chưa có hàm xóa project
-    console.log(`Đã ghi nhận yêu cầu thu hồi Workspace cho learner ${learnerId}, course ${courseId}`);
+    // Temporarily return success as WorkspaceService does not have a project deletion function yet
+    console.log(`Recorded request to revoke Workspace for learner ${learnerId}, course ${courseId}`);
     
     return {
       revoked: true,
-      message: 'Quyền truy cập Workspace đã được thu hồi.'
+      message: 'Workspace access has been revoked.'
     };
   }
 }
