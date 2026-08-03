@@ -1,10 +1,8 @@
 const supabase = require('../config/supabaseClient'); 
 
 class WorkspaceService {
-  // ===================================================================
-  // MANAGE AI WORKSPACE (UC-01)
-  // ===================================================================
-  // +getWorkspace(learnerId: UUID) : AIWorkspace
+  
+  // Basic Flow (UC-01): Manage AI Workspace
   static async getWorkspace(learnerId) {
     const { data, error } = await supabase
       .from('AI_Workspace')
@@ -15,9 +13,8 @@ class WorkspaceService {
     return data;
   }
 
-  // +createPersonalProject(workspaceId: UUID, name: String) : AIProject
   static async createPersonalProject(workspaceId, courseId, name) {
-    // Check for duplicate name (Alternative flow 3 - UC-01)
+    // Alternative flow 3 (UC-01): Check duplicate project name
     const { data: existing } = await supabase
       .from('AI_Project')
       .select('projectId')
@@ -31,6 +28,7 @@ class WorkspaceService {
       throw err;
     }
 
+    // Basic Flow (UC-01): Insert new project
     const { data, error } = await supabase.from('AI_Project').insert([{
       workspaceId,
       courseId, // null if it is a personal project not belonging to a course
@@ -43,19 +41,16 @@ class WorkspaceService {
     return data;
   }
 
-  // ===================================================================
-  // UPLOAD PERSONAL MATERIALS (UC-01 Alt Flow 2)
-  // ===================================================================
-  // +uploadPersonalMaterial(projectId: UUID, file: File) : LearningMaterial
+  // Alternative flow 2 (UC-01): Upload personal materials
   static async uploadPersonalMaterial(projectId, fileBuffer, originalName, mimeType, sizeBytes) {
-    // Limit to 50MB (Alternative flow 2 - UC-01)
+    // Alternative flow 2 (UC-01): Limit file size to 50MB
     if (sizeBytes > 50 * 1024 * 1024) {
       const err = new Error('FILE_TOO_LARGE');
       err.status = 400;
       throw err;
     }
 
-    // 1. Upload file to Supabase Storage
+    // Alternative flow 2 (UC-01): Upload file to Supabase Storage
     const filePath = `projects/${projectId}/${Date.now()}_${originalName}`;
     const { data: storageData, error: storageError } = await supabase.storage
       .from('materials')
@@ -63,12 +58,11 @@ class WorkspaceService {
 
     if (storageError) throw storageError;
 
-    // Get public URL
     const { data: urlData } = supabase.storage
       .from('materials')
       .getPublicUrl(filePath);
 
-    // 2. Save metadata into Learning_Material table
+    // Alternative flow 2 (UC-01): Save metadata into Learning_Material table
     const { data: insertedData, error: dbError } = await supabase.from('Learning_Material').insert([{
       projectId,
       title: originalName,
