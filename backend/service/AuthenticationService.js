@@ -1,7 +1,7 @@
 const supabase = require('../config/supabaseClient');
 const User = require('../entities/User');
 const UserSession = require('../entities/UserSession');
-
+const { AccountStatus } = require('../enums/AuthEnums')
 class AuthenticationService {
 
   // ===================================================================
@@ -18,7 +18,7 @@ class AuthenticationService {
       .maybeSingle();
 
     if (existing) {
-      const err = new Error('EMAL_ALREADY_REGISTERD');
+      const err = new Error('EMAIL_ALREADY_REGISTERED');
       err.status = 409;
       throw err;
     }
@@ -99,7 +99,7 @@ class AuthenticationService {
 
     // Identify role and Create session
     const expiresAt = new Date(authData.session.expires_at * 1000);
-    const session = new UserSessio(
+    const session = new UserSession(
       authData.session.session_id,
       authData.session.access_token,
       new Date(),
@@ -112,7 +112,7 @@ class AuthenticationService {
         sessionId: session.sessionId,
         userId: authData.user.id,
         tokenHash: session.tokenHash,
-        createAt: session.createAt,
+        createdAt: session.createdAt,
         expiresAt: session.expiresAt
       }]);
     } catch (e) {
@@ -143,14 +143,43 @@ class AuthenticationService {
 
   // +validateSession(token) : UserSession
   static async validateSession(token) {
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error) {
-      const err = new Error('INVALID_SESSION');
+    const { 
+      data: {user: authUser}, 
+      error: authError 
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !authUser) {
+      const err = new Error('INVALID_SESSION')
       err.status = 401;
       throw err;
     }
+    const {
+      data: userProfile, 
+      error: profileError
+    } = await supabase.from('User').select('userId, role, status').eq('userId', authUser.id).maybeSingle();
+
+    if (profileError) {
+      const err = new Error('USER_PROFILE_RETRIEVAL_FAILED');
+      err.status = 500;
+      throw err;
+    }
+
+    if (!userProfile) {
+      const err = new Error('USER_PROFILE_NOT_FOUND');
+      err.status = 401;
+      throw err;
+    }
+
+    if (userProfile.status !== AccountStatus.ACTIVE) {
+      const err = new Error('BANNED_ACCOUNT');
+      err.status = 403;
+      throw err;
+    }
     
-    return data;
+    return {
+      userId: userProfile.userId,
+      role: userProfile.role
+    }
   }
 }
 
