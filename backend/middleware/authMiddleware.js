@@ -20,7 +20,7 @@ async function requireAuth(req, res, next) {
 
 // phân quyền 
 function authorize(...allowedRoles) {
-  return function roleAuthorizatoin(req, res, next) {
+  return function roleAuthorization(req, res, next) {
     if (!req.user) {
       return res.status(401).json({
         code: 'UNAUTHENTICATED',

@@ -2,7 +2,7 @@ const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error('Lack SUPABASE_URL or SUPABASE_ANON_KEY in file .env');
+    throw new Error('Lack SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in file .env');
 }
 
 const supabase = createClient(
