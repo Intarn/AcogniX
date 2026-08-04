@@ -154,7 +154,6 @@ class AuthenticationService {
       throw err;
     }
 
-    // Đã thêm email vào câu lệnh select
     const { 
       data: userProfile, 
       error: profileError 
@@ -176,7 +175,6 @@ class AuthenticationService {
       throw err;
     }
          
-    // Trả về kèm theo email
     return {
       userId: userProfile.userId,
       email: userProfile.email,
