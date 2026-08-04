@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Class Detail - AcogniX</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans h-screen overflow-hidden text-gray-800">
+
+  <div class="flex h-full w-full">
+    
+    <!-- 1. SIDEBAR (Teacher Version) -->
+    <aside class="w-60 h-full bg-white border-r border-gray-100 flex flex-col justify-between flex-shrink-0">
+      <div>
+        <!-- Logo -->
+        <div class="p-6 flex items-center gap-2.5">
+          <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="grad-leg" x1="50" y1="15" x2="80" y2="85" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#8B3DFF" /><stop offset="100%" stop-color="#6B21FF" /></linearGradient>
+              <linearGradient id="grad-left" x1="20" y1="85" x2="35" y2="50" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00A3FF" /><stop offset="100%" stop-color="#3B82F6" /></linearGradient>
+              <linearGradient id="grad-swoosh" x1="25" y1="70" x2="95" y2="45" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00C2FF" /><stop offset="50%" stop-color="#3B82F6" /><stop offset="100%" stop-color="#6B21FF" /></linearGradient>
+            </defs>
+            <path d="M 33 55 L 46 25 C 47.5 21.5 52.5 21.5 54 25 L 76 76" stroke="url(#grad-leg)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M 22 80 L 26 70" stroke="url(#grad-left)" stroke-width="14" stroke-linecap="round" />
+            <path d="M 26 65 C 50 78 70 70 92 48 C 65 68 45 74 24 73 Z" fill="url(#grad-swoosh)" />
+          </svg>
+          <span class="text-2xl font-black text-slate-900 tracking-tight font-sans">AcogniX</span>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="px-3 flex flex-col gap-1.5">
+          <a href="./teacher-dashboard.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+            Dashboard
+          </a>
+          <a href="./teacher-my-courses.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold bg-blue-50 text-blue-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+            My Courses
+          </a>
+          <a href="./teacher-assignments.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+            Assignments
+          </a>
+          <a href="./teacher-students.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Students
+          </a>
+          <a href="./teacher-student-analytics.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+            Analytics
+          </a>
+          <a href="./teacher-gradebook.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H4a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+            Gradebook
+          </a>
+          <a href="./community.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            Community
+          </a>
+        </nav>
+      </div>
+
+      <!-- Footer Profile -->
+      <div class="p-4 border-t border-gray-100">
+        <div class="flex items-center gap-3 cursor-pointer">
+          <img id="user-avatar-sidebar" src="" class="w-9 h-9 rounded-full object-cover bg-gray-200">
+          <div class="text-left">
+            <p id="user-fullname-sidebar" class="text-xs font-bold text-gray-800 leading-tight"></p>
+            <p id="user-role-sidebar" class="text-[10px] text-gray-400"></p>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <div class="flex-1 flex flex-col h-full overflow-y-auto">
+      
+      <!-- 2. TOPBAR -->
+      <header class="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0">
+        <div>
+          <a href="./teacher-dashboard.html" class="text-sm font-medium text-gray-500 hover:text-gray-800">My Courses</a>
+          <span class="text-sm font-medium text-gray-400 mx-2">/</span>
+          <h1 class="inline-block text-lg font-bold text-gray-800">Calculus for Beginners</h1>
+        </div>
+        <div class="flex items-center gap-3">
+          <button class="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200">Send Announcement</button>
+          <button class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm">
+            Manage Course
+          </button>
+        </div>
+      </header>
+
+      <!-- 3. CLASS DETAIL CONTENT -->
+      <main class="p-6">
+        <!-- Tabs -->
+        <div class="border-b border-gray-200 mb-6">
+            <nav class="-mb-px flex gap-6" aria-label="Tabs">
+              <a href="#" class="shrink-0 border-b-2 border-transparent px-1 pb-3 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+                Materials
+              </a>
+              <a href="#" class="shrink-0 border-b-2 border-blue-500 px-1 pb-3 text-sm font-medium text-blue-600">
+                Members (450)
+              </a>
+              <a href="./teacher-student-analytics.html" class="shrink-0 border-b-2 border-transparent px-1 pb-3 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+                Analytics
+              </a>
+              <a href="./teacher-gradebook.html" class="shrink-0 border-b-2 border-transparent px-1 pb-3 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+                Gradebook
+              </a>
+            </nav>
+        </div>
+
+        <!-- Members Table -->
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <table class="w-full text-sm text-left">
+              <thead class="text-xs text-gray-500 uppercase bg-gray-50/50">
+                <tr>
+                  <th class="px-6 py-3">Student Name</th>
+                  <th class="px-6 py-3">Email</th>
+                  <th class="px-6 py-3">Enrolled On</th>
+                  <th class="px-6 py-3">Progress</th>
+                  <th class="px-6 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                <tr class="hover:bg-gray-50">
+                  <td class="px-6 py-4 font-semibold text-gray-800 flex items-center gap-3">
+                    <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" class="w-8 h-8 rounded-full object-cover">
+                    An Nguyen
+                  </td>
+                  <td class="px-6 py-4 text-gray-600">an.nguyen@example.com</td>
+                  <td class="px-6 py-4 text-gray-500">July 15, 2026</td>
+                  <td class="px-6 py-4">
+                    <div class="w-full bg-gray-200 h-2 rounded-full"><div class="bg-emerald-500 h-2 rounded-full" style="width: 90%"></div></div>
+                  </td>
+                  <td class="px-6 py-4 flex gap-3">
+                    <a href="./teacher-student-analytics.html" class="text-xs font-bold text-blue-600 hover:underline">View</a>
+                    <a href="./community.html" class="text-xs font-bold text-gray-500 hover:underline">Message</a>
+                  </td>
+                </tr>
+                <tr class="hover:bg-gray-50">
+                  <td class="px-6 py-4 font-semibold text-gray-800 flex items-center gap-3">
+                    <img src="https://images.unsplash.com/photo-1580894732444-8ecded7948b4?w=100&auto=format&fit=crop" class="w-8 h-8 rounded-full object-cover">
+                    Ada Lovelace
+                  </td>
+                  <td class="px-6 py-4 text-gray-600">ada.lovelace@example.com</td>
+                  <td class="px-6 py-4 text-gray-500">July 12, 2026</td>
+                  <td class="px-6 py-4">
+                    <div class="w-full bg-gray-200 h-2 rounded-full"><div class="bg-blue-500 h-2 rounded-full" style="width: 98%"></div></div>
+                  </td>
+                  <td class="px-6 py-4 flex gap-3">
+                    <a href="./teacher-student-analytics.html" class="text-xs font-bold text-blue-600 hover:underline">View</a>
+                    <a href="./community.html" class="text-xs font-bold text-gray-500 hover:underline">Message</a>
+                  </td>
+                </tr>
+                <tr class="hover:bg-gray-50">
+                  <td class="px-6 py-4 font-semibold text-gray-800 flex items-center gap-3">
+                    <img src="https://images.unsplash.com/photo-1532012197267-da84d127e765?w=100&auto=format&fit=crop" class="w-8 h-8 rounded-full object-cover">
+                    Evelyn Reed
+                  </td>
+                  <td class="px-6 py-4 text-gray-600">evelyn.reed@example.com</td>
+                  <td class="px-6 py-4 text-gray-500">July 10, 2026</td>
+                  <td class="px-6 py-4">
+                    <div class="w-full bg-gray-200 h-2 rounded-full"><div class="bg-orange-500 h-2 rounded-full" style="width: 65%"></div></div>
+                  </td>
+                  <td class="px-6 py-4 flex gap-3">
+                    <a href="./teacher-student-analytics.html" class="text-xs font-bold text-blue-600 hover:underline">View</a>
+                    <a href="./community.html" class="text-xs font-bold text-gray-500 hover:underline">Message</a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+        if (!currentUser || currentUser.role !== 'teacher') {
+            // window.location.href = './login.html';
+            return;
+        }
+
+        // Update user info in sidebar
+        document.getElementById('user-fullname-sidebar').textContent = currentUser.fullname;
+        document.getElementById('user-role-sidebar').textContent = currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
+        document.getElementById('user-avatar-sidebar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.fullname)}&color=fff&size=36`;
+
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const courseId = parseInt(urlParams.get('id'));
+
+        const allCourses = JSON.parse(localStorage.getItem('acognix_courses')) || [];
+        const allUsers = JSON.parse(localStorage.getItem('acognix_users')) || [];
+        
+        const course = allCourses.find(c => c.id === courseId);
+
+        if (!course || course.teacher !== currentUser.fullname) {
+            document.body.innerHTML = '<div class="p-8 text-center text-red-500"><h1>Error: Course not found or you do not have permission to view it.</h1><a href="./teacher-dashboard.html" class="text-blue-600">Go to Dashboard</a></div>';
+            return;
+        }
+
+        // Update header
+        document.querySelector('h1.inline-block').textContent = course.name;
+
+        // Find students enrolled in this course
+        const enrolledStudents = allUsers.filter(user => 
+            user.role === 'student' && 
+            user.enrolledCourses && 
+            user.enrolledCourses.includes(courseId)
+        );
+
+        // Update Members tab count
+        document.querySelector('a[href="#"]').textContent = `Members (${enrolledStudents.length})`;
+
+        // Populate members table
+        const tableBody = document.querySelector('tbody');
+        tableBody.innerHTML = '';
+        if (enrolledStudents.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No students are enrolled in this course.</td></tr>';
+        } else {
+            enrolledStudents.forEach(student => {
+                const progress = Math.floor(Math.random() * 70) + 30; // Mock progress
+                const row = `
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-6 py-4 font-semibold text-gray-800 flex items-center gap-3">
+                        <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(student.fullname)}&color=fff" class="w-8 h-8 rounded-full object-cover">
+                        ${student.fullname}
+                      </td>
+                      <td class="px-6 py-4 text-gray-600">${student.email}</td>
+                      <td class="px-6 py-4 text-gray-500">July 15, 2026</td>
+                      <td class="px-6 py-4"><div class="w-full bg-gray-200 h-2 rounded-full"><div class="bg-emerald-500 h-2 rounded-full" style="width: ${progress}%"></div></div></td>
+                      <td class="px-6 py-4 flex gap-3"><a href="./teacher-student-analytics.html?student=${student.email}" class="text-xs font-bold text-blue-600 hover:underline">View</a><a href="#" class="text-xs font-bold text-gray-500 hover:underline">Message</a></td>
+                    </tr>`;
+                tableBody.innerHTML += row;
+            });
+        }
+    });
+  </script>
+</body>
+</html>
