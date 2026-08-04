@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Community - AcogniX</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans h-screen overflow-hidden text-gray-800">
+
+  <div class="flex h-full w-full">
+    
+    <!-- 1. SIDEBAR -->
+    <aside id="sidebar-container" class="w-60 h-full bg-white border-r border-gray-100 flex flex-col justify-between flex-shrink-0">
+      <!-- Sidebar content -->
+    </aside>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <div class="flex-1 flex flex-col h-full overflow-hidden">
+      
+      <!-- 2. TOPBAR -->
+      <header class="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0">
+        <h1 class="text-lg font-bold text-gray-800">Community Hub</h1>
+        <div class="flex items-center gap-3">
+          <div class="relative w-72">
+            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            <input type="text" id="search-input" placeholder="Search community..." class="w-full bg-gray-50/80 text-xs rounded-lg pl-9 pr-4 py-2 border border-gray-200 outline-none focus:bg-white focus:border-blue-300 transition-colors">
+          </div>
+          <div id="user-profile-topbar" class="flex items-center gap-3 cursor-pointer ml-4">
+            <img id="user-avatar-topbar" src="" class="w-8 h-8 rounded-full object-cover bg-gray-200">
+            <div class="text-left">
+                <p id="user-greeting-topbar" class="text-xs font-bold text-gray-800 leading-tight">Hi, User</p>
+                <p id="user-role-topbar" class="text-[10px] text-gray-400">Role</p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- 3. COMMUNITY CONTENT -->
+      <main class="flex-1 grid grid-cols-12 overflow-hidden gap-6 p-6">
+
+        <!-- 3.1. LEFT: COMMUNITY NAV -->
+        <div class="col-span-2 h-full flex flex-col gap-4">
+          <button id="create-post-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2.5 rounded-lg shadow-sm transition-colors">
+            Create Post
+          </button>
+          <div class="bg-white p-3 rounded-xl border border-gray-100 flex-shrink-0 flex-1">
+            <nav class="flex flex-col gap-1 text-sm" id="left-nav">
+              <a href="#" data-filter="all" class="nav-btn flex items-center gap-2 px-3 py-2 rounded-md bg-blue-50 font-bold text-blue-700 border border-blue-100 transition-colors">
+                <span>🏠</span> All Posts
+              </a>
+              <a href="#" data-filter="popular" class="nav-btn flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-50 font-medium text-gray-500 transition-colors">
+                <span>🔥</span> Popular
+              </a>
+              <a href="#" data-filter="myposts" class="nav-btn flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-50 font-medium text-gray-500 transition-colors">
+                <span>👤</span> My Posts
+              </a>
+            </nav>
+          </div>
+        </div>
+
+        <!-- 3.2. MIDDLE: FEED -->
+        <div class="col-span-7 h-full overflow-y-auto space-y-4 pr-2" id="posts-feed">
+            <!-- Posts will be generated here -->
+        </div>
+
+        <!-- 3.3. RIGHT: WIDGETS -->
+        <div class="col-span-3 h-full flex flex-col gap-4">
+          <div class="bg-white p-4 rounded-xl border border-gray-100">
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="text-sm font-bold text-gray-800">Trending Topics</h3>
+              <button id="clear-tag-btn" class="text-[10px] text-gray-400 hover:text-red-500 hidden">Clear</button>
+            </div>
+            <div class="space-y-2" id="trending-tags">
+              <button data-tag="technology" class="tag-btn block text-xs font-bold text-blue-600 hover:underline">#technology</button>
+              <button data-tag="mathematics" class="tag-btn block text-xs font-bold text-amber-600 hover:underline">#mathematics</button>
+              <button data-tag="studytips" class="tag-btn block text-xs font-bold text-green-600 hover:underline">#studytips</button>
+              <button data-tag="project-help" class="tag-btn block text-xs font-bold text-purple-600 hover:underline">#project-help</button>
+            </div>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-gray-100 flex-1">
+            <h3 class="text-sm font-bold text-gray-800 mb-3">Top Contributors</h3>
+            <div class="space-y-3">
+              <div class="flex items-center gap-2">
+                <img src="https://ui-avatars.com/api/?name=Teacher+Acognix&color=fff" class="w-7 h-7 rounded-full object-cover">
+                <div>
+                  <p class="text-xs font-bold text-gray-800">Teacher Acognix</p>
+                  <p class="text-[10px] text-gray-400">1,204 Points</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <img src="https://ui-avatars.com/api/?name=System+Admin&color=fff" class="w-7 h-7 rounded-full object-cover">
+                <div>
+                  <p class="text-xs font-bold text-gray-800">System Admin</p>
+                  <p class="text-[10px] text-gray-400">980 Points</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+
+    </div>
+  </div>
+
+  <!-- Create Post Modal -->
+  <div id="create-post-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 hidden z-50 transition-opacity">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl">
+      <div class="flex items-center justify-between p-4 border-b border-gray-200">
+        <h3 class="text-lg font-bold text-gray-800">Create a New Post</h3>
+        <button id="close-modal-btn" class="text-gray-400 hover:text-gray-700 transition-colors">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <form id="create-post-form" class="p-6 space-y-4">
+        <div>
+          <label for="post-title" class="text-sm font-semibold text-gray-700">Title</label>
+          <input type="text" id="post-title" placeholder="What's the main topic of your post?" class="mt-1 w-full text-sm text-gray-700 rounded-lg px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-300 border border-gray-200" required>
+        </div>
+        <div>
+          <label for="post-content" class="text-sm font-semibold text-gray-700">Content</label>
+          <textarea id="post-content" rows="5" placeholder="Share your thoughts, ask a question, or post a resource..." class="mt-1 w-full text-sm text-gray-700 rounded-lg px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-300 border border-gray-200 resize-none" required></textarea>
+        </div>
+        <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
+          <button type="button" id="cancel-modal-btn" class="text-xs font-semibold text-gray-500 bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+          <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-6 py-2 rounded-lg shadow-sm transition-colors">Post</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const escapeHTML = (str) => {
+        if (!str) return '';
+        return str.replace(/[&<>'"]/g, 
+            tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+        );
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const POSTS_KEY = 'acognix_posts';
+        const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+
+        if (!currentUser) {
+            // Uncomment in production: window.location.href = './login.html';
+            return;
+        }
+
+        const userEmail = currentUser.email;
+        const role = currentUser.role || 'student';
+        const safeFullname = escapeHTML(currentUser.fullname);
+        const userAvatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.fullname)}&color=fff&size=36`;
+
+        // ==========================================
+        // 1. SETUP THÔNG TIN UI (SIDEBAR)
+        // ==========================================
+        const studentSidebarTemplate = `
+            <div>
+                <div class="p-6 flex items-center gap-2.5">
+                    <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="grad-leg" x1="50" y1="15" x2="80" y2="85" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#8B3DFF"></stop><stop offset="100%" stop-color="#6B21FF"></stop></linearGradient><linearGradient id="grad-left" x1="20" y1="85" x2="35" y2="50" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00A3FF"></stop><stop offset="100%" stop-color="#3B82F6"></stop></linearGradient><linearGradient id="grad-swoosh" x1="25" y1="70" x2="95" y2="45" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00C2FF"></stop><stop offset="50%" stop-color="#3B82F6"></stop><stop offset="100%" stop-color="#6B21FF"></stop></linearGradient></defs><path d="M 33 55 L 46 25 C 47.5 21.5 52.5 21.5 54 25 L 76 76" stroke="url(#grad-leg)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path><path d="M 22 80 L 26 70" stroke="url(#grad-left)" stroke-width="14" stroke-linecap="round"></path><path d="M 26 65 C 50 78 70 70 92 48 C 65 68 45 74 24 73 Z" fill="url(#grad-swoosh)"></path></svg>
+                    <span class="text-2xl font-black text-slate-900 tracking-tight font-sans">AcogniX</span>
+                </div>
+                <nav class="px-3 flex flex-col gap-1.5">
+                    <a href="./dashboard.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>Home</a>
+                    <a href="./ai-workspace.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>AI Workspace</a>
+                    <a href="./my-courses.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>My Courses</a>
+                    <a href="./flashcards.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>Flashcards</a>
+                    <a href="./quizzes.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>Quizzes</a>
+                    <a href="./notes.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>Notes</a>
+                    <a href="./community.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold bg-blue-50 text-blue-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>Community</a>
+                    <a href="./progress.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>Progress</a>
+                    <a href="./settings.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>Settings</a>
+                </nav>
+            </div>
+            <div class="p-4 border-t border-gray-100 flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <img src="${userAvatarUrl}" class="w-9 h-9 rounded-full object-cover bg-gray-200">
+                    <div class="text-left flex-1 overflow-hidden">
+                        <p class="text-xs font-bold text-gray-800 leading-tight truncate">${safeFullname}</p>
+                        <p class="text-[10px] text-gray-400">Student</p>
+                    </div>
+                    <a href="./settings.html" class="ml-auto flex-shrink-0"><span class="text-gray-400 text-[10px]">⚙️</span></a>
+                </div>
+            </div>
+        `;
+
+        // Giữ lại icon bánh răng (⚙️) ở profile góc dưới nhưng KHÔNG CÓ mục Settings ở thanh điều hướng trên của Teacher
+        const teacherSidebarTemplate = `
+            <div>
+                <div class="p-6 flex items-center gap-2.5">
+                    <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="grad-leg" x1="50" y1="15" x2="80" y2="85" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#8B3DFF"></stop><stop offset="100%" stop-color="#6B21FF"></stop></linearGradient><linearGradient id="grad-left" x1="20" y1="85" x2="35" y2="50" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00A3FF"></stop><stop offset="100%" stop-color="#3B82F6"></stop></linearGradient><linearGradient id="grad-swoosh" x1="25" y1="70" x2="95" y2="45" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00C2FF"></stop><stop offset="50%" stop-color="#3B82F6"></stop><stop offset="100%" stop-color="#6B21FF"></stop></linearGradient></defs><path d="M 33 55 L 46 25 C 47.5 21.5 52.5 21.5 54 25 L 76 76" stroke="url(#grad-leg)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path><path d="M 22 80 L 26 70" stroke="url(#grad-left)" stroke-width="14" stroke-linecap="round"></path><path d="M 26 65 C 50 78 70 70 92 48 C 65 68 45 74 24 73 Z" fill="url(#grad-swoosh)"></path></svg>
+                    <span class="text-2xl font-black text-slate-900 tracking-tight font-sans">AcogniX</span>
+                </div>
+                <nav class="px-3 flex flex-col gap-1.5">
+                    <a href="./teacher-dashboard.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>Dashboard</a>
+                    <a href="./teacher-my-courses.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>My Courses</a>
+                    <a href="./teacher-assignments.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>Assignments</a>
+                    <a href="./teacher-students.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>Students</a>
+                    <a href="./teacher-student-analytics.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>Analytics</a>
+                    <a href="./teacher-gradebook.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H4a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>Gradebook</a>
+                    <a href="./community.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold bg-blue-50 text-blue-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>Community</a>
+                </nav>
+            </div>
+            <div class="p-4 border-t border-gray-100 flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <img src="${userAvatarUrl}" class="w-9 h-9 rounded-full object-cover bg-gray-200">
+                    <div class="text-left flex-1 overflow-hidden">
+                        <p class="text-xs font-bold text-gray-800 leading-tight truncate">${safeFullname}</p>
+                        <p class="text-[10px] text-gray-400">Teacher</p>
+                    </div>
+                    <a href="./settings.html" class="ml-auto flex-shrink-0"><span class="text-gray-400 text-[10px]">⚙️</span></a>
+                </div>
+            </div>
+        `;
+
+        const adminSidebarTemplate = `
+            <div>
+                <div class="p-6 flex items-center gap-2.5">
+                    <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="grad-leg" x1="50" y1="15" x2="80" y2="85" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#8B3DFF"></stop><stop offset="100%" stop-color="#6B21FF"></stop></linearGradient><linearGradient id="grad-left" x1="20" y1="85" x2="35" y2="50" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00A3FF"></stop><stop offset="100%" stop-color="#3B82F6"></stop></linearGradient><linearGradient id="grad-swoosh" x1="25" y1="70" x2="95" y2="45" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00C2FF"></stop><stop offset="50%" stop-color="#3B82F6"></stop><stop offset="100%" stop-color="#6B21FF"></stop></linearGradient></defs><path d="M 33 55 L 46 25 C 47.5 21.5 52.5 21.5 54 25 L 76 76" stroke="url(#grad-leg)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path><path d="M 22 80 L 26 70" stroke="url(#grad-left)" stroke-width="14" stroke-linecap="round"></path><path d="M 26 65 C 50 78 70 70 92 48 C 65 68 45 74 24 73 Z" fill="url(#grad-swoosh)"></path></svg>
+                    <span class="text-2xl font-black text-slate-900 tracking-tight font-sans">AcogniX</span>
+                </div>
+                <nav class="px-3 flex flex-col gap-1.5">
+                    <a href="./admin-dashboard.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>Dashboard</a>
+                    <a href="./admin-user-management.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>User Management</a>
+                    <a href="./admin-course-management.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>Course Management</a>
+                    <a href="./community.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold bg-blue-50 text-blue-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>Community</a>
+                    <a href="./admin-analytics.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>Analytics</a>
+                    <a href="./admin-settings.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>System Settings</a>
+                </nav>
+            </div>
+            <div class="p-4 border-t border-gray-100 flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <img src="${userAvatarUrl}" class="w-9 h-9 rounded-full object-cover bg-gray-200">
+                    <div class="text-left flex-1 overflow-hidden">
+                        <p class="text-xs font-bold text-gray-800 leading-tight truncate">${safeFullname}</p>
+                        <p class="text-[10px] text-gray-400">Admin</p>
+                    </div>
+                    <a href="./settings.html" class="ml-auto flex-shrink-0"><span class="text-gray-400 text-[10px]">⚙️</span></a>
+                </div>
+            </div>
+        `;
+
+        const sidebarContainer = document.getElementById('sidebar-container');
+        if (role === 'teacher') {
+            sidebarContainer.innerHTML = teacherSidebarTemplate;
+        } else if (role === 'admin') {
+            sidebarContainer.innerHTML = adminSidebarTemplate;
+        } else {
+            sidebarContainer.innerHTML = studentSidebarTemplate;
+        }
+
+        document.getElementById('user-greeting-topbar').textContent = `Hi, ${safeFullname}`;
+        document.getElementById('user-role-topbar').textContent = role.charAt(0).toUpperCase() + role.slice(1);
+        document.getElementById('user-avatar-topbar').src = userAvatarUrl;
+
+        // ==========================================
+        // 2. STATE MANAGEMENT (QUẢN LÝ TRẠNG THÁI FEED)
+        // ==========================================
+        let currentFilter = 'all'; 
+        let currentTag = '';
+        let searchQuery = '';
+
+        const feedContainer = document.getElementById('posts-feed');
+        const searchInput = document.getElementById('search-input');
+        const navBtns = document.querySelectorAll('.nav-btn');
+        const tagBtns = document.querySelectorAll('.tag-btn');
+        const clearTagBtn = document.getElementById('clear-tag-btn');
+
+        function initializeMockPosts() {
+            if (!localStorage.getItem(POSTS_KEY)) {
+                const mockPosts = [
+                    {
+                        id: 1, authorEmail: 'student@test.com', authorName: 'Student Acognix', authorRole: 'Student',
+                        authorAvatar: 'https://ui-avatars.com/api/?name=Student+Acognix&color=fff',
+                        timestamp: new Date().toISOString(), title: 'Having trouble understanding algorithms.',
+                        content: "Can someone explain Big O notation in simple terms? I'm studying for my CS midterm.",
+                        tags: [{ name: 'technology', color: 'blue' }, { name: 'studytips', color: 'green' }],
+                        likedBy: [], bookmarkedBy: [], commentsCount: 3
+                    },
+                    {
+                        id: 2, authorEmail: 'teacher@test.com', authorName: 'Teacher Acognix', authorRole: 'Teacher',
+                        authorAvatar: 'https://ui-avatars.com/api/?name=Teacher+Acognix&color=fff',
+                        timestamp: new Date(Date.now() - 86400000).toISOString(), title: 'Resource: Interactive Calculus Visualizer',
+                        content: 'Found this amazing open-source tool for visualizing derivatives and integrals. Check it out!',
+                        tags: [{ name: 'mathematics', color: 'amber' }],
+                        likedBy: ['student@test.com', 'admin@test.com'], bookmarkedBy: [], commentsCount: 8
+                    }
+                ];
+                localStorage.setItem(POSTS_KEY, JSON.stringify(mockPosts));
+            }
+        }
+
+        function renderPosts() {
+            let posts = JSON.parse(localStorage.getItem(POSTS_KEY)) || [];
+            
+            if (searchQuery) {
+                posts = posts.filter(p => 
+                    p.title.toLowerCase().includes(searchQuery) || 
+                    p.content.toLowerCase().includes(searchQuery) ||
+                    p.authorName.toLowerCase().includes(searchQuery)
+                );
+            }
+
+            if (currentTag) {
+                posts = posts.filter(p => p.tags && p.tags.some(t => t.name === currentTag));
+            }
+
+            if (currentFilter === 'myposts') {
+                posts = posts.filter(p => p.authorEmail === userEmail);
+            } else if (currentFilter === 'popular') {
+                posts.sort((a, b) => (b.likedBy.length || 0) - (a.likedBy.length || 0));
+            } else {
+                posts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            }
+
+            feedContainer.innerHTML = '';
+            
+            if(posts.length === 0) {
+                feedContainer.innerHTML = `<div class="text-center p-10 text-gray-500">No posts found matching your criteria.</div>`;
+                return;
+            }
+
+            posts.forEach(post => {
+                const tagColors = { blue: 'text-blue-600 bg-blue-100', purple: 'text-purple-600 bg-purple-100', amber: 'text-amber-600 bg-amber-100', green: 'text-green-600 bg-green-100' };
+                const tagsHtml = post.tags && post.tags.length > 0 
+                    ? post.tags.map(tag => `<span class="text-[11px] font-semibold ${tagColors[tag.color] || 'text-gray-600 bg-gray-100'} px-2 py-1 rounded-full">#${escapeHTML(tag.name)}</span>`).join('')
+                    : '';
+
+                const isLiked = post.likedBy && post.likedBy.includes(userEmail);
+                const isBookmarked = post.bookmarkedBy && post.bookmarkedBy.includes(userEmail);
+                const likesCount = post.likedBy ? post.likedBy.length : 0;
+
+                const timeDiff = Math.floor((new Date() - new Date(post.timestamp)) / 60000);
+                const timeStr = timeDiff < 60 ? `${timeDiff}m ago` : (timeDiff < 1440 ? `${Math.floor(timeDiff/60)}h ago` : `${Math.floor(timeDiff/1440)}d ago`);
+
+                const postEl = document.createElement('div');
+                postEl.className = 'bg-white rounded-xl border border-gray-100 p-5 hover:border-blue-200 transition-colors shadow-sm';
+                postEl.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <img src="${post.authorAvatar}" class="w-9 h-9 rounded-full object-cover">
+                        <div>
+                            <div class="flex items-center gap-2"><p class="font-bold text-sm text-gray-800">${escapeHTML(post.authorName)}</p><p class="text-xs text-gray-400">· ${timeStr}</p></div>
+                            <p class="text-[11px] text-gray-500 font-medium">${post.authorRole}</p>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <h3 class="font-bold text-lg text-gray-800">${escapeHTML(post.title)}</h3>
+                        <p class="mt-2 text-sm text-gray-600 leading-relaxed">${escapeHTML(post.content)}</p>
+                        ${tagsHtml ? `<div class="mt-4 flex gap-2">${tagsHtml}</div>` : ''}
+                    </div>
+                    <div class="mt-4 border-t border-gray-50 pt-4 flex justify-between items-center text-xs font-medium">
+                        <div class="flex gap-4">
+                            <button class="btn-like flex items-center gap-1.5 transition-colors ${isLiked ? 'text-blue-600' : 'text-gray-500 hover:text-blue-600'}">
+                                ${isLiked ? '💙' : '👍'} <span class="font-bold">${likesCount}</span> Likes
+                            </button>
+                            <button class="btn-comment flex items-center gap-1.5 text-gray-500 hover:text-blue-600 transition-colors">
+                                💬 <span class="font-bold">${post.commentsCount || 0}</span> Comments
+                            </button>
+                        </div>
+                        <button class="btn-bookmark transition-colors ${isBookmarked ? 'text-amber-500 font-bold' : 'text-gray-500 hover:text-blue-600'}">
+                            ${isBookmarked ? '🔖 Saved' : '🔖 Bookmark'}
+                        </button>
+                    </div>
+                `;
+
+                postEl.querySelector('.btn-like').addEventListener('click', () => toggleInteraction(post.id, 'like'));
+                postEl.querySelector('.btn-bookmark').addEventListener('click', () => toggleInteraction(post.id, 'bookmark'));
+                postEl.querySelector('.btn-comment').addEventListener('click', () => handleComment(post.id));
+
+                feedContainer.appendChild(postEl);
+            });
+        }
+
+        function toggleInteraction(postId, type) {
+            let posts = JSON.parse(localStorage.getItem(POSTS_KEY)) || [];
+            const postIndex = posts.findIndex(p => p.id === postId);
+            if (postIndex === -1) return;
+
+            const post = posts[postIndex];
+            const arrayName = type === 'like' ? 'likedBy' : 'bookmarkedBy';
+            
+            if (!post[arrayName]) post[arrayName] = [];
+            
+            const userIndex = post[arrayName].indexOf(userEmail);
+            if (userIndex > -1) {
+                post[arrayName].splice(userIndex, 1);
+            } else {
+                post[arrayName].push(userEmail);
+            }
+
+            localStorage.setItem(POSTS_KEY, JSON.stringify(posts));
+            renderPosts();
+        }
+
+        function handleComment(postId) {
+            const commentText = prompt("Write your comment:");
+            if (commentText && commentText.trim()) {
+                let posts = JSON.parse(localStorage.getItem(POSTS_KEY)) || [];
+                const post = posts.find(p => p.id === postId);
+                if (post) {
+                    post.commentsCount = (post.commentsCount || 0) + 1;
+                    localStorage.setItem(POSTS_KEY, JSON.stringify(posts));
+                    renderPosts();
+                }
+            }
+        }
+
+        searchInput.addEventListener('input', (e) => {
+            searchQuery = e.target.value.toLowerCase().trim();
+            renderPosts();
+        });
+
+        navBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                navBtns.forEach(b => {
+                    b.classList.remove('bg-blue-50', 'text-blue-700', 'border', 'border-blue-100');
+                    b.classList.add('text-gray-500', 'hover:bg-gray-50');
+                });
+                btn.classList.remove('text-gray-500', 'hover:bg-gray-50');
+                btn.classList.add('bg-blue-50', 'text-blue-700', 'border', 'border-blue-100');
+                
+                currentFilter = btn.dataset.filter;
+                renderPosts();
+            });
+        });
+
+        tagBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentTag = btn.dataset.tag;
+                clearTagBtn.classList.remove('hidden');
+                
+                tagBtns.forEach(b => b.classList.replace('opacity-100', 'opacity-50'));
+                btn.classList.replace('opacity-50', 'opacity-100');
+                btn.classList.remove('opacity-50');
+
+                renderPosts();
+            });
+        });
+
+        clearTagBtn.addEventListener('click', () => {
+            currentTag = '';
+            clearTagBtn.classList.add('hidden');
+            tagBtns.forEach(b => {
+                b.classList.remove('opacity-50');
+                b.classList.add('opacity-100');
+            });
+            renderPosts();
+        });
+
+        const createPostModal = document.getElementById('create-post-modal');
+        const createPostForm = document.getElementById('create-post-form');
+        
+        document.getElementById('create-post-btn').addEventListener('click', () => createPostModal.classList.remove('hidden'));
+        document.getElementById('close-modal-btn').addEventListener('click', () => createPostModal.classList.add('hidden'));
+        document.getElementById('cancel-modal-btn').addEventListener('click', () => createPostModal.classList.add('hidden'));
+
+        createPostForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const title = document.getElementById('post-title').value.trim();
+            const content = document.getElementById('post-content').value.trim();
+
+            if (!title || !content) return alert("Please fill in both fields.");
+
+            let posts = JSON.parse(localStorage.getItem(POSTS_KEY)) || [];
+            const newId = posts.length > 0 ? Math.max(...posts.map(p => p.id)) + 1 : 1;
+
+            const newPost = {
+                id: newId,
+                authorEmail: userEmail,
+                authorName: currentUser.fullname,
+                authorRole: role.charAt(0).toUpperCase() + role.slice(1),
+                authorAvatar: userAvatarUrl,
+                timestamp: new Date().toISOString(),
+                title: title,
+                content: content,
+                tags: [],
+                likedBy: [],
+                bookmarkedBy: [],
+                commentsCount: 0
+            };
+
+            posts.unshift(newPost);
+            localStorage.setItem(POSTS_KEY, JSON.stringify(posts));
+            
+            createPostForm.reset();
+            createPostModal.classList.add('hidden');
+            renderPosts();
+        });
+
+        initializeMockPosts();
+        renderPosts();
+    });
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - AcogniX</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800">
+
+  <div class="flex min-h-screen items-center justify-center p-4">
+    
+    <div class="w-full max-w-md">
+      <!-- Logo và Tiêu đề -->
+      <div class="mb-8 text-center">
+        <div class="flex items-center justify-center gap-2.5 mb-4">
+          <!-- SVG Logo AcogniX (sao chép từ dashboard.html) -->
+          <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="grad-leg" x1="50" y1="15" x2="80" y2="85" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#8B3DFF" />
+                <stop offset="100%" stop-color="#6B21FF" />
+              </linearGradient>
+              <linearGradient id="grad-left" x1="20" y1="85" x2="35" y2="50" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#00A3FF" />
+                <stop offset="100%" stop-color="#3B82F6" />
+              </linearGradient>
+              <linearGradient id="grad-swoosh" x1="25" y1="70" x2="95" y2="45" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#00C2FF" />
+                <stop offset="50%" stop-color="#3B82F6" />
+                <stop offset="100%" stop-color="#6B21FF" />
+              </linearGradient>
+            </defs>
+            <path d="M 33 55 L 46 25 C 47.5 21.5 52.5 21.5 54 25 L 76 76" stroke="url(#grad-leg)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M 22 80 L 26 70" stroke="url(#grad-left)" stroke-width="14" stroke-linecap="round" />
+            <path d="M 26 65 C 50 78 70 70 92 48 C 65 68 45 74 24 73 Z" fill="url(#grad-swoosh)" />
+          </svg>
+          <span class="text-3xl font-black text-slate-900 tracking-tight">AcogniX</span>
+        </div>
+        <h1 class="text-2xl font-bold text-gray-900">Welcome Back!</h1>
+        <p class="text-sm text-gray-500 mt-1">Log in to continue your AI-powered learning journey.</p>
+      </div>
+
+      <!-- Form Đăng nhập -->
+      <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+        <form id="login-form" class="space-y-5">
+          <!-- Email -->
+          <div>
+            <label for="email" class="text-sm font-semibold text-gray-700">Email Address</label>
+            <input 
+              type="email" 
+              id="email" 
+              name="email"
+              placeholder="you@example.com"
+              class="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
+              required
+            >
+          </div>
+
+          <!-- Mật khẩu -->
+          <div>
+            <div class="flex justify-between items-center">
+              <label for="password" class="text-sm font-semibold text-gray-700">Password</label>
+              <a href="#" class="text-xs font-semibold text-blue-600 hover:underline">Forgot password?</a>
+            </div>
+            <input 
+              type="password" 
+              id="password" 
+              name="password"
+              placeholder="••••••••"
+              class="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
+              required
+            >
+          </div>
+
+          <!-- Nút Đăng nhập -->
+          <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all">
+            Log In
+          </button>
+        </form>
+      </div>
+
+      <!-- Link Đăng ký -->
+      <p class="text-center text-sm text-gray-500 mt-6">
+        Don't have an account? <a href="./register.html" class="font-semibold text-blue-600 hover:underline">Sign up</a>
+      </p>
+    </div>
+
+  </div>
+
+  <script>
+    document.getElementById('login-form').addEventListener('submit', function(event) {
+      const USERS_KEY = 'acognix_users';
+
+      // Hàm khởi tạo toàn bộ dữ liệu mẫu cho ứng dụng nếu localStorage trống
+      function initializeMasterData() {
+          let users = JSON.parse(localStorage.getItem(USERS_KEY)) || [];
+
+          // Chỉ thêm người dùng mặc định nếu localStorage hoàn toàn trống
+          if (users.length === 0) {
+              users.push({ fullname: 'Admin Acognix', email: 'admin@acognix.com', role: 'admin', pass: 'password', lastActive: 'Vừa xong' });
+              users.push({ fullname: 'Teacher Acognix', email: 'teacher@acognix.com', role: 'teacher', pass: 'password', lastActive: '1 giờ trước' });
+              // Thêm sinh viên mẫu với các khóa học đã đăng ký
+              users.push({ fullname: 'Student Acognix', email: 'student@acognix.com', role: 'student', pass: 'password', lastActive: '5 giờ trước', enrolledCourses: [1, 3] });
+              users.push({ fullname: 'Ada Lovelace', email: 'ada.lovelace@example.com', role: 'student', pass: 'password', lastActive: '2 giờ trước', enrolledCourses: [2, 3] });
+              localStorage.setItem(USERS_KEY, JSON.stringify(users));
+          }
+
+          if (!localStorage.getItem('acognix_courses')) {
+              const mockCourses = [
+                  { id: 1, name: 'Calculus for Beginners', teacher: 'Teacher Acognix', enrolled: 1, status: 'Published', category: 'Mathematics' },
+                  { id: 2, name: 'Advanced Algorithms', teacher: 'Teacher Acognix', enrolled: 1, status: 'Published', category: 'Computer Science' },
+                  { id: 3, name: 'Data Structures 101', teacher: 'Teacher Acognix', enrolled: 2, status: 'Published', category: 'Computer Science' },
+                  { id: 4, name: 'Introduction to Physics', teacher: 'Evelyn Reed', enrolled: 0, status: 'Published', category: 'Science' },
+                  { id: 5, name: 'Software Engineering Principles', teacher: 'Ada Lovelace', enrolled: 0, status: 'Draft', category: 'Computer Science' },
+              ];
+              localStorage.setItem('acognix_courses', JSON.stringify(mockCourses));
+          }
+
+          if (!localStorage.getItem('acognix_posts')) {
+              const mockPosts = [
+                  { id: 1, authorName: 'Student Acognix', authorRole: 'Student', authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80', timestamp: '2h ago', title: 'Having trouble understanding inertia.', content: "I've read the textbook definition, but I'm struggling to visualize it.", tags: [{ name: '#physics', color: 'blue' }], likes: 12, comments: 3 },
+                  { id: 2, authorName: 'Teacher Acognix', authorRole: 'Professor', authorAvatar: 'https://images.unsplash.com/photo-1509228627152-72ae9ae6848d?w=100&auto=format&fit=crop', timestamp: '1d ago', title: 'Resource: Interactive Calculus Visualizer', content: 'Found this amazing open-source tool for visualizing derivatives and integrals.', tags: [{ name: '#calculus', color: 'amber' }], likes: 45, comments: 8 }
+              ];
+              localStorage.setItem('acognix_posts', JSON.stringify(mockPosts));
+          }
+
+          if (!localStorage.getItem('acognix_assignments')) {
+              const mockAssignments = [
+                  { id: 1, title: 'Problem Set 3: Derivatives', courseId: 1, dueDate: '2026-08-15T23:59' },
+                  { id: 2, title: 'Essay: The Big O Notation', courseId: 2, dueDate: '2026-08-20T23:59' },
+                  { id: 3, title: 'Lab 1: Implementing a Linked List', courseId: 3, dueDate: '2026-08-22T23:59' },
+              ];
+              localStorage.setItem('acognix_assignments', JSON.stringify(mockAssignments));
+          }
+
+          if (!localStorage.getItem('acognix_quizzes')) {
+              const mockQuizzes = [
+                  { id: 1, courseId: 1, title: 'Calculus Basics Quiz', questions: [{q: '1+1', options: ['1','2','3'], ans: '2'}], results: { 'student@acognix.com': { score: 85, date: '2026-07-28' } } },
+                  { id: 2, courseId: 2, title: 'Algorithms Intro Quiz', questions: [{q: 'What is Big O?', options: ['A','B','C'], ans: 'A'}], results: { 'student@acognix.com': { score: 70, date: '2026-07-29' } } },
+                  { id: 3, courseId: 1, title: 'Derivatives Quiz', questions: [{q: 'd/dx(x^2)', options: ['x','2x','x^2'], ans: '2x'}], results: { 'ada.lovelace@example.com': { score: 92, date: '2026-07-30' } } },
+              ];
+              localStorage.setItem('acognix_quizzes', JSON.stringify(mockQuizzes));
+          }
+
+          if (!localStorage.getItem('acognix_flashcards')) {
+              const mockFlashcards = [
+                  { id: 1, userId: 'student@acognix.com', deck: 'Physics: Chapter 1', front: 'What is inertia?', back: 'Resistance of any physical object to any change in its state of motion.', status: 'reviewing', lastReviewed: '2026-07-31' },
+                  { id: 2, userId: 'student@acognix.com', deck: 'Physics: Chapter 1', front: 'Newton\'s First Law', back: 'An object at rest stays at rest...', status: 'learning', lastReviewed: '2026-08-01' },
+                  { id: 3, userId: 'student@acognix.com', deck: 'Calculus Basics', front: 'Derivative of x^n', back: 'n*x^(n-1)', status: 'new', lastReviewed: null },
+                  { id: 4, userId: 'ada.lovelace@example.com', deck: 'Algorithms', front: 'What is a linked list?', back: 'A linear collection of data elements...', status: 'reviewing', lastReviewed: '2026-07-30' },
+              ];
+              localStorage.setItem('acognix_flashcards', JSON.stringify(mockFlashcards));
+          }
+
+          if (!localStorage.getItem('acognix_notes')) {
+              const mockNotes = [
+                  { id: 1, userId: 'student@acognix.com', title: 'Key Physics Concepts', content: 'Remember F=ma and inertia definitions.', date: 'July 30, 2026', category: 'Physics' },
+                  { id: 2, userId: 'student@acognix.com', title: 'Calculus Formulas', content: 'Integral of x^n is (x^(n+1))/(n+1).', date: 'July 29, 2026', category: 'Mathematics' },
+                  { id: 3, userId: 'ada.lovelace@example.com', title: 'Algorithm Efficiency', content: 'Big O notation helps analyze algorithm performance.', date: 'July 28, 2026', category: 'Computer Science' },
+              ];
+              localStorage.setItem('acognix_notes', JSON.stringify(mockNotes));
+          }
+      }
+
+      // Đảm bảo các tài khoản mặc định tồn tại trước khi cố gắng đăng nhập
+      initializeMasterData();
+
+      event.preventDefault(); // Ngăn form submit theo cách truyền thống
+
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      // Lấy tất cả người dùng từ localStorage
+      const allUsers = JSON.parse(localStorage.getItem('acognix_users')) || [];
+      const foundUser = allUsers.find(user => user.email === email && user.pass === password); // Use allUsers here
+
+      if (foundUser) {
+        // Lưu thông tin người dùng hiện tại vào sessionStorage
+        sessionStorage.setItem('currentUser', JSON.stringify({ 
+          fullname: foundUser.fullname, 
+          email: foundUser.email, 
+          role: foundUser.role 
+        }));
+
+        // Chuyển hướng dựa trên vai trò
+        if (foundUser.role === 'admin') {
+          window.location.href = './admin-dashboard.html';
+        } else if (foundUser.role === 'teacher') {
+          window.location.href = './teacher-dashboard.html';
+        } else if (foundUser.role === 'student') {
+          window.location.href = './dashboard.html';
+        } else {
+          // Vai trò khác không xác định (phòng trường hợp dữ liệu lạ)
+          alert('Vai trò người dùng không được hỗ trợ.');
+        }
+      } else {
+        // Nếu không tìm thấy ở cả hai nơi, thông báo lỗi
+        alert('Email hoặc mật khẩu không đúng. Vui lòng thử lại.');
+      }
+    });
+  </script>
+
+</body>
+</html>
