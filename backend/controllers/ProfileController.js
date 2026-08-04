@@ -4,7 +4,7 @@ class ProfileController {
 
   // Basic Flow #1-2 (UC-21)
   static async getProfile(req, res) {
-    const userId = req.user?.user?.id;
+    const userId = req.user.userId;
     try {
       const result = await ProfileService.getProfile(userId);
       return res.status(200).json(result);
@@ -15,7 +15,7 @@ class ProfileController {
 
   // Basic Flow #5-6 / Alt Flow 1 (UC-21)
   static async updateProfile(req, res) {
-    const userId = req.user?.user?.id;
+    const userId = req.user.userId;
     const { displayName } = req.body;
     const avatarFile = req.file; // populated by multer
 

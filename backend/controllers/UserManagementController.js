@@ -79,8 +79,8 @@ class UserManagementController {
   // Alt Flow 1 (UC-12), step 1: request a 2FA code before deleting
   static async requestDeletion(req, res) {
     const { userId } = req.params;
-    const adminUserId = req.user?.user?.id;
-    const adminEmail = req.user?.user?.email;
+    const adminUserId = req.user.userId;
+    const adminEmail = req.user.email;
 
     try {
       await UserManagementService.requestAccountDeletion(adminUserId, adminEmail, userId);
@@ -97,7 +97,7 @@ class UserManagementController {
   static async confirmDeletion(req, res) {
     const { userId } = req.params;
     const { code } = req.body;
-    const adminUserId = req.user?.user?.id;
+    const adminUserId = req.user.userId;
 
     if (!code) {
       return res.status(400).json({ message: "Please enter the verification code sent to your email." });

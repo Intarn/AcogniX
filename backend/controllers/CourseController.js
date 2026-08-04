@@ -3,7 +3,7 @@ const CourseService = require('../service/CourseService');
 class CourseController {
 
   static async list(req, res) {
-    const educatorId = req.user?.user?.id;
+    const educatorId = req.user.userId;
     try {
       const courses = await CourseService.listCoursesByEducator(educatorId);
       return res.status(200).json({ courses });
@@ -14,7 +14,7 @@ class CourseController {
 
   // Basic Flow #1-5 (UC-13)
   static async create(req, res) {
-    const educatorId = req.user?.user?.id;
+    const educatorId = req.user.userId;
     const { subjectName, courseCode, description } = req.body;
 
     try {
@@ -30,7 +30,7 @@ class CourseController {
 
   // Alt Flow 1 (UC-13)
   static async update(req, res) {
-    const educatorId = req.user?.user?.id;
+    const educatorId = req.user.userId;
     const { courseId } = req.params;
     const { subjectName, courseCode, description } = req.body;
 
@@ -50,7 +50,7 @@ class CourseController {
 
   // Alt Flow 2 (UC-13)
   static async archive(req, res) {
-    const educatorId = req.user?.user?.id;
+    const educatorId = req.user.userId;
     const { courseId } = req.params;
 
     try {
