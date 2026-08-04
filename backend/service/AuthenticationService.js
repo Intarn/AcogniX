@@ -144,40 +144,40 @@ class AuthenticationService {
   // +validateSession(token) : UserSession
   static async validateSession(token) {
     const { 
-      data: {user: authUser}, 
-      error: authError 
-    } = await supabase.auth.getUser(token);
-
+       data: {user: authUser}, 
+       error: authError 
+     } = await supabase.auth.getUser(token);
+    
     if (authError || !authUser) {
       const err = new Error('INVALID_SESSION')
       err.status = 401;
       throw err;
     }
-    const {
+
+    const { 
       data: userProfile, 
-      error: profileError
-    } = await supabase.from('User').select('userId, role, status').eq('userId', authUser.id).maybeSingle();
+      error: profileError 
+    } = await supabase.from('User').select('userId, email, role, status').eq('userId', authUser.id).maybeSingle();
 
     if (profileError) {
       const err = new Error('USER_PROFILE_RETRIEVAL_FAILED');
       err.status = 500;
       throw err;
     }
-
     if (!userProfile) {
       const err = new Error('USER_PROFILE_NOT_FOUND');
       err.status = 401;
       throw err;
     }
-
     if (userProfile.status !== AccountStatus.ACTIVE) {
       const err = new Error('BANNED_ACCOUNT');
       err.status = 403;
       throw err;
     }
-    
+         
     return {
       userId: userProfile.userId,
+      email: userProfile.email,
       role: userProfile.role
     }
   }

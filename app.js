@@ -5,6 +5,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 
 const authRoutes = require('./backend/routes/auth.routes');
+const profileRoutes = require('./backend/routes/profile.routes');
+const adminRoutes = require('./backend/routes/admin.routes');
+const courseRoutes = require('./backend/routes/course.routes');
 const workspaceRoutes = require('./backend/routes/workspace.routes');
 const enrollmentRoutes = require('./backend/routes/enrollment.routes');
 
@@ -14,12 +17,17 @@ function createApp() {
   app.use(cors());
   app.use(express.json());
 
-  app.use('/api/auth', authRoutes);
-  app.use('/api/workspace', workspaceRoutes)
-  app.use('/api/enrollment', enrollmentRoutes);
   app.get('/', (req, res) => {
     res.send('AcogniX Backend is running!');
   });
+
+  app.use('/api/auth', authRoutes);
+  app.use('/api/profile', profileRoutes);
+  app.use('/api/admin', adminRoutes);
+  app.use('/api/courses', courseRoutes);
+  app.use('/api/workspace', workspaceRoutes)
+  app.use('/api/enrollment', enrollmentRoutes);
+
   return app;
 }
 
