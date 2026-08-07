@@ -1,0 +1,71 @@
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+// Initialize Gemini SDK with the API Key
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+const generateQuizzes = async (contextText, questionCount = 5) => {
+    const prompt = `
+        You are an educational expert. Based on the following document content:
+        """${contextText}"""
+
+        Generate ${questionCount} multiple-choice questions.
+        STRICT REQUIREMENTS: 
+        - Return ONLY a valid JSON array.
+        - Do not include any additional explanatory text or markdown formatting (like \`\`\`json).
+        - Use this exact format: [{"question": "question text", "options": ["A", "B", "C", "D"], "correctAnswer": "the correct option"}]
+    `;
+
+    const result = await model.generateContent(prompt);
+    let textResult = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(textResult); 
+};
+
+const generateFlashcards = async (contextText) => {
+    const prompt = `
+        Based on the following document content:
+        """${contextText}"""
+
+        Create a set of flashcards containing the most important terms and definitions.
+        STRICT REQUIREMENTS: 
+        - Return ONLY a valid JSON array.
+        - Do not include any markdown formatting.
+        - Use this exact format: [{"front": "term or concept", "back": "detailed definition or explanation"}]
+    `;
+
+    const result = await model.generateContent(prompt);
+    let textResult = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(textResult); 
+};
+
+const chatWithTutor = async (contextText, chatHistory, userMessage) => {
+    // Format the previous chat history for Gemini to understand context
+    let formattedHistory = "";
+    if (chatHistory && chatHistory.length > 0) {
+        formattedHistory = chatHistory.map(msg => `${msg.role === 'user' ? 'Student' : 'AI Tutor'}: ${msg.text}`).join('\n');
+    }
+
+    const prompt = `
+        You are the AcogniX AI Study Assistant. You are a helpful, encouraging, and accurate tutor.
+        Answer the student's question based strictly on the provided document content. If the answer is not in the document, kindly inform them.
+
+        DOCUMENT CONTENT:
+        """${contextText}"""
+
+        PREVIOUS CHAT HISTORY:
+        ${formattedHistory}
+
+        STUDENT'S NEW QUESTION: ${userMessage}
+        
+        AI TUTOR RESPONSE:
+    `;
+
+    const result = await model.generateContent(prompt);
+    return result.response.text();
+};
+
+module.exports = {
+    generateQuizzes,
+    generateFlashcards,
+    chatWithTutor
+};

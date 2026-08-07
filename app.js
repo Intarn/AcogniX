@@ -10,6 +10,7 @@ const adminRoutes = require('./backend/routes/admin.routes');
 const courseRoutes = require('./backend/routes/course.routes');
 const workspaceRoutes = require('./backend/routes/workspace.routes');
 const enrollmentRoutes = require('./backend/routes/enrollment.routes');
+const aiRoutes = require('./backend/routes/aiRoutes');
 
 function createApp() {
   const app = express();
@@ -27,7 +28,8 @@ function createApp() {
   app.use('/api/courses', courseRoutes);
   app.use('/api/workspace', workspaceRoutes)
   app.use('/api/enrollment', enrollmentRoutes);
-
+  app.use('/api/ai', aiRoutes);
+  
   return app;
 }
 
