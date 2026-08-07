@@ -16,10 +16,10 @@ const generateQuiz = async (req, res) => {
 
 const generateFlashcards = async (req, res) => {
     try {
-        const { contextText } = req.body;
+        const { contextText, flashcardCount } = req.body;
         if (!contextText) return res.status(400).json({ success: false, message: "Missing document context." });
 
-        const flashcards = await aiGenerationService.generateFlashcards(contextText);
+        const flashcards = await aiGenerationService.generateFlashcards(contextText, flashcardCount || 10);
         return res.status(200).json({ success: true, message: "Flashcards generated!", data: flashcards });
     } catch (error) {
         console.error("Flashcard Error:", error);

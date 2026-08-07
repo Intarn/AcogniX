@@ -1,15 +1,21 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// Initialize Gemini SDK with the API Key
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
+const MAX_QUESTIONS = 20;
+const MIN_QUESTIONS = 1;
+const MAX_FLASHCARDS = 30;
+const MIN_FLASHCARDS = 1;
+
 const generateQuizzes = async (contextText, questionCount = 5) => {
+    const safeCount = Math.min(Math.max(Number(questionCount) || 5, MIN_QUESTIONS), MAX_QUESTIONS);
+
     const prompt = `
         You are an educational expert. Based on the following document content:
         """${contextText}"""
 
-        Generate ${questionCount} multiple-choice questions.
+        Generate ${safeCount} multiple-choice questions.
         STRICT REQUIREMENTS: 
         - Return ONLY a valid JSON array.
         - Do not include any additional explanatory text or markdown formatting (like \`\`\`json).
@@ -21,12 +27,14 @@ const generateQuizzes = async (contextText, questionCount = 5) => {
     return JSON.parse(textResult); 
 };
 
-const generateFlashcards = async (contextText) => {
+const generateFlashcards = async (contextText, flashcardCount = 10) => {
+    const safeCount = Math.min(Math.max(Number(flashcardCount) || 10, MIN_FLASHCARDS), MAX_FLASHCARDS);
+
     const prompt = `
         Based on the following document content:
         """${contextText}"""
 
-        Create a set of flashcards containing the most important terms and definitions.
+        Create ${safeCount} flashcards containing the most important terms and definitions.
         STRICT REQUIREMENTS: 
         - Return ONLY a valid JSON array.
         - Do not include any markdown formatting.
@@ -39,7 +47,6 @@ const generateFlashcards = async (contextText) => {
 };
 
 const chatWithTutor = async (contextText, chatHistory, userMessage) => {
-    // Format the previous chat history for Gemini to understand context
     let formattedHistory = "";
     if (chatHistory && chatHistory.length > 0) {
         formattedHistory = chatHistory.map(msg => `${msg.role === 'user' ? 'Student' : 'AI Tutor'}: ${msg.text}`).join('\n');
