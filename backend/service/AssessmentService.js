@@ -13,7 +13,7 @@ const {
     QuestionType, 
     SubmissionStatus
 } = require('../enums/AssessmentEnums');
-const e = require('express');
+
 
 class AssessmentService {
     // UC-09: Create an official quiz or assignment in a managed Course 
@@ -1388,23 +1388,17 @@ class AssessmentService {
         return data;
     }
 
-    static async _notifyCourseLearners({ courseId, assessmentId, action }) {
-        const { data, error } = await supabase  
-            .from('Enrollment')
-            .select('learnerId')
-            .eq('courseId', courseId)
-            .eq('status', EnrollmentStatus.APPROVED);
-
-        if (error) throw error; 
-
-        const learnerIds = (data || []).map(item => item.learnerId);
-
-        return NotificationService.notifyAssessmentChanged({
-            learnerIds, 
-            courseId, 
-            assessmentId, 
+    static async _notifyCourseLearners({
+        courseId,
+        assessmentId,
+        action
+    }) {
+        return NotificationService
+            .notifyAssessmentChanged({
+            courseId,
+            assessmentId,
             action
-        });
+            });
     }
 
     static _toAssessment(row) {

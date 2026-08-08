@@ -1,6 +1,6 @@
 const supabase = require('../config/supabaseClient');
 const AppError = require('../error/AppError');
-const EmailService = require('./EmailService');
+const NotificationService = require('./NotificationService');
 const WorkspaceIntegrationService = require('./WorkspaceIntegrationService');
 const { ResourceType } = require('../enums/CourseContentEnums');
 const { EnrollmentStatus } = require('../enums/ClassroomEnums');
@@ -45,49 +45,14 @@ class CourseContentService {
 
     // Auto-sync to Learners' AI Workspace (SAD Requirement)
     await WorkspaceIntegrationService.syncMaterialToClassProjects(courseId, material);
-    
-    try {
-      // Get the base URL of the Frontend from environment variables
-      const baseUrl = process.env.CLIENT_URL;
-      
-      // Generate a direct link to the Materials tab of this course
-      const courseLink = `${baseUrl}/classroom/${courseId}/materials`;
-
-      // Design the HTML email template with a Call-to-Action button
-      const emailSubject = `New Material: ${title}`;
-      const emailHtml = `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-          <h2 style="color: #2c3e50;">Update from your classroom!</h2>
-          <p>The educator has just posted a new material: <b>${title}</b>.</p>
-          <p><i>${description ? description : ''}</i></p>
-          
-          <div style="margin: 30px 0;">
-            <a href="${courseLink}" 
-               style="background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
-               Access Classroom Workspace
-            </a>
-          </div>
-          
-          <p style="font-size: 12px; color: #888;">
-            If the button does not work, you can copy and paste the following link into your browser:<br>
-            <a href="${courseLink}">${courseLink}</a>
-          </p>
-          <br/>
-          <p>Best regards,<br/><b>AcogniX AI Tutor System</b></p>
-        </div>
-      `;
-
-      // 4. Call the function to send bulk email to all enrolled learners
-      await EmailService.notifyClass(courseId, emailSubject, emailHtml);
-      
-    } catch (emailErr) {
-      console.warn("Material saved successfully but failed to send email notification:", emailErr);
-      // Do not throw an error here to prevent rolling back the material upload due to a network email error
-    }
+    await NotificationService
+      .notifyCourseMaterialChanged({
+        courseId,
+        material,
+        action: 'ADDED'
+      });
 
     return material;
-
-
   }
 
   // Basic Flow (UC-05): Edit existing material
@@ -128,6 +93,12 @@ class CourseContentService {
       .select().single();
       
     if (error) throw new AppError(500, 'UPDATE_FAILED', 'Failed to update material.');
+    await NotificationService
+      .notifyCourseMaterialChanged({
+        courseId: data.courseId,
+        material: data,
+        action: 'UPDATED'
+      });
     return data;
   }
 
@@ -147,7 +118,12 @@ class CourseContentService {
 
     const { error } = await supabase.from('CourseMaterial').delete().eq('materialId', materialId);
     if (error) throw new AppError(500, 'DELETE_FAILED', 'Failed to delete material.');
-    
+    await NotificationService
+      .notifyCourseMaterialChanged({
+        courseId: material.courseId,
+        material,
+        action: 'DELETED'
+      });
     return true;
   }
 
@@ -203,16 +179,24 @@ class CourseContentService {
       announcement.attachmentUrls = attachmentUrls;
     }
 
-    // Alt Flow 3 (UC-17): Email Service Failure Handling
-    let emailFailed = false;
-    try {
-      await EmailService.notifyClass(courseId, 'New Announcement', `<b>${title}</b><p>${body}</p>`);
-    } catch (emailErr) {
-      console.warn("Email service failed but announcement was saved:", emailErr);
-      emailFailed = true; // Flag to trigger specific warning in Controller
-    }
+    // UC-17: Notify approved Learners.
+    // Notification failure must not rollback the saved Announcement.
+    const notification =
+      await NotificationService
+        .notifyAnnouncementPublished({
+          courseId,
+          title,
+          body
+        });
 
-    return { announcement, emailFailed };
+    const emailFailed =
+      notification.sent === false &&
+      notification.reason === 'EMAIL_DELIVERY_FAILED';
+
+    return {
+      announcement,
+      emailFailed
+    };
   }
 
   // Basic Flow (UC-16): View Announcements
