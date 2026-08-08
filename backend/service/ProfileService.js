@@ -67,7 +67,7 @@ class ProfileService {
       }
 
       const fileExt = avatarFile.originalname.split('.').pop();
-      const filePath = `${userId}/${Date.now()}.${fileExt}`;
+      const filePath = `${userId}/avatar.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from(AVATAR_BUCKET)
