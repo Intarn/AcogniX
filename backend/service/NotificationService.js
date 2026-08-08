@@ -28,6 +28,25 @@ class NotificationService {
       reason: 'NOTIFICATION_SERVICE_NOT_IMPLEMENTED'
     };
   }
+  // Add this method inside the existing NotificationService class.
+  static async notifyAssessmentChanged({
+    learnerIds,
+    courseId,
+    assessmentId,
+    action
+  }) {
+    console.log('[TODO Notification] Assessment change', {
+      learnerIds,
+      courseId,
+      assessmentId,
+      action
+    });
+
+    return {
+      sent: false,
+      reason: 'NOTIFICATION_SERVICE_NOT_IMPLEMENTED'
+    };
+  }
 }
 
 module.exports = NotificationService;
