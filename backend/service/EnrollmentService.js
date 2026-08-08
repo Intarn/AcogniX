@@ -11,7 +11,7 @@ const {
 class EnrollmentService {
   // UC-15: A valid request is always created with PENDING status.
   static async requestEnrollment(learnerId, enrollmentCode) {
-    const normalizedCode = String(enrollmentCode || '').trim();
+    const normalizedCode = String(enrollmentCode || '').trim().toUpperCase();
 
     // alternative flow 3 của uc15 - empty input
     if (!normalizedCode) {

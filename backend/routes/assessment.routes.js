@@ -47,6 +47,13 @@ router.post(
 );
 
 router.patch(
+  '/:assessmentId/questions/:questionId',
+  requireAuth,
+  authorize(UserRole.EDUCATOR),
+  AssessmentController.updateQuestion
+);
+
+router.patch(
   '/:assessmentId/schedule',
   requireAuth,
   authorize(UserRole.EDUCATOR),
@@ -67,6 +74,7 @@ router.post(
   upload.single('instructionFile'),
   AssessmentController.uploadInstructionFile
 );
+
 
 // UC-10: Learner submits Assessments
 router.get(

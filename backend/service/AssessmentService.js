@@ -186,12 +186,28 @@ class AssessmentService {
 
     // UC-09 Alternative Flow: 1 Active Assessments cannot be deleted
     static async deleteAssessment(assessmentId, educatorId) {
-        const assessmentRow = await this._findAssessmentById(assessmentId);
-        await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+        // 1. Tìm Assessment
+        const assessmentRow = await this._findAssessmentById(
+            assessmentId
+        );
 
-        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
-        const assessment = this._toAssessment(synchronized);
+        // 2. Kiểm tra Educator có quản lý Course này không
+        await this._assertCourseManagedBy(
+            assessmentRow.courseId,
+            educatorId
+        );
 
+        // 3. Đồng bộ status hiện tại
+        const synchronized =
+            await this._synchronizeAssessmentStatus(
+                assessmentRow
+            );
+
+        const assessment = this._toAssessment(
+            synchronized
+        );
+
+        // 4. Chỉ Assessment còn editable mới được xóa
         if (!assessment.isEditable()) {
             throw new AppError(
                 409,
@@ -200,37 +216,19 @@ class AssessmentService {
             );
         }
 
-        const { data: questions, error: questionError } = await supabase
-            .from('Question')
-            .select('questionId')
-            .eq('assessmentId', assessmentId);
-
-        if (questionError) throw questionError;
-        const questionIds = (questions || []).map(item => item.questionId);
-
-        if (questionIds.length > 0) {
-            const { error: optionError } = await supabase
-                .from('Question_Option')
-                .delete()
-                .in('questionId', questionIds);
-
-            if (optionError) throw optionError;
-
-            const { error: deleteQuestionError } = await supabase
-                .from('Question')
-                .delete()
-                .eq('assessmentId', assessmentId);
-
-            if (deleteQuestionError) throw deleteQuestionError;
-        }
-
+        // 5. Xóa Assessment.
+        // Question, Submission, SubmissionAnswer
+        // sẽ được database tự động xóa nhờ ON DELETE CASCADE.
         const { error } = await supabase
             .from('Assessment')
             .delete()
             .eq('assessmentId', assessmentId);
 
-        if (error) throw error;
+        if (error) {
+            throw error;
+        }
 
+        // 6. Thông báo cho Learners
         await this._notifyCourseLearners({
             courseId: assessmentRow.courseId,
             assessmentId,
@@ -255,6 +253,269 @@ class AssessmentService {
         }
 
         return this._insertQuestion(assessmentId, questionInput);
+    }
+
+    static async updateQuestion(
+        assessmentId,
+        questionId,
+        educatorId,
+        changes
+    ) {
+        // 1. Find Assessment
+        const assessmentRow =
+            await this._findAssessmentById(
+                assessmentId
+            );
+
+        // 2. Verify that the current Educator manages the Course
+        await this._assertCourseManagedBy(
+            assessmentRow.courseId,
+            educatorId
+        );
+
+        // 3. Synchronize Assessment status
+        const synchronized =
+            await this._synchronizeAssessmentStatus(
+                assessmentRow
+            );
+
+        const assessment =
+            this._toAssessment(synchronized);
+
+        // 4. Active / closed Assessment cannot be edited
+        if (!assessment.isEditable()) {
+            throw new AppError(
+                409,
+                'ASSESSMENT_NOT_EDITABLE',
+                'An active or closed Assessment cannot be edited.'
+            );
+        }
+
+        // 5. Find the Question and make sure it belongs
+        //    to this Assessment
+        const { data: questionRow, error: questionError } =
+            await supabase
+                .from('Question')
+                .select('*')
+                .eq('questionId', questionId)
+                .eq('assessmentId', assessmentId)
+                .maybeSingle();
+
+        if (questionError) {
+            throw questionError;
+        }
+
+        if (!questionRow) {
+            throw new AppError(
+                404,
+                'QUESTION_NOT_FOUND',
+                'The Question could not be found in this Assessment.'
+            );
+        }
+
+        // 6. Prepare update data
+        const updateData = {};
+
+        // ----- content -----
+        if (changes.content !== undefined) {
+            const content =
+                String(changes.content).trim();
+
+            if (!content) {
+                throw new AppError(
+                    400,
+                    'QUESTION_CONTENT_REQUIRED',
+                    'Question content cannot be empty.'
+                );
+            }
+
+            updateData.content = content;
+        }
+
+        // ----- points -----
+        if (changes.points !== undefined) {
+            const points =
+                Number(changes.points);
+
+            if (
+                !Number.isFinite(points) ||
+                points < 0
+            ) {
+                throw new AppError(
+                    400,
+                    'INVALID_QUESTION_POINTS',
+                    'Question points must be a non-negative number.'
+                );
+            }
+
+            updateData.points = points;
+        }
+
+        // ----- display order -----
+        if (changes.displayOrder !== undefined) {
+            const displayOrder =
+                Number(changes.displayOrder);
+
+            if (
+                !Number.isInteger(displayOrder) ||
+                displayOrder < 0
+            ) {
+                throw new AppError(
+                    400,
+                    'INVALID_DISPLAY_ORDER',
+                    'Question display order must be a non-negative integer.'
+                );
+            }
+
+            updateData.displayOrder =
+                displayOrder;
+        }
+
+        // Determine final Question type
+        const finalType =
+            changes.type !== undefined
+                ? changes.type
+                : questionRow.type;
+
+        if (
+            !Object.values(QuestionType)
+                .includes(finalType)
+        ) {
+            throw new AppError(
+                400,
+                'INVALID_QUESTION_DATA',
+                'The supplied Question type is invalid.'
+            );
+        }
+
+        if (changes.type !== undefined) {
+            updateData.type = finalType;
+        }
+
+        // 7. Handle MULTIPLE_CHOICE
+        if (
+            finalType ===
+            QuestionType.MULTIPLE_CHOICE
+        ) {
+            // Only recalculate options when new options
+            // are actually supplied.
+            if (changes.options !== undefined) {
+                if (!Array.isArray(changes.options)) {
+                    throw new AppError(
+                        400,
+                        'INVALID_MULTIPLE_CHOICE_OPTIONS',
+                        'Multiple-choice options must be an array.'
+                    );
+                }
+
+                const correctOptions =
+                    changes.options.filter(
+                        option =>
+                            option.isCorrect === true
+                    );
+
+                if (
+                    changes.options.length < 2 ||
+                    correctOptions.length !== 1
+                ) {
+                    throw new AppError(
+                        400,
+                        'INVALID_MULTIPLE_CHOICE_OPTIONS',
+                        'A multiple-choice Question requires at least two options and exactly one correct option.'
+                    );
+                }
+
+                const optionContents =
+                    changes.options.map(option =>
+                        String(
+                            option.content || ''
+                        ).trim()
+                    );
+
+                if (
+                    optionContents.some(
+                        content => !content
+                    )
+                ) {
+                    throw new AppError(
+                        400,
+                        'INVALID_MULTIPLE_CHOICE_OPTIONS',
+                        'Multiple-choice option content cannot be empty.'
+                    );
+                }
+
+                updateData.options =
+                    optionContents;
+
+                updateData.correctAnswer =
+                    String(
+                        correctOptions[0].content
+                    ).trim();
+            }
+
+            // ESSAY -> MULTIPLE_CHOICE requires options
+            else if (
+                questionRow.type !==
+                QuestionType.MULTIPLE_CHOICE
+            ) {
+                throw new AppError(
+                    400,
+                    'INVALID_MULTIPLE_CHOICE_OPTIONS',
+                    'Options are required when changing a Question to multiple choice.'
+                );
+            }
+        }
+
+        // 8. Handle ESSAY
+        if (
+            finalType === QuestionType.ESSAY &&
+            questionRow.type !== QuestionType.ESSAY
+        ) {
+            updateData.options = [];
+            updateData.correctAnswer = null;
+        }
+
+        // Nothing supplied
+        if (
+            Object.keys(updateData).length === 0
+        ) {
+            throw new AppError(
+                400,
+                'NO_QUESTION_CHANGES',
+                'No Question changes were supplied.'
+            );
+        }
+
+        // 9. Update DB
+        const { data, error } =
+            await supabase
+                .from('Question')
+                .update(updateData)
+                .eq(
+                    'questionId',
+                    questionId
+                )
+                .eq(
+                    'assessmentId',
+                    assessmentId
+                )
+                .select()
+                .single();
+
+        if (error) {
+            throw error;
+        }
+
+        // 10. Notify Learners if your UC-09
+        // notification integration is enabled
+        await this._notifyCourseLearners({
+            courseId:
+                assessmentRow.courseId,
+            assessmentId,
+            action: 'UPDATED'
+        });
+
+        return new Question(data);
     }
 
     // UC-09: Configure or change the Assessment schedule before it becomes active.

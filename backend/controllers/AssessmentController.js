@@ -99,6 +99,26 @@ class AssessmentController {
         }
     }
 
+    static async updateQuestion(req, res) {
+    try {
+        const question =
+            await AssessmentService.updateQuestion(
+                req.params.assessmentId,
+                req.params.questionId,
+                req.user.userId,
+                req.body
+            );
+
+        return res.status(200).json({
+            message: 'Question updated successfully.',
+            question
+        });
+
+    } catch (error) {
+        return handleControllerError(error, res);
+    }
+}
+
     static async scheduleAssessment(req, res) {
         try {
             const {startTime, deadline } = req.body; 
@@ -210,10 +230,11 @@ class AssessmentController {
             ); 
 
             return res.status(201).json({
-                message: 'Submission files uploaded successfully.', 
+                message: 'Submission files uploaded successfully.',
                 files: files.map(file => ({
-                    submissionFileId: file.submissionFileId, 
-                    fileName: file.fileName
+                    fileName: file.fileName,
+                    fileUrl: file.fileUrl,
+                    sizeBytes: file.sizeBytes
                 }))
             });
         } catch(error) {
@@ -224,7 +245,7 @@ class AssessmentController {
     static async submitSubmission(req, res) {
         try {
             const result = await AssessmentService.submitSubmission(
-                req.params.submisionId, 
+                req.params.submissionId, 
                 req.user.userId
             );
 

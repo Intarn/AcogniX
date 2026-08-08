@@ -1,4 +1,5 @@
 const supabase = require('../config/supabaseClient');
+const supabaseAuth = require('../config/supabaseAuthClient');
 const User = require('../entities/User');
 const UserSession = require('../entities/UserSession');
 const { AccountStatus } = require('../enums/AuthEnums')
@@ -23,7 +24,7 @@ class AuthenticationService {
       throw err;
     }
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({email, password});
+    const { data: authData, error: authError } = await supabaseAuth.auth.signUp({email, password});
     
     if (authError) {
       const err = new Error('SIGNUP_FAILED');
@@ -64,7 +65,7 @@ class AuthenticationService {
   
   static async logIn(email, password) {
     // Find account + Check password
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    const { data: authData, error: authError } = await supabaseAuth.auth.signInWithPassword({ email, password });
     if (authError) {
       const err = new Error('INVALID_CREDENTIALS');
       err.status = 401;
@@ -145,7 +146,7 @@ class AuthenticationService {
     const { 
        data: {user: authUser}, 
        error: authError 
-     } = await supabase.auth.getUser(token);
+     } = await supabaseAuth.auth.getUser(token);
     
     if (authError || !authUser) {
       const err = new Error('INVALID_SESSION')
