@@ -10,12 +10,15 @@ const adminRoutes = require('./backend/routes/admin.routes');
 const courseRoutes = require('./backend/routes/course.routes');
 const workspaceRoutes = require('./backend/routes/workspace.routes');
 const enrollmentRoutes = require('./backend/routes/enrollment.routes');
+const courseContentRoutes = require('./backend/routes/coursecontent.routes');
 
-function createApp() {
+function createApp(io) {
   const app = express();
 
   app.use(cors());
   app.use(express.json());
+
+  app.set('io', io);
 
   app.get('/', (req, res) => {
     res.send('AcogniX Backend is running!');
@@ -25,6 +28,7 @@ function createApp() {
   app.use('/api/profile', profileRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/courses', courseRoutes);
+  app.use('/api/courses', courseContentRoutes);
   app.use('/api/workspace', workspaceRoutes)
   app.use('/api/enrollment', enrollmentRoutes);
 
@@ -39,9 +43,11 @@ async function initializeData() {
 const PORT = process.env.PORT || 3001;
 
 async function main() {
+  const server = http.createServer();
+  const io = new Server(server, { cors: {origin: "*" } });
+
   const app = createApp();
-  const server = http.createServer(app);
-  const io = new Server(server, { cors: { origin: "*" } });
+  server.on('request', app);
 
   io.on('connection', (socket) => {
     console.log(`Client connected: ${socket.id}`);
