@@ -82,7 +82,13 @@ class CourseService {
 
   // Alt Flow 1 (UC-13): Update existing course
   static async updateCourse(courseId, educatorId, { subjectName, courseCode, description }) {
-    await this.getOwnedCourse(courseId, educatorId);
+    const course = await this.getOwnedCourse(courseId, educatorId);
+
+    if (course.status === CourseStatus.ARCHIVED) {
+      const err = new Error('COURSE_ARCHIVED');
+      err.status = 400; 
+      throw err;
+    }
 
     if (!subjectName || !courseCode) {
       const err = new Error('MISSING_REQUIRED_FIELDS'); // Alt Flow 3

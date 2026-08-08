@@ -28,7 +28,7 @@ class CourseContentController {
       const updates = { title, description, resourceType, linkUrl };
     
       // Pass the new file to the service to replace the old one in Supabase Storage if provided
-      const material = await CourseContentService.updateMaterial(educatorId, materialId, updates, files);
+      const material = await CourseContentService.updateMaterial(educatorId, materialId, updates, file);
       return res.status(200).json({ message: "Material updated successfully.", material });
     } catch (error) {
       const status = error.statusCode || 500;

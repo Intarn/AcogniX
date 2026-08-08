@@ -91,15 +91,42 @@ class CourseContentService {
   }
 
   // Basic Flow (UC-05): Edit existing material
-  static async updateMaterial(educatorId, materialId, updates) {
-    const material = await this._getMaterialAndVerifyOwnership(materialId, educatorId);
-    
+  static async updateMaterial(educatorId, materialId, updates, newFile) {
+    const oldMaterial = await this._getMaterialAndVerifyOwnership(materialId, educatorId);
+    let updateData = { ...updates, updatedAt: new Date() };
+
+    if (updates.resourceType === ResourceType.FILE && newFile) {
+      const fileExt = newFile.originalname.split('.').pop();
+      const filePath = `${oldMaterial.courseId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET_MATERIALS)
+        .upload(filePath, newFile.buffer, { contentType: newFile.mimetype });
+      
+      if (uploadError) throw new AppError(500, 'UPLOAD_FAILED', 'Failed to upload new material file.');
+
+      const { data: publicUrlData } = supabase.storage.from(BUCKET_MATERIALS).getPublicUrl(filePath);
+      updateData.resourceUrl = publicUrlData.publicUrl;
+      updateData.fileType = newFile.mimetype;
+      updateData.sizeBytes = newFile.size;
+
+      if (oldMaterial.resourceUrl && oldMaterial.resourceUrl.includes(BUCKET_MATERIALS)) {
+         const oldFilePath = oldMaterial.resourceUrl.split(`${BUCKET_MATERIALS}/`)[1];
+         if(oldFilePath) await supabase.storage.from(BUCKET_MATERIALS).remove([oldFilePath]);
+      }
+    } 
+    else if (updates.resourceType === ResourceType.LINK) {
+      updateData.resourceUrl = updates.linkUrl;
+      updateData.fileType = null;
+      updateData.sizeBytes = 0;
+    }
+
     const { data, error } = await supabase
       .from('CourseMaterial')
-      .update({ ...updates, updatedAt: new Date() })
+      .update(updateData)
       .eq('materialId', materialId)
       .select().single();
-
+      
     if (error) throw new AppError(500, 'UPDATE_FAILED', 'Failed to update material.');
     return data;
   }
@@ -108,6 +135,13 @@ class CourseContentService {
   static async deleteMaterial(educatorId, materialId) {
     const material = await this._getMaterialAndVerifyOwnership(materialId, educatorId);
 
+    if (material.resourceType === ResourceType.FILE && material.resourceUrl) {
+      const filePath = material.resourceUrl.split(`${BUCKET_MATERIALS}/`)[1];
+      if (filePath) {
+         await supabase.storage.from(BUCKET_MATERIALS).remove([filePath]);
+      }
+    }
+    
     // Alt Flow 2 (UC-05): Remove from all Learners' synchronized workspaces
     await WorkspaceIntegrationService.removeSynchronizedMaterial(material.courseId, materialId);
 
