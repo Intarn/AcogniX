@@ -52,15 +52,28 @@ const uploadAndExtract = async (req, res) => {
             });
         }
 
+        const { mimetype, buffer } = req.file;
         let extractedText = "";
 
-        // Check file type (currently supporting PDF)
-        if (req.file.mimetype === 'application/pdf') {
-            extractedText = await documentExtractionService.extractTextFromPDF(req.file.buffer);
+        // Route to the correct extractor based on file type
+        if (mimetype === 'application/pdf') {
+            extractedText = await documentExtractionService.extractTextFromPDF(buffer);
+        } else if (['image/jpeg', 'image/png', 'image/webp'].includes(mimetype)) {
+            extractedText = await documentExtractionService.extractTextFromImage(buffer);
+        } else if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            extractedText = await documentExtractionService.extractTextFromDocx(buffer);
         } else {
             return res.status(400).json({ 
                 success: false, 
-                message: "The system currently only supports PDF files." 
+                message: "Unsupported file type. Supported formats: PDF, DOCX, JPG, PNG, WEBP." 
+            });
+        }
+
+        // Guard against files that produced no readable text (e.g. blurry scans)
+        if (!extractedText || !extractedText.trim()) {
+            return res.status(422).json({
+                success: false,
+                message: "No readable text was found in this file."
             });
         }
 
