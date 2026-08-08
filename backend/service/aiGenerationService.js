@@ -1,8 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// Initialize Gemini SDK with the API Key
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
 const MAX_QUESTIONS = 20;
 const MIN_QUESTIONS = 1;
@@ -26,12 +25,16 @@ const generateQuizzes = async (contextText, questionCount = 5) => {
     const result = await model.generateContent(prompt);
     let textResult = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
     
-    // Safeguard block for JSON parsing
     try {
-        return JSON.parse(textResult); 
+        const parsed = JSON.parse(textResult);
+        // Normalize keys in case the model returns inconsistent casing (e.g. "Question" instead of "question")
+        return parsed.map(item => ({
+            question: item.question || item.Question || "",
+            options: item.options || item.Options || [],
+            correctAnswer: item.correctAnswer || item.CorrectAnswer || ""
+        }));
     } catch (parseError) {
         console.error("AI returned invalid JSON structure for quizzes:", textResult);
-        // Fallback: Return an empty array so the app doesn't crash
         return []; 
     }
 };
@@ -53,12 +56,15 @@ const generateFlashcards = async (contextText, flashcardCount = 10) => {
     const result = await model.generateContent(prompt);
     let textResult = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
     
-    // Safeguard block for JSON parsing
     try {
-        return JSON.parse(textResult); 
+        const parsed = JSON.parse(textResult);
+        // Normalize keys in case the model returns inconsistent casing (e.g. "Front" instead of "front")
+        return parsed.map(item => ({
+            front: item.front || item.Front || "",
+            back: item.back || item.Back || ""
+        }));
     } catch (parseError) {
         console.error("AI returned invalid JSON structure for flashcards:", textResult);
-        // Fallback: Return an empty array so the app doesn't crash
         return []; 
     }
 };
