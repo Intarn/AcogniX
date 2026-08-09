@@ -41,6 +41,66 @@ class WorkspaceService {
     return data;
   }
 
+  static async provisionClassProject(learnerId, courseId, name) {
+    // Find the Learner's Workspace
+    const workspace = await this.getWorkspace(learnerId);
+
+    // Check whether the Class Project for this Course already exists
+    const { data: existingProject, error: findError } = await supabase
+      .from('AI_Project')
+      .select('*')
+      .eq('workspaceId', workspace.workspaceId)
+      .eq('courseId', courseId)
+      .eq('type', 'CLASS')
+      .maybeSingle();
+
+    if (findError) {
+      throw findError;
+    }
+
+    // Avoid creating the same Class Project more than once
+    if (existingProject) {
+      if (existingProject.status === 'ACTIVE') {
+        return existingProject;
+      }
+
+      const { data: reactivatedProject, error: reactivateError } =
+        await supabase
+          .from('AI_Project')
+          .update({
+            status: 'ACTIVE'
+          })
+          .eq('projectId', existingProject.projectId)
+          .select()
+          .single();
+
+      if (reactivateError) {
+        throw reactivateError;
+      }
+
+      return reactivatedProject;
+    }
+
+    // Create the Class Project
+    const { data, error } = await supabase
+      .from('AI_Project')
+      .insert([{
+        workspaceId: workspace.workspaceId,
+        courseId,
+        name,
+        type: 'CLASS',
+        status: 'ACTIVE'
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
+  }
+
   // Alternative flow 2 (UC-01): Upload personal materials
   static async uploadPersonalMaterial(projectId, fileBuffer, originalName, mimeType, sizeBytes) {
     // Alternative flow 2 (UC-01): Limit file size to 50MB
@@ -75,6 +135,49 @@ class WorkspaceService {
 
     if (dbError) throw dbError;
     return insertedData;
+  }
+
+  static async revokeClassProjectAccess(
+    learnerId,
+    courseId
+  ) {
+    // Find the Learner's Workspace
+    const workspace = await this.getWorkspace(learnerId);
+
+    // Find the Class Project corresponding to the Course
+    const { data: project, error: findError } = await supabase
+      .from('AI_Project')
+      .select('*')
+      .eq('workspaceId', workspace.workspaceId)
+      .eq('courseId', courseId)
+      .eq('type', 'CLASS')
+      .maybeSingle();
+
+    if (findError) {
+      throw findError;
+    }
+
+    if (!project) {
+      const err = new Error('CLASS_PROJECT_NOT_FOUND');
+      err.status = 404;
+      throw err;
+    }
+
+    // Revoke access without deleting the Project
+    const { data, error } = await supabase
+      .from('AI_Project')
+      .update({
+        status: 'INACTIVE'
+      })
+      .eq('projectId', project.projectId)
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
   }
 }
 
