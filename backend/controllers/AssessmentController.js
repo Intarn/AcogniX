@@ -93,7 +93,7 @@ class AssessmentController {
             return res.status(201).json({
                 message: 'Question added successfully.', 
                 question
-            })
+            });
         } catch (error) {
             return handleControllerError(error, res);
         }
@@ -262,7 +262,7 @@ class AssessmentController {
                 }
             });
         } catch (error) {
-            return handleControllerError(error, res)
+            return handleControllerError(error, res);
         }
     }
 
