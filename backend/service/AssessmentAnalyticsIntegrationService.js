@@ -1,21 +1,32 @@
-class AssessmentAnalyticsIntegrationService {
-  static async recordAssessmentScore({
-    learnerId,
-    courseId,
-    assessmentId,
-    score
-  }) {
-    console.log('[TODO Analytics] Assessment score', {
-      learnerId,
-      courseId,
-      assessmentId,
-      score
-    });
+const supabase = require('../config/supabaseClient');
 
-    return {
-      recorded: false,
-      reason: 'ANALYTICS_SERVICE_NOT_IMPLEMENTED'
-    };
+class AssessmentAnalyticsIntegrationService {
+  static async recordAssessmentScore({ learnerId, courseId, assessmentId, score }) {
+    try {
+        const { data, error } = await supabase
+            .from('Assessment_Result_Log')
+            .insert([{ 
+                learnerId, 
+                courseId, 
+                assessmentId, 
+                score: Number(score) 
+            }])
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        return {
+          recorded: true,
+          data
+        };
+    } catch (error) {
+        console.error('[Analytics] Failed to record assessment score:', error);
+        return {
+          recorded: false,
+          reason: 'DATABASE_ERROR'
+        };
+    }
   }
 }
 
