@@ -39,11 +39,23 @@ const generateQuizzes = async (contextText, questionCount = 5, difficulty = 'med
     const textResult = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = parseAIJson(textResult, 'quiz');
 
-    return parsed.map(item => ({
-        question: item.question || item.Question || "",
-        options: item.options || item.Options || [],
-        correctAnswer: item.correctAnswer || item.CorrectAnswer || ""
+    // Deep validation: Filter out incomplete or malformed questions
+    const validQuizzes = parsed.filter(item => {
+        const q = item.question || item.Question;
+        const o = item.options || item.Options;
+        const c = item.correctAnswer || item.CorrectAnswer;
+        return q && typeof q === 'string' && Array.isArray(o) && o.length > 0 && c && o.includes(c);
+    }).map(item => ({
+        question: item.question || item.Question,
+        options: item.options || item.Options,
+        correctAnswer: item.correctAnswer || item.CorrectAnswer
     }));
+
+    if (validQuizzes.length === 0) {
+        throw new AppError(502, 'AI_INVALID_RESPONSE', 'The AI failed to generate valid quizzes based on the document.');
+    }
+
+    return validQuizzes;
 };
 
 const generateFlashcards = async (contextText, flashcardCount = 10, length = 'short') => {
@@ -69,10 +81,21 @@ const generateFlashcards = async (contextText, flashcardCount = 10, length = 'sh
     const textResult = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = parseAIJson(textResult, 'flashcard');
 
-    return parsed.map(item => ({
-        front: item.front || item.Front || "",
-        back: item.back || item.Back || ""
+    // Deep validation: Filter out empty or missing card sides
+    const validFlashcards = parsed.filter(item => {
+        const f = item.front || item.Front;
+        const b = item.back || item.Back;
+        return f && b && typeof f === 'string' && typeof b === 'string';
+    }).map(item => ({
+        front: item.front || item.Front,
+        back: item.back || item.Back
     }));
+
+    if (validFlashcards.length === 0) {
+        throw new AppError(502, 'AI_INVALID_RESPONSE', 'The AI failed to generate valid flashcards based on the document.');
+    }
+
+    return validFlashcards;
 };
 
 const chatWithTutor = async (contextText, chatHistory, userMessage) => {

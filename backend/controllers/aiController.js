@@ -27,11 +27,15 @@ const generateQuiz = async (req, res) => {
             return res.status(400).json({ code: 'MISSING_CONTEXT', message: "Missing document context." });
         }
 
-        const quizzes = await aiGenerationService.generateQuizzes(contextText, questionCount || 5, difficulty);
+        // Force integer and normalize string for DB consistency
+        const safeCount = Math.trunc(Number(questionCount)) || 5;
+        const normalizedDifficulty = (difficulty || 'medium').trim().toLowerCase();
+
+        const quizzes = await aiGenerationService.generateQuizzes(contextText, safeCount, normalizedDifficulty);
 
         let saved = null;
         if (projectId) {
-            saved = await AIPersistenceService.saveQuiz(projectId, req.user.userId, difficulty || 'medium', quizzes);
+            saved = await AIPersistenceService.saveQuiz(projectId, req.user.userId, normalizedDifficulty, quizzes);
         }
 
         return res.status(200).json({
@@ -51,11 +55,15 @@ const generateFlashcards = async (req, res) => {
             return res.status(400).json({ code: 'MISSING_CONTEXT', message: "Missing document context." });
         }
 
-        const flashcards = await aiGenerationService.generateFlashcards(contextText, flashcardCount || 10, length);
+        // Force integer and normalize string for DB consistency
+        const safeCount = Math.trunc(Number(flashcardCount)) || 10;
+        const normalizedLength = (length || 'short').trim().toLowerCase();
+
+        const flashcards = await aiGenerationService.generateFlashcards(contextText, safeCount, normalizedLength);
 
         let saved = null;
         if (projectId) {
-            saved = await AIPersistenceService.saveFlashcards(projectId, req.user.userId, length || 'short', flashcards);
+            saved = await AIPersistenceService.saveFlashcards(projectId, req.user.userId, normalizedLength, flashcards);
         }
 
         return res.status(200).json({
@@ -71,11 +79,16 @@ const generateFlashcards = async (req, res) => {
 const chat = async (req, res) => {
     try {
         const { contextText, chatHistory, userMessage, projectId } = req.body;
+        
+        // Strict requirement: AI Tutor needs document context to function
+        if (!contextText) {
+            return res.status(400).json({ code: 'MISSING_CONTEXT', message: "Active context is required to use the AI Tutor." });
+        }
         if (!userMessage) {
             return res.status(400).json({ code: 'MISSING_MESSAGE', message: "Missing user message." });
         }
 
-        const responseText = await aiGenerationService.chatWithTutor(contextText || "", chatHistory || [], userMessage);
+        const responseText = await aiGenerationService.chatWithTutor(contextText, chatHistory || [], userMessage);
 
         if (projectId) {
             await AIPersistenceService.appendConversationMessages(projectId, req.user.userId, [
