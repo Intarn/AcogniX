@@ -64,7 +64,10 @@ class AIPersistenceService {
         if (fetchError) throw fetchError;
 
         if (existing) {
-            const updatedMessages = [...(existing.messages || []), ...newMessages];
+            // Check if existing.messages is truly an array
+            const existingMessages = Array.isArray(existing.messages) ? existing.messages : [];
+            const updatedMessages = [...existingMessages, ...newMessages];
+            
             const { data, error } = await supabase
                 .from('Conversation')
                 .update({ messages: updatedMessages, updatedAt: new Date().toISOString() })

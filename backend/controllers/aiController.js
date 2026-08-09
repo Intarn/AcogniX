@@ -9,27 +9,28 @@ function handleControllerError(error, res) {
             message: error.message
         });
     }
-
     console.error(error);
-
     return res.status(500).json({
         code: 'INTERNAL_SERVER_ERROR',
         message: 'An unexpected server error occurred.'
     });
 }
 
-// projectId is optional: pass it to persist the result into the Learner's
-// AI Workspace project. Omit it to just generate without saving.
 const generateQuiz = async (req, res) => {
     try {
         const { contextText, questionCount, difficulty, projectId } = req.body;
-        if (!contextText) {
-            return res.status(400).json({ code: 'MISSING_CONTEXT', message: "Missing document context." });
+        
+        if (typeof contextText !== 'string' || !contextText.trim()) {
+            return res.status(400).json({ code: 'MISSING_CONTEXT', message: "Missing valid document context." });
         }
 
-        // Force integer and normalize string for DB consistency
         const safeCount = Math.trunc(Number(questionCount)) || 5;
-        const normalizedDifficulty = (difficulty || 'medium').trim().toLowerCase();
+        const normalizedDifficulty = String(difficulty || 'medium').trim().toLowerCase();
+
+        // Strict Validation
+        if (!['easy', 'medium', 'hard'].includes(normalizedDifficulty)) {
+            return res.status(400).json({ code: 'INVALID_DIFFICULTY', message: 'Difficulty must be easy, medium, or hard.' });
+        }
 
         const quizzes = await aiGenerationService.generateQuizzes(contextText, safeCount, normalizedDifficulty);
 
@@ -51,13 +52,18 @@ const generateQuiz = async (req, res) => {
 const generateFlashcards = async (req, res) => {
     try {
         const { contextText, flashcardCount, length, projectId } = req.body;
-        if (!contextText) {
-            return res.status(400).json({ code: 'MISSING_CONTEXT', message: "Missing document context." });
+        
+        if (typeof contextText !== 'string' || !contextText.trim()) {
+            return res.status(400).json({ code: 'MISSING_CONTEXT', message: "Missing valid document context." });
         }
 
-        // Force integer and normalize string for DB consistency
         const safeCount = Math.trunc(Number(flashcardCount)) || 10;
-        const normalizedLength = (length || 'short').trim().toLowerCase();
+        const normalizedLength = String(length || 'short').trim().toLowerCase();
+
+        // Strict Validation
+        if (!['short', 'detailed'].includes(normalizedLength)) {
+            return res.status(400).json({ code: 'INVALID_LENGTH', message: 'Length must be short or detailed.' });
+        }
 
         const flashcards = await aiGenerationService.generateFlashcards(contextText, safeCount, normalizedLength);
 
@@ -80,15 +86,14 @@ const chat = async (req, res) => {
     try {
         const { contextText, chatHistory, userMessage, projectId } = req.body;
         
-        // Strict requirement: AI Tutor needs document context to function
-        if (!contextText) {
+        if (typeof contextText !== 'string' || !contextText.trim()) {
             return res.status(400).json({ code: 'MISSING_CONTEXT', message: "Active context is required to use the AI Tutor." });
         }
-        if (!userMessage) {
-            return res.status(400).json({ code: 'MISSING_MESSAGE', message: "Missing user message." });
+        if (typeof userMessage !== 'string' || !userMessage.trim()) {
+            return res.status(400).json({ code: 'MISSING_MESSAGE', message: "Missing valid user message." });
         }
 
-        const responseText = await aiGenerationService.chatWithTutor(contextText, chatHistory || [], userMessage);
+        const responseText = await aiGenerationService.chatWithTutor(contextText, chatHistory, userMessage);
 
         if (projectId) {
             await AIPersistenceService.appendConversationMessages(projectId, req.user.userId, [
