@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register - AcogniX</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800">
+
+  <div class="flex min-h-screen items-center justify-center p-4">
+    
+    <div class="w-full max-w-md">
+      <!-- Logo và Tiêu đề -->
+      <div class="mb-8 text-center">
+        <div class="flex items-center justify-center gap-2.5 mb-4">
+          <!-- SVG Logo AcogniX (sao chép từ dashboard.html) -->
+          <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="grad-leg" x1="50" y1="15" x2="80" y2="85" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#8B3DFF" />
+                <stop offset="100%" stop-color="#6B21FF" />
+              </linearGradient>
+              <linearGradient id="grad-left" x1="20" y1="85" x2="35" y2="50" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#00A3FF" />
+                <stop offset="100%" stop-color="#3B82F6" />
+              </linearGradient>
+              <linearGradient id="grad-swoosh" x1="25" y1="70" x2="95" y2="45" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#00C2FF" />
+                <stop offset="50%" stop-color="#3B82F6" />
+                <stop offset="100%" stop-color="#6B21FF" />
+              </linearGradient>
+            </defs>
+            <path d="M 33 55 L 46 25 C 47.5 21.5 52.5 21.5 54 25 L 76 76" stroke="url(#grad-leg)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M 22 80 L 26 70" stroke="url(#grad-left)" stroke-width="14" stroke-linecap="round" />
+            <path d="M 26 65 C 50 78 70 70 92 48 C 65 68 45 74 24 73 Z" fill="url(#grad-swoosh)" />
+          </svg>
+          <span class="text-3xl font-black text-slate-900 tracking-tight">AcogniX</span>
+        </div>
+        <h1 class="text-2xl font-bold text-gray-900">Create Your Account</h1>
+        <p class="text-sm text-gray-500 mt-1">Join AcogniX to start your AI-powered learning journey.</p>
+      </div>
+
+      <!-- Form Đăng ký -->
+      <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+        <form id="register-form" class="space-y-5">
+          <!-- Tên đầy đủ -->
+          <div>
+            <label for="fullname" class="text-sm font-semibold text-gray-700">Full Name</label>
+            <input 
+              type="text" 
+              id="fullname" 
+              name="fullname"
+              placeholder="An Nguyen"
+              class="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
+              required
+            >
+          </div>
+
+          <!-- Email -->
+          <div>
+            <label for="email" class="text-sm font-semibold text-gray-700">Email Address</label>
+            <input 
+              type="email" 
+              id="email" 
+              name="email"
+              placeholder="you@example.com"
+              class="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
+              required
+            >
+          </div>
+
+          <!-- Mật khẩu -->
+          <div>
+            <label for="password" class="text-sm font-semibold text-gray-700">Password</label>
+            <input 
+              type="password" 
+              id="password" 
+              name="password"
+              placeholder="••••••••"
+              class="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
+              required
+            >
+          </div>
+
+          <!-- Role -->
+          <div>
+            <label for="role" class="text-sm font-semibold text-gray-700">I am a...</label>
+            <select 
+              id="role" 
+              name="role"
+              class="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
+              required
+            >
+              <option>Student</option>
+              <option>Teacher</option>
+            </select>
+          </div>
+
+          <!-- Nút Đăng ký -->
+          <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all">
+            Create Account
+          </button>
+        </form>
+      </div>
+
+      <!-- Link Đăng nhập -->
+      <p class="text-center text-sm text-gray-500 mt-6">
+        Already have an account? <a href="./login.html" class="font-semibold text-blue-600 hover:underline">Log in</a>
+      </p>
+    </div>
+
+  </div>
+
+  <script>
+    document.getElementById('register-form').addEventListener('submit', function(event) {
+      event.preventDefault(); // Ngăn form submit
+
+      const fullname = document.getElementById('fullname').value;
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const role = document.getElementById('role').value;
+
+      // Lấy danh sách người dùng từ localStorage, hoặc tạo mới nếu chưa có
+      let users = JSON.parse(localStorage.getItem('acognix_users')) || [];
+
+      // Kiểm tra xem email đã tồn tại chưa
+      const userExists = users.some(user => user.email === email);
+
+      if (userExists) {
+        alert('Email đã được đăng ký. Vui lòng sử dụng email khác.');
+        return;
+      }
+
+      // Thêm người dùng mới vào danh sách
+      const newUser = { fullname, email, pass: password, role: role.toLowerCase() };
+      users.push(newUser);
+
+      // Lưu lại vào localStorage (vẫn cần thiết để chức năng đăng nhập hoạt động)
+      localStorage.setItem('acognix_users', JSON.stringify(users));
+
+      // Lưu thông tin người dùng vừa đăng ký vào sessionStorage để trang tiếp theo có thể sử dụng
+      sessionStorage.setItem('currentUser', JSON.stringify(newUser));
+
+      // Thông báo thành công và hướng dẫn
+      alert('Đăng ký thành công! Dữ liệu người dùng đã được lưu. Bạn có thể xem danh sách người dùng trong trang Admin Dashboard. Bây giờ bạn sẽ được chuyển đến trang của mình.');
+
+      if (role === 'Student') {
+        window.location.href = './dashboard.html';
+      } else if (role === 'Teacher') {
+        window.location.href = './teacher-dashboard.html';
+      }
+    });
+  </script>
+
+</body>
+</html>
