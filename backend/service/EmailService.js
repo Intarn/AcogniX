@@ -1,8 +1,8 @@
 const transporter = require('../config/emailClient');
-const supabase = require('../config/supabaseClient');
 
 class EmailService {
 
+  // Send an email to one recipient
   static async send(to, subject, html) {
     await transporter.sendMail({
       from: `"AcogniX" <${process.env.EMAIL_USER}>`,
@@ -12,93 +12,129 @@ class EmailService {
     });
   }
 
+
+  // Send the same email to multiple recipients.
+  // BCC prevents recipients from seeing each other's email.
+  static async sendBulk(emails, subject, html) {
+    if (!emails || emails.length === 0) {
+      return;
+    }
+
+    await transporter.sendMail({
+      from: `"AcogniX" <${process.env.EMAIL_USER}>`,
+      bcc: emails,
+      subject,
+      html
+    });
+  }
+
+
+  // 2FA is a security verification email,
+  // not a business notification.
   static async sendTwoFactorCode(to, code) {
     await this.send(
       to,
-      "AcogniX - Account Deletion Verification Code",
-      `<p>Your verification code is: <b style="font-size:20px">${code}</b></p>
-       <p>This code expires in 5 minutes. If you did not request this, you can safely ignore this email.</p>`
+      'AcogniX - Account Deletion Verification Code',
+      `
+        <p>
+          Your verification code is:
+          <b style="font-size:20px">${code}</b>
+        </p>
+
+        <p>
+          This code expires in 5 minutes.
+          If you did not request this,
+          you can safely ignore this email.
+        </p>
+      `
     );
   }
 
-  // Basic Flow #4 (UC-12): automatic notification after Ban
+
+
   static async sendAccountBanned(to) {
     await this.send(
       to,
-      "AcogniX - Account Suspended",
-      `<p>Your AcogniX account has been suspended by a System Administrator.</p>
-       <p>If you believe this is a mistake, please contact support.</p>`
+      'AcogniX - Account Suspended',
+      `
+        <p>
+          Your AcogniX account has been suspended
+          by a System Administrator.
+        </p>
+
+        <p>
+          If you believe this is a mistake,
+          please contact support.
+        </p>
+      `
     );
   }
 
-  // Basic Flow #4 (UC-12): automatic notification after Unban
+
   static async sendAccountUnbanned(to) {
     await this.send(
       to,
-      "AcogniX - Account Reactivated",
-      `<p>Your AcogniX account has been reactivated. You can now log in normally.</p>`
+      'AcogniX - Account Reactivated',
+      `
+        <p>
+          Your AcogniX account has been reactivated.
+          You can now log in normally.
+        </p>
+      `
     );
   }
 
-  // Basic Flow #4 (UC-12): automatic notification after role assignment
+
   static async sendRoleChanged(to, newRole) {
     await this.send(
       to,
-      "AcogniX - Account Role Updated",
-      `<p>Your account role has been updated to <b>${newRole}</b> by a System Administrator.</p>`
+      'AcogniX - Account Role Updated',
+      `
+        <p>
+          Your account role has been updated to
+          <b>${newRole}</b>
+          by a System Administrator.
+        </p>
+      `
     );
   }
 
-  // Basic Flow #4 (UC-12): automatic notification after password reset
+
   static async sendPasswordReset(to, tempPassword) {
     await this.send(
       to,
-      "AcogniX - Password Reset",
-      `<p>Your password has been reset by a System Administrator.</p>
-       <p>Temporary password: <b>${tempPassword}</b></p>
-       <p>Please log in and change your password immediately.</p>`
+      'AcogniX - Password Reset',
+      `
+        <p>
+          Your password has been reset
+          by a System Administrator.
+        </p>
+
+        <p>
+          Temporary password:
+          <b>${tempPassword}</b>
+        </p>
+
+        <p>
+          Please log in and change your password
+          immediately.
+        </p>
+      `
     );
   }
+
 
   static async sendAccountDeleted(to) {
     await this.send(
       to,
-      "AcogniX - Account Deleted",
-      `<p>Your AcogniX account has been permanently deleted by a System Administrator.</p>`
+      'AcogniX - Account Deleted',
+      `
+        <p>
+          Your AcogniX account has been permanently
+          deleted by a System Administrator.
+        </p>
+      `
     );
-  }
-
-  static async notifyClass(courseId, subject, htmlContent) {
-    // Get the list of APPROVED learnerIds in the class
-    const { data: enrollments, error: enrollError } = await supabase
-      .from('Enrollment')
-      .select('learnerId')
-      .eq('courseId', courseId)
-      .eq('status', 'APPROVED');
-
-    if (enrollError || !enrollments || enrollments.length === 0) return;
-
-    // Get the emails of those learners
-    const learnerIds = enrollments.map(e => e.learnerId);
-    const { data: users, error: userError } = await supabase
-      .from('User')
-      .select('email')
-      .in('userId', learnerIds);
-
-    if (userError || !users) {
-      return;
-    }  
-
-    // Send bulk email (Use BCC to protect the email list privacy)
-    const emails = users.map(u => u.email).join(', ');
-    if (emails) {
-      await transporter.sendMail({
-        from: `"AcogniX Classroom" <${process.env.EMAIL_USER}>`,
-        bcc: emails, // Use BCC so learners cannot see each other's emails
-        subject: `[AcogniX] ${subject}`,
-        html: htmlContent
-      });
-    }
   }
 }
 
