@@ -1,4 +1,5 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const AppError = require('../error/AppError');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
@@ -8,14 +9,26 @@ const MIN_QUESTIONS = 1;
 const MAX_FLASHCARDS = 30;
 const MIN_FLASHCARDS = 1;
 
-const generateQuizzes = async (contextText, questionCount = 5) => {
+function parseAIJson(textResult, context) {
+    try {
+        const parsed = JSON.parse(textResult);
+        if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("empty");
+        return parsed;
+    } catch (parseError) {
+        console.error(`AI returned invalid JSON for ${context}:`, textResult);
+        throw new AppError(502, 'AI_INVALID_RESPONSE', `The AI returned an unreadable ${context} response. Please try again.`);
+    }
+}
+
+const generateQuizzes = async (contextText, questionCount = 5, difficulty = 'medium') => {
     const safeCount = Math.min(Math.max(Number(questionCount) || 5, MIN_QUESTIONS), MAX_QUESTIONS);
+    const safeDifficulty = ['easy', 'medium', 'hard'].includes(difficulty) ? difficulty : 'medium';
 
     const prompt = `
         You are an educational expert. Based on the following document content:
         """${contextText}"""
 
-        Generate ${safeCount} multiple-choice questions.
+        Generate ${safeCount} multiple-choice questions at a ${safeDifficulty} difficulty level.
         STRICT REQUIREMENTS: 
         - Return ONLY a valid JSON array.
         - Do not include any additional explanatory text or markdown formatting (like \`\`\`json).
@@ -23,30 +36,29 @@ const generateQuizzes = async (contextText, questionCount = 5) => {
     `;
 
     const result = await model.generateContent(prompt);
-    let textResult = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    try {
-        const parsed = JSON.parse(textResult);
-        // Normalize keys in case the model returns inconsistent casing (e.g. "Question" instead of "question")
-        return parsed.map(item => ({
-            question: item.question || item.Question || "",
-            options: item.options || item.Options || [],
-            correctAnswer: item.correctAnswer || item.CorrectAnswer || ""
-        }));
-    } catch (parseError) {
-        console.error("AI returned invalid JSON structure for quizzes:", textResult);
-        return []; 
-    }
+    const textResult = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsed = parseAIJson(textResult, 'quiz');
+
+    return parsed.map(item => ({
+        question: item.question || item.Question || "",
+        options: item.options || item.Options || [],
+        correctAnswer: item.correctAnswer || item.CorrectAnswer || ""
+    }));
 };
 
-const generateFlashcards = async (contextText, flashcardCount = 10) => {
+const generateFlashcards = async (contextText, flashcardCount = 10, length = 'short') => {
     const safeCount = Math.min(Math.max(Number(flashcardCount) || 10, MIN_FLASHCARDS), MAX_FLASHCARDS);
+    const safeLength = ['short', 'detailed'].includes(length) ? length : 'short';
+    const lengthInstruction = safeLength === 'detailed'
+        ? 'Write a detailed 2-3 sentence definition on the back of each card.'
+        : 'Keep the back of each card to a single concise sentence.';
 
     const prompt = `
         Based on the following document content:
         """${contextText}"""
 
         Create ${safeCount} flashcards containing the most important terms and definitions.
+        ${lengthInstruction}
         STRICT REQUIREMENTS: 
         - Return ONLY a valid JSON array.
         - Do not include any markdown formatting.
@@ -54,19 +66,13 @@ const generateFlashcards = async (contextText, flashcardCount = 10) => {
     `;
 
     const result = await model.generateContent(prompt);
-    let textResult = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    try {
-        const parsed = JSON.parse(textResult);
-        // Normalize keys in case the model returns inconsistent casing (e.g. "Front" instead of "front")
-        return parsed.map(item => ({
-            front: item.front || item.Front || "",
-            back: item.back || item.Back || ""
-        }));
-    } catch (parseError) {
-        console.error("AI returned invalid JSON structure for flashcards:", textResult);
-        return []; 
-    }
+    const textResult = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsed = parseAIJson(textResult, 'flashcard');
+
+    return parsed.map(item => ({
+        front: item.front || item.Front || "",
+        back: item.back || item.Back || ""
+    }));
 };
 
 const chatWithTutor = async (contextText, chatHistory, userMessage) => {
