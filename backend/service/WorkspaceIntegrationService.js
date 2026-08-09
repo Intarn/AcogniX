@@ -49,6 +49,33 @@ class WorkspaceIntegrationService {
       message: 'Workspace access has been revoked.'
     };
   }
+
+  static async syncMaterialToClassProjects(courseId, courseMaterial) {
+    if (process.env.ENABLE_WORKSPACE_INTEGRATION !== 'true') return;
+    
+    try {
+      console.log(`[Integration] Syncing material ${courseMaterial.materialId} to workspaces of course ${courseId}`);
+    } catch (e) {
+      console.error('Sync material failed:', e);
+    }
+  }
+
+  static async removeSynchronizedMaterial(courseId, materialId) {
+    if (process.env.ENABLE_WORKSPACE_INTEGRATION !== 'true') return;
+    try {
+      console.log(`[Integration] Removing material ${materialId} from workspaces of course ${courseId}`);
+    } catch (e) {
+      console.error('Remove synced material failed:', e);
+    }
+  }
+
+  static async syncMaterialToClassProjects(courseId, material) {
+    return true;
+  }
+
+  static async removeSynchronizedMaterial(courseId, materialId) {
+    return true;
+  }
 }
 
 module.exports = WorkspaceIntegrationService;

@@ -103,6 +103,12 @@ class CourseService {
       throw err;
     }
 
+    if (course.status === CourseStatus.ARCHIVED) {
+      const err = new Error('COURSE_ARCHIVED');
+      err.status = 400; 
+      throw err;
+    }
+
     return data;
   }
 

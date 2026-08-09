@@ -1,4 +1,5 @@
 const transporter = require('../config/emailClient');
+const supabase = require('../config/supabaseClient');
 
 class EmailService {
 
@@ -65,6 +66,34 @@ class EmailService {
       "AcogniX - Account Deleted",
       `<p>Your AcogniX account has been permanently deleted by a System Administrator.</p>`
     );
+  }
+
+  static async notifyClass(courseId, subject, htmlContent) {
+    const { data: enrollments, error: enrollError } = await supabase
+      .from('Enrollment')
+      .select('learnerId')
+      .eq('courseId', courseId)
+      .eq('status', 'APPROVED');
+
+    if (enrollError || !enrollments || enrollments.length === 0) return;
+
+    const learnerIds = enrollments.map(e => e.learnerId);
+    const { data: users, error: userError } = await supabase
+      .from('User')
+      .select('email')
+      .in('userId', learnerIds);
+
+    if (userError || !users) return;
+
+    const emails = users.map(u => u.email).join(', ');
+    if (emails) {
+      await transporter.sendMail({
+        from: `"AcogniX Classroom" <${process.env.EMAIL_USER}>`,
+        bcc: emails,
+        subject: `[AcogniX] ${subject}`,
+        html: htmlContent
+      });
+    }
   }
 }
 
