@@ -141,9 +141,9 @@
         );
     };
 
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', async function () {
         const sidebarContainer = document.getElementById('sidebar-container');
-        const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+        const currentUser = await window.getCurrentUser();
 
         if (!currentUser) {
             // Uncomment in production:
@@ -275,74 +275,117 @@
         // ==========================================
         // 3. LOGIC LƯU THAY ĐỔI
         // ==========================================
-        saveBtn.addEventListener('click', function () {
-            const allUsers = JSON.parse(localStorage.getItem('acognix_users')) || [];
-            const userIndex = allUsers.findIndex(u => u.email === currentUser.email);
-
-            if (userIndex === -1) {
-                alert('System Error: Could not find user data. Please relogin.');
+        saveBtn.addEventListener('click', async function () {
+            const token = localStorage.getItem('accessToken');
+            if (!token) {
+                alert('Session expired. Please log in again.');
+                window.location.href = './login.html';
                 return;
             }
 
-            const userToUpdate = allUsers[userIndex];
             const newFullname = fullnameInput.value.trim();
-
-            if (!newFullname) {
-                alert("Full Name cannot be empty.");
-                return;
-            }
-
-            // --- KIỂM TRA ĐỔI MẬT KHẨU ---
             const currentPassword = currentPasswordInput.value;
             const newPassword = newPasswordInput.value;
             const confirmPassword = confirmPasswordInput.value;
 
-            if (currentPassword || newPassword || confirmPassword) {
-                if (!currentPassword || currentPassword !== userToUpdate.pass) {
-                    alert('Current password is incorrect or empty.');
-                    return;
+            let profileUpdated = false;
+            let passwordChanged = false;
+            let hasError = false;
+
+            saveBtn.disabled = true;
+            saveBtn.classList.add('opacity-70');
+
+            try {
+                // --- 1. Cập nhật tên người dùng ---
+                if (newFullname && newFullname !== currentUser.fullname) {
+                    const profileResponse = await fetch('http://localhost:3001/api/profile', {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ displayName: newFullname })
+                    });
+
+                    if (profileResponse.ok) {
+                        profileUpdated = true;
+                        currentUser.fullname = newFullname;
+                        sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+                        
+                        // Đồng bộ với localStorage để các trang khác nhận được
+                        const allUsers = JSON.parse(localStorage.getItem('acognix_users')) || [];
+                        const userIndex = allUsers.findIndex(u => u.email === currentUser.email);
+                        if (userIndex > -1) {
+                            allUsers[userIndex].fullname = newFullname;
+                            allUsers[userIndex].displayName = newFullname;
+                            localStorage.setItem('acognix_users', JSON.stringify(allUsers));
+                        }
+                        
+                        updateProfileUI(escapeHTML(newFullname), currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1));
+                    } else {
+                        let errorMessage = 'An unknown error occurred.';
+                        try {
+                            const errorData = await profileResponse.json();
+                            errorMessage = errorData.message || JSON.stringify(errorData);
+                        } catch (jsonError) {
+                            errorMessage = `Server responded with ${profileResponse.status}: ${profileResponse.statusText}`;
+                        }
+                        alert(`Profile Update Failed: ${errorMessage}`);
+                        hasError = true;
+                    }
                 }
-                if (!newPassword) {
-                    alert('Please enter a new password.');
-                    return;
+
+                // --- 2. Thay đổi mật khẩu ---
+                if (currentPassword || newPassword || confirmPassword) {
+                    if (!currentPassword || !newPassword) {
+                        alert('To change your password, please fill in both the current and new password fields.');
+                        hasError = true;
+                    } else if (newPassword !== confirmPassword) {
+                        alert('New passwords do not match.');
+                        hasError = true;
+                    } else {
+                        const passwordResponse = await fetch('http://localhost:3001/api/auth/change-password', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({ currentPassword, newPassword })
+                        });
+
+                        if (passwordResponse.ok) {
+                            passwordChanged = true;
+                            currentPasswordInput.value = '';
+                            newPasswordInput.value = '';
+                            confirmPasswordInput.value = '';
+                        } else {
+                            const errorData = await passwordResponse.json();
+                            alert(`Password Change Failed: ${errorData.message || 'Please check your current password.'}`);
+                            hasError = true;
+                        }
+                    }
                 }
-                if (newPassword !== confirmPassword) {
-                    alert('New passwords do not match. Please retype carefully.');
-                    return;
+
+                // --- 3. Phản hồi cuối cùng cho người dùng ---
+                if (!hasError && (profileUpdated || passwordChanged)) {
+                    alert('Your changes have been saved successfully!');
+                } else if (!profileUpdated && !passwordChanged && !hasError) {
+                    alert("No changes were made.");
                 }
-                userToUpdate.pass = newPassword;
+            } catch (error) {
+                console.error('Settings Save Error:', error);
+                alert('An error occurred while saving settings. Please check your connection and try again.');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.classList.remove('opacity-70');
             }
-
-            // --- LƯU DỮ LIỆU ---
-            userToUpdate.fullname = newFullname;
-            localStorage.setItem('acognix_users', JSON.stringify(allUsers));
-            
-            currentUser.fullname = newFullname;
-            sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
-            
-            // --- CẬP NHẬT GIAO DIỆN MÀ KHÔNG CẦN RELOAD TRANG ---
-            updateProfileUI(escapeHTML(newFullname), currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1));
-            
-            currentPasswordInput.value = '';
-            newPasswordInput.value = '';
-            confirmPasswordInput.value = '';
-
-            const originalText = saveBtn.textContent;
-            saveBtn.textContent = 'Saved!';
-            saveBtn.classList.replace('bg-blue-600', 'bg-green-600');
-            saveBtn.classList.replace('hover:bg-blue-700', 'hover:bg-green-700');
-            
-            setTimeout(() => {
-                saveBtn.textContent = originalText;
-                saveBtn.classList.replace('bg-green-600', 'bg-blue-600');
-                saveBtn.classList.replace('hover:bg-green-700', 'hover:bg-blue-700');
-            }, 2000);
         });
 
         // ==========================================
         // 4. LOGIC ĐĂNG XUẤT
         // ==========================================
         logoutBtn.addEventListener('click', function() {
+            localStorage.removeItem('accessToken');
             sessionStorage.removeItem('currentUser');
             window.location.href = './login.html'; 
         });
@@ -377,5 +420,6 @@
     });
   </script>
 
+  <script src="../shared/auth-guard.js"></script>
 </body>
 </html>

@@ -98,12 +98,12 @@
     };
 
     // BỌC TOÀN BỘ LOGIC VÀO TRONG DOMContentLoaded
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', async function() {
         const NOTES_KEY = 'acognix_notes';
-        const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+        const currentUser = await window.getCurrentUser();
 
         if (!currentUser) {
-            // Uncomment in production: window.location.href = './login.html';
+            // Uncomment in production: window.location.href = '../auth/login.html';
             return;
         }
 
@@ -355,5 +355,6 @@
         }
     });
   </script>
+  <script src="../shared/auth-guard.js"></script>
 </body>
 </html>

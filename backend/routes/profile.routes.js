@@ -15,5 +15,7 @@ router.use(requireAuth);
 
 router.get('/', ProfileController.getProfile);
 router.put('/', upload.single('avatar'), ProfileController.updateProfile);
+// Thêm route PATCH để chỉ cập nhật thông tin dạng text (displayName)
+router.patch('/', ProfileController.update);
 
 module.exports = router;

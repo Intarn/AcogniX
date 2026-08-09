@@ -141,7 +141,7 @@
   </div>
 
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', async function() {
         const NOTES_KEY = 'acognix_notes';
         const FILES_KEY = 'acognix_files'; // Key for files in localStorage
         const CHAT_KEY = 'acognix_workspace_chat';
@@ -153,11 +153,11 @@
         const newNoteBtn = document.getElementById('new-note-btn');
 
         const sidebarContainer = document.getElementById('sidebar-container');
-        const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+        const currentUser = await window.getCurrentUser();
 
         if (!currentUser) {
             alert('Please log in to access the AI Workspace.');
-            window.location.href = './login.html';
+            window.location.href = '../auth/login.html';
             return;
         }
 
@@ -435,5 +435,6 @@
         renderAiChat();
     });
   </script>
+  <script src="../shared/auth-guard.js"></script>
 </body>
 </html>

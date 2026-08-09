@@ -100,17 +100,17 @@
 
     let studyTimeChartInstance;
 
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', async function() {
         const USERS_KEY = 'acognix_users';
         const COURSES_KEY = 'acognix_courses';
         const FLASHCARDS_KEY = 'acognix_flashcards';
         const QUIZZES_KEY = 'acognix_quizzes';
         const NOTES_KEY = 'acognix_notes';
 
-        const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+        const currentUser = await window.getCurrentUser();
         if (!currentUser) {
             // alert('Please login to access progress.');
-            // window.location.href = './login.html';
+            // window.location.href = '../auth/login.html';
             return;
         }
 
@@ -403,5 +403,6 @@
     });
   </script>
 
+  <script src="../shared/auth-guard.js"></script>
 </body>
 </html>

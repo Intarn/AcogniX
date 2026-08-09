@@ -1,37 +1,50 @@
 const ProfileService = require('../service/ProfileService');
+const AppError = require('../error/AppError');
 
 class ProfileController {
-
-  // Basic Flow #1-2 (UC-21)
-  static async getProfile(req, res) {
-    const userId = req.user.userId;
-    try {
-      const result = await ProfileService.getProfile(userId);
-      return res.status(200).json(result);
-    } catch (error) {
-      return res.status(500).json({ message: "Unable to load profile. Please try again." });
+    static async getProfile(req, res) {
+        try {
+            const userId = req.user.userId;
+            const profile = await ProfileService.getProfile(userId);
+            return res.status(200).json({ profile });
+        } catch (error) {
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ code: error.code, message: error.message });
+            }
+            console.error('Get Profile Controller Error:', error);
+            return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected error occurred while fetching the profile.' });
+        }
     }
-  }
 
-  // Basic Flow #5-6 / Alt Flow 1 (UC-21)
-  static async updateProfile(req, res) {
-    const userId = req.user.userId;
-    const { displayName } = req.body;
-    const avatarFile = req.file; // populated by multer
-
-    try {
-      const updated = await ProfileService.updateProfile(userId, { displayName, avatarFile });
-      return res.status(200).json({ message: "Profile updated successfully.", profile: updated });
-    } catch (error) {
-      if (error.message === 'DISPLAY_NAME_REQUIRED') {
-        return res.status(400).json({ message: "Display name cannot be empty." });
-      }
-      if (error.message === 'AVATAR_TOO_LARGE') {
-        return res.status(400).json({ message: "File size exceeds the maximum limit of 5MB." });
-      }
-      return res.status(500).json({ message: "Unable to update profile. Please try again." });
+    static async updateProfile(req, res) {
+        // This is a placeholder for the PUT request which includes avatar upload.
+        // The full implementation for file handling is not yet in ProfileService.
+        return res.status(501).json({ 
+            code: 'NOT_IMPLEMENTED', 
+            message: 'Full profile update including avatar is not implemented yet. Use PATCH to update display name.' 
+        });
     }
-  }
+
+    static async update(req, res) {
+        try {
+            const userId = req.user.userId;
+            const { displayName } = req.body;
+
+            const updatedUser = await ProfileService.updateProfile(userId, { displayName });
+
+            return res.status(200).json({
+                message: 'Profile updated successfully.',
+                user: updatedUser
+            });
+
+        } catch (error) {
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ code: error.code, message: error.message });
+            }
+            console.error('Profile Controller Error:', error);
+            return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected error occurred while updating the profile.' });
+        }
+    }
 }
 
 module.exports = ProfileController;

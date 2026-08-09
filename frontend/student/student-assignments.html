@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assignments - AcogniX</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans h-screen overflow-hidden text-gray-800">
+  <div class="flex h-full w-full">
+    
+    <!-- Sidebar -->
+    <aside id="sidebar-container" class="w-60 h-full bg-white border-r border-gray-100 flex flex-col justify-between flex-shrink-0">
+      <!-- Sidebar will be injected by JS -->
+    </aside>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col h-full overflow-y-auto">
+      <header class="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0">
+        <h1 class="text-lg font-bold text-gray-800">My Assignments</h1>
+        <div id="user-profile-topbar" class="flex items-center gap-3 cursor-pointer">
+            <img id="user-avatar-topbar" src="" class="w-8 h-8 rounded-full object-cover bg-gray-200">
+            <div class="text-left">
+                <p id="user-greeting-topbar" class="text-xs font-bold text-gray-800 leading-tight">Hi, User</p>
+                <p id="user-role-topbar" class="text-[10px] text-gray-400">Role</p>
+            </div>
+        </div>
+      </header>
+      <main class="p-6">
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <table class="w-full text-sm text-left">
+            <thead class="text-xs text-gray-500 uppercase bg-gray-50/50">
+              <tr>
+                <th class="px-6 py-3">Assignment Title</th>
+                <th class="px-6 py-3">Course</th>
+                <th class="px-6 py-3">Due Date</th>
+                <th class="px-6 py-3">Status</th>
+                <th class="px-6 py-3">Grade</th>
+                <th class="px-6 py-3">Action</th>
+              </tr>
+            </thead>
+            <tbody id="assignments-table-body" class="divide-y divide-gray-100">
+              <!-- Assignment rows will be injected here -->
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Submission Modal -->
+  <div id="submission-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+      <div class="flex items-center justify-between p-4 border-b border-gray-200">
+        <h3 id="modal-title" class="text-lg font-bold text-gray-800">Submit Assignment</h3>
+        <button id="close-modal-btn" class="text-gray-400 hover:text-gray-700">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <form id="submission-form" class="p-6 space-y-4">
+        <input type="hidden" id="assignment-id-input">
+        <div>
+          <label class="text-sm font-semibold text-gray-700">Submission Type</label>
+          <div class="mt-2 flex gap-4">
+            <label class="flex items-center gap-2"><input type="radio" name="submission-type" value="file" checked class="text-blue-600 focus:ring-blue-300"><span class="text-sm">File Upload</span></label>
+            <label class="flex items-center gap-2"><input type="radio" name="submission-type" value="link" class="text-blue-600 focus:ring-blue-300"><span class="text-sm">URL Link</span></label>
+          </div>
+        </div>
+        <div id="file-upload-section">
+          <label for="file-input" class="text-sm font-semibold text-gray-700">Upload File</label>
+          <div class="mt-1 border-2 border-dashed border-gray-300 bg-gray-50/50 rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-100">
+            <p class="text-xs font-bold text-gray-600">Click to select a file</p>
+            <p id="file-name-display" class="text-xs text-blue-600 mt-1"></p>
+            <input type="file" id="file-input" class="hidden">
+          </div>
+        </div>
+        <div id="link-submission-section" class="hidden">
+          <label for="link-input" class="text-sm font-semibold text-gray-700">Submission Link</label>
+          <input type="url" id="link-input" placeholder="https://your-submission-link.com" class="mt-1 w-full text-sm text-gray-700 rounded-lg px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-300 border border-gray-200">
+        </div>
+        <div>
+          <label for="notes-input" class="text-sm font-semibold text-gray-700">Notes (Optional)</label>
+          <textarea id="notes-input" rows="3" placeholder="Add any notes for your teacher..." class="mt-1 w-full text-sm text-gray-700 rounded-lg px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-300 border border-gray-200 resize-none"></textarea>
+        </div>
+        <div class="flex justify-end gap-3 pt-4">
+          <button type="button" id="cancel-modal-btn" class="text-xs font-semibold text-gray-500 bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
+          <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-5 py-2 rounded-lg shadow-sm">Submit Assignment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async function() {
+        const escapeHTML = (str) => {
+            if (!str) return '';
+            return str.replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+            );
+        };
+
+        const USERS_KEY = 'acognix_users';
+        const COURSES_KEY = 'acognix_courses';
+        const ASSIGNMENTS_KEY = 'acognix_assignments';
+        const SUBMISSIONS_KEY = 'acognix_submissions';
+
+        const currentUser = await window.getCurrentUser();
+        if (!currentUser) {
+            window.location.href = '../auth/login.html';
+            return;
+        }
+
+        // --- UI Elements ---
+        const sidebarContainer = document.getElementById('sidebar-container');
+        const tableBody = document.getElementById('assignments-table-body');
+        const modal = document.getElementById('submission-modal');
+        const submissionForm = document.getElementById('submission-form');
+        const assignmentIdInput = document.getElementById('assignment-id-input');
+        const modalTitle = document.getElementById('modal-title');
+
+        // --- Sidebar & Topbar Setup ---
+        const userAvatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.fullname)}&color=fff&size=36`;
+        const safeFullname = escapeHTML(currentUser.fullname);
+        document.getElementById('user-greeting-topbar').textContent = `Hi, ${safeFullname}`;
+        document.getElementById('user-role-topbar').textContent = currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
+        document.getElementById('user-avatar-topbar').src = userAvatarUrl.replace('size=36', 'size=32');
+
+        sidebarContainer.innerHTML = `
+            <div>
+                <div class="p-6 flex items-center gap-2.5">
+                    <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="grad-leg" x1="50" y1="15" x2="80" y2="85" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#8B3DFF"></stop><stop offset="100%" stop-color="#6B21FF"></stop></linearGradient><linearGradient id="grad-left" x1="20" y1="85" x2="35" y2="50" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00A3FF"></stop><stop offset="100%" stop-color="#3B82F6"></stop></linearGradient><linearGradient id="grad-swoosh" x1="25" y1="70" x2="95" y2="45" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00C2FF"></stop><stop offset="50%" stop-color="#3B82F6"></stop><stop offset="100%" stop-color="#6B21FF"></stop></linearGradient></defs><path d="M 33 55 L 46 25 C 47.5 21.5 52.5 21.5 54 25 L 76 76" stroke="url(#grad-leg)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path><path d="M 22 80 L 26 70" stroke="url(#grad-left)" stroke-width="14" stroke-linecap="round"></path><path d="M 26 65 C 50 78 70 70 92 48 C 65 68 45 74 24 73 Z" fill="url(#grad-swoosh)"></path></svg>
+                    <span class="text-2xl font-black text-slate-900 tracking-tight font-sans">AcogniX</span>
+                </div>
+                <nav class="px-3 flex flex-col gap-1.5">
+                    <a href="./dashboard.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>Home</a>
+                    <a href="./ai-workspace.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>AI Workspace</a>
+                    <a href="./my-courses.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold bg-blue-50 text-blue-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>My Courses</a>
+                    <a href="./student-assignments.html" class="flex items-center gap-3 pl-11 pr-4 py-2 rounded-xl text-sm font-bold text-blue-700 bg-blue-100">Assignments</a>
+                    <a href="./flashcards.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>Flashcards</a>
+                    <a href="./quizzes.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>Quizzes</a>
+                    <a href="./notes.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>Notes</a>
+                    <a href="../shared/community.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>Community</a>
+                    <a href="./progress.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>Progress</a>
+                    <a href="../auth/settings.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>Settings</a>
+                </nav>
+            </div>
+            <div class="p-4 border-t border-gray-100">
+                <div class="flex items-center gap-3">
+                    <img src="${userAvatarUrl}" class="w-9 h-9 rounded-full object-cover">
+                    <div class="text-left flex-1 overflow-hidden">
+                        <p class="text-xs font-bold text-gray-800 leading-tight truncate">${safeFullname}</p>
+                        <p class="text-[10px] text-gray-400">Student</p>
+                    </div>
+                    <a href="../auth/settings.html" class="ml-auto flex-shrink-0"><span class="text-gray-400 text-[10px]">⚙️</span></a>
+                </div>
+            </div>`;
+
+        function renderAssignments() {
+            const allUsers = JSON.parse(localStorage.getItem(USERS_KEY)) || [];
+            const allCourses = JSON.parse(localStorage.getItem(COURSES_KEY)) || [];
+            const allAssignments = JSON.parse(localStorage.getItem(ASSIGNMENTS_KEY)) || [];
+            const allSubmissions = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY)) || [];
+
+            const fullCurrentUser = allUsers.find(u => u.email === currentUser.email);
+            const enrolledCourseIds = fullCurrentUser ? fullCurrentUser.enrolledCourses || [] : [];
+            
+            const myAssignments = allAssignments.filter(a => enrolledCourseIds.includes(a.courseId));
+
+            tableBody.innerHTML = '';
+            if (myAssignments.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="6" class="text-center p-6 text-gray-500">You have no assignments.</td></tr>`;
+                return;
+            }
+
+            myAssignments.forEach(assignment => {
+                const course = allCourses.find(c => c.id === assignment.courseId);
+                const submission = allSubmissions.find(s => s.assignmentId === assignment.id && s.studentEmail === currentUser.email);
+
+                let statusHtml;
+                if (submission) {
+                    if (submission.grade !== null) {
+                        statusHtml = `<span class="font-semibold text-green-600 bg-green-100 px-2 py-0.5 rounded-full text-xs">Graded</span>`;
+                    } else {
+                        statusHtml = `<span class="font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full text-xs">Submitted</span>`;
+                    }
+                } else {
+                    statusHtml = `<span class="font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full text-xs">Not Submitted</span>`;
+                }
+
+                const grade = submission && submission.grade !== null ? `${submission.grade}%` : 'N/A';
+                const dueDate = new Date(assignment.dueDate);
+                const isPastDue = new Date() > dueDate;
+
+                const row = `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 font-semibold text-gray-800">${assignment.title}</td>
+                        <td class="px-6 py-4 text-gray-600">${course ? course.name : 'N/A'}</td>
+                        <td class="px-6 py-4 text-gray-500 ${isPastDue && !submission ? 'text-red-500 font-semibold' : ''}">${dueDate.toLocaleDateString()}</td>
+                        <td class="px-6 py-4">${statusHtml}</td>
+                        <td class="px-6 py-4 font-semibold">${grade}</td>
+                        <td class="px-6 py-4">
+                            <button ${submission ? 'disabled' : ''} onclick="openSubmissionModal(${assignment.id}, '${assignment.title}')" class="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg px-4 py-2 disabled:bg-gray-300 disabled:cursor-not-allowed">
+                                ${submission ? 'Submitted' : 'Submit'}
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
+        }
+
+        window.openSubmissionModal = (assignmentId, assignmentTitle) => {
+            modal.classList.remove('hidden');
+            assignmentIdInput.value = assignmentId;
+            modalTitle.textContent = `Submit: ${assignmentTitle}`;
+        };
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            submissionForm.reset();
+            document.getElementById('file-name-display').textContent = '';
+        }
+
+        // Modal logic
+        document.getElementById('close-modal-btn').addEventListener('click', closeModal);
+        document.getElementById('cancel-modal-btn').addEventListener('click', closeModal);
+        
+        const fileInput = document.getElementById('file-input');
+        fileInput.parentElement.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+            document.getElementById('file-name-display').textContent = fileInput.files.length > 0 ? fileInput.files[0].name : '';
+        });
+
+        const submissionTypeRadios = document.querySelectorAll('input[name="submission-type"]');
+        submissionTypeRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                document.getElementById('file-upload-section').classList.toggle('hidden', e.target.value !== 'file');
+                document.getElementById('link-submission-section').classList.toggle('hidden', e.target.value !== 'link');
+            });
+        });
+
+        submissionForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const assignmentId = parseInt(assignmentIdInput.value);
+            const submissionType = document.querySelector('input[name="submission-type"]:checked').value;
+            const notes = document.getElementById('notes-input').value;
+            let submissionContent = '';
+
+            if (submissionType === 'file') {
+                if (fileInput.files.length === 0) {
+                    alert('Please select a file to upload.');
+                    return;
+                }
+                submissionContent = fileInput.files[0].name; // Mock: just save the name
+            } else { // link
+                submissionContent = document.getElementById('link-input').value;
+                if (!submissionContent) {
+                    alert('Please enter a URL.');
+                    return;
+                }
+            }
+
+            const allSubmissions = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY)) || [];
+            const newSubmission = {
+                id: allSubmissions.length > 0 ? Math.max(...allSubmissions.map(s => s.id)) + 1 : 1,
+                assignmentId: assignmentId,
+                studentEmail: currentUser.email,
+                submissionType: submissionType,
+                submissionContent: submissionContent,
+                notes: notes,
+                submittedAt: new Date().toISOString(),
+                grade: null,
+                feedback: null
+            };
+
+            allSubmissions.push(newSubmission);
+            localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(allSubmissions));
+
+            alert('Assignment submitted successfully!');
+            closeModal();
+            renderAssignments();
+        });
+
+        renderAssignments();
+    });
+  </script>
+  <script src="../shared/auth-guard.js"></script>
+</body>
+</html>

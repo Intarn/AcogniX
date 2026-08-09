@@ -42,6 +42,10 @@
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
             Assignments
           </a>
+          <a href="./teacher-announcements.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+            Announcements
+          </a>
           <a href="./teacher-students.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             Students
@@ -57,6 +61,10 @@
           <a href="../shared/community.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
             Community
+          </a>
+          <a href="../auth/settings.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+            Settings
           </a>
         </nav>
       </div>
@@ -107,6 +115,16 @@
               <p>Provide a detailed description of your course. What will students learn? Who is this course for?</p>
             </div>
           </div>
+
+          <!-- Course Lessons -->
+          <div class="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+              <div class="flex justify-between items-center mb-4">
+                  <h3 class="text-sm font-bold text-gray-800">Course Content</h3>
+                  <button id="add-lesson-btn" class="text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100">+ Add Lesson</button>
+              </div>
+              <div id="lessons-list" class="space-y-3">
+              </div>
+          </div>
         </div>
 
         <!-- 3.2. Settings Sidebar -->
@@ -133,6 +151,14 @@
           </div>
 
           <div>
+            <label for="class-code" class="text-sm font-semibold text-gray-700">Class Code</label>
+            <div class="flex items-center gap-2 mt-1">
+                <input type="text" id="class-code" placeholder="e.g., CS101-FALL26" class="w-full text-sm text-gray-700 rounded-lg px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-300 border border-gray-200">
+                <button id="generate-code-btn" type="button" class="text-xs font-semibold text-gray-600 bg-gray-100 px-3 py-2 rounded-lg hover:bg-gray-200 whitespace-nowrap">Generate</button>
+            </div>
+          </div>
+
+          <div>
             <label class="text-sm font-semibold text-gray-700">Visibility</label>
             <div class="mt-2 space-y-2">
               <label class="flex items-center gap-2"><input type="radio" name="visibility" checked class="text-blue-600 focus:ring-blue-300"><span class="text-sm">Public</span></label>
@@ -146,9 +172,47 @@
 
     </div>
   </div>
+  
+  <!-- Add/Edit Lesson Modal -->
+  <div id="lesson-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl">
+      <div class="flex items-center justify-between p-4 border-b border-gray-200">
+        <h3 id="lesson-modal-title" class="text-lg font-bold text-gray-800">Add New Lesson</h3>
+        <button id="close-lesson-modal-btn" class="text-gray-400 hover:text-gray-700">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <form id="lesson-form" class="p-6 space-y-4">
+        <input type="hidden" id="lesson-id-input">
+        <div>
+          <label for="lesson-title-input" class="text-sm font-semibold text-gray-700">Lesson Title</label>
+          <input type="text" id="lesson-title-input" placeholder="e.g., Introduction to Kinematics" class="mt-1 w-full text-sm text-gray-700 rounded-lg px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-300 border border-gray-200" required>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label for="lesson-duration-input" class="text-sm font-semibold text-gray-700">Duration</label>
+            <input type="text" id="lesson-duration-input" placeholder="e.g., 15 min" class="mt-1 w-full text-sm text-gray-700 rounded-lg px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-300 border border-gray-200">
+          </div>
+          <div>
+            <label for="lesson-thumbnail-input" class="text-sm font-semibold text-gray-700">Thumbnail URL</label>
+            <input type="url" id="lesson-thumbnail-input" placeholder="https://example.com/image.jpg" class="mt-1 w-full text-sm text-gray-700 rounded-lg px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-300 border border-gray-200">
+          </div>
+        </div>
+        <div>
+          <label for="lesson-content-input" class="text-sm font-semibold text-gray-700">Transcript / Content</label>
+          <textarea id="lesson-content-input" rows="6" placeholder="Paste the lesson transcript or content here..." class="mt-1 w-full text-sm text-gray-700 rounded-lg px-3 py-2.5 outline-none focus:ring-1 focus:ring-blue-300 border border-gray-200 resize-y"></textarea>
+        </div>
+        <div class="flex justify-end gap-3 pt-4">
+          <button type="button" id="cancel-lesson-modal-btn" class="text-xs font-semibold text-gray-500 bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
+          <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-5 py-2 rounded-lg shadow-sm">Save Lesson</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script>
     document.addEventListener('DOMContentLoaded', function() {
+        const LESSONS_KEY = 'acognix_lessons';
         const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
         if (!currentUser || currentUser.role !== 'teacher') {
             // window.location.href = './login.html';
@@ -158,24 +222,56 @@
         const titleInput = document.getElementById('title');
         const descriptionEditor = document.getElementById('description');
         const categorySelect = document.getElementById('category');
+        const classCodeInput = document.getElementById('class-code');
+        const generateCodeBtn = document.getElementById('generate-code-btn');
         const publishBtn = document.getElementById('publish-btn');
         const saveDraftBtn = document.getElementById('save-draft-btn');
         const pageTitle = document.querySelector('h1.text-lg.font-bold');
 
+        // Lesson Builder Elements
+        const addLessonBtn = document.getElementById('add-lesson-btn');
+        const lessonsListContainer = document.getElementById('lessons-list');
+        const lessonModal = document.getElementById('lesson-modal');
+        const lessonModalTitle = document.getElementById('lesson-modal-title');
+        const closeLessonModalBtn = document.getElementById('close-lesson-modal-btn');
+        const cancelLessonModalBtn = document.getElementById('cancel-lesson-modal-btn');
+        const lessonForm = document.getElementById('lesson-form');
+        const lessonIdInput = document.getElementById('lesson-id-input');
+        const lessonTitleInput = document.getElementById('lesson-title-input');
+        const lessonDurationInput = document.getElementById('lesson-duration-input');
+        const lessonThumbnailInput = document.getElementById('lesson-thumbnail-input');
+        const lessonContentInput = document.getElementById('lesson-content-input');
+
         const urlParams = new URLSearchParams(window.location.search);
         const courseId = urlParams.get('id') ? parseInt(urlParams.get('id')) : null;
+
+        generateCodeBtn.addEventListener('click', function() {
+            const randomCode = 'ACX' + Math.random().toString(36).substring(2, 8).toUpperCase();
+            classCodeInput.value = randomCode;
+        });
 
         function saveCourse(status) {
             const title = titleInput.value.trim();
             const description = descriptionEditor.innerHTML;
             const category = categorySelect.value;
+            const classCode = classCodeInput.value.trim();
 
             if (!title) {
                 alert('Please enter a course title.');
                 return;
             }
+            if (!classCode) {
+                alert('Please enter or generate a class code.');
+                return;
+            }
 
             const allCourses = JSON.parse(localStorage.getItem('acognix_courses')) || [];
+
+            const isCodeDuplicate = allCourses.some(c => c.classCode === classCode && c.id !== courseId);
+            if (isCodeDuplicate) {
+                alert('This class code is already in use. Please choose another one.');
+                return;
+            }
 
             if (courseId) { // Edit mode
                 const courseIndex = allCourses.findIndex(c => c.id === courseId);
@@ -184,6 +280,7 @@
                     allCourses[courseIndex].description = description;
                     allCourses[courseIndex].category = category;
                     allCourses[courseIndex].status = status;
+                    allCourses[courseIndex].classCode = classCode;
                     alert(`Course has been updated as ${status}!`);
                 }
             } else { // Create mode
@@ -195,7 +292,8 @@
                     enrolled: 0,
                     status: status,
                     category: category,
-                    description: description
+                    description: description,
+                    classCode: classCode
                 };
                 allCourses.push(newCourse);
                 alert(`Course has been saved as ${status}!`);
@@ -206,7 +304,7 @@
         }
 
         publishBtn.addEventListener('click', function() {
-            saveCourse(courseId ? 'Published' : 'Published'); // Keep status if editing, or set to published
+            saveCourse('Published');
         });
 
         saveDraftBtn.addEventListener('click', function() {
@@ -224,10 +322,15 @@
                 titleInput.value = courseToEdit.name;
                 descriptionEditor.innerHTML = courseToEdit.description || '<p>Provide a detailed description...</p>';
                 categorySelect.value = courseToEdit.category;
+                classCodeInput.value = courseToEdit.classCode || '';
             } else {
                 alert('Course not found or you do not have permission to edit it.');
                 window.location.href = './teacher-my-courses.html';
+                return; // Stop execution if course is invalid
             }
+            renderLessons();
+        } else {
+            document.getElementById('add-lesson-btn').classList.add('hidden'); // Hide add lesson button on new course
         }
 
         // Cập nhật thông tin giáo viên trên sidebar
@@ -238,5 +341,6 @@
     });
   </script>
 
+  <script src="../shared/auth-guard.js"></script>
 </body>
 </html>

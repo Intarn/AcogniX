@@ -26,6 +26,7 @@ class AuthenticationService {
     const { data: authData, error: authError } = await supabase.auth.signUp({email, password});
     
     if (authError) {
+      console.error(">>> LỖI SUPABASE AUTH:", authError.message);
       const err = new Error('SIGNUP_FAILED');
       err.status = 500;
       throw err;
@@ -49,6 +50,7 @@ class AuthenticationService {
     }]);
     
     if (dbError) {
+      console.error(">>> LỖI SUPABASE DATABASE:", dbError.message);
       const err = new Error('SIGNUP_FAILED'); // altermative flow 5 (UC-22)
       err.status = 500;
       throw err;
@@ -67,6 +69,7 @@ class AuthenticationService {
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
     console.error("LOGIN ERROR:", authError);
     if (authError) {
+      console.error(">>> LỖI SUPABASE AUTH:", authError.message);
       const err = new Error('INVALID_CREDENTIALS');
       err.status = 401;
       throw err;

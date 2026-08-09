@@ -15,7 +15,6 @@
       <!-- Logo và Tiêu đề -->
       <div class="mb-8 text-center">
         <div class="flex items-center justify-center gap-2.5 mb-4">
-          <!-- SVG Logo AcogniX (sao chép từ dashboard.html) -->
           <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <linearGradient id="grad-leg" x1="50" y1="15" x2="80" y2="85" gradientUnits="userSpaceOnUse">
@@ -93,13 +92,13 @@
               class="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
               required
             >
-              <option>Student</option>
-              <option>Teacher</option>
+              <option value="Student">Student</option>
+              <option value="Teacher">Teacher</option>
             </select>
           </div>
 
           <!-- Nút Đăng ký -->
-          <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all">
+          <button id="submit-btn" type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all">
             Create Account
           </button>
         </form>
@@ -114,42 +113,61 @@
   </div>
 
   <script>
-    document.getElementById('register-form').addEventListener('submit', function(event) {
-      event.preventDefault(); // Ngăn form submit
+    // Cấu hình Base URL Backend
+    const API_BASE_URL = 'http://localhost:3001/api/auth';
 
-      const fullname = document.getElementById('fullname').value;
-      const email = document.getElementById('email').value;
+    document.getElementById('register-form').addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      const fullname = document.getElementById('fullname').value.trim();
+      const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
-      const role = document.getElementById('role').value;
+      const selectedRole = document.getElementById('role').value;
+      const submitBtn = document.getElementById('submit-btn');
 
-      // Lấy danh sách người dùng từ localStorage, hoặc tạo mới nếu chưa có
-      let users = JSON.parse(localStorage.getItem('acognix_users')) || [];
+      // 1. Ánh xạ Role từ Giao diện sang Enum của Backend (LEARNER / EDUCATOR)
+      const roleMap = {
+        'Student': 'LEARNER',
+        'Teacher': 'EDUCATOR'
+      };
+      const role = roleMap[selectedRole] || selectedRole;
 
-      // Kiểm tra xem email đã tồn tại chưa
-      const userExists = users.some(user => user.email === email);
+      // 2. Vô hiệu hóa nút bấm tránh spam request
+      submitBtn.disabled = true;
+      submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
 
-      if (userExists) {
-        alert('Email đã được đăng ký. Vui lòng sử dụng email khác.');
-        return;
-      }
+      try {
+        // 3. Gửi Request đăng ký tới endpoint POST /signup
+        const response = await fetch(`${API_BASE_URL}/signup`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: email,
+            password: password,
+            displayName: fullname, // Map 'fullname' sang 'displayName' theo yêu cầu AuthController
+            role: role
+          })
+        });
 
-      // Thêm người dùng mới vào danh sách
-      const newUser = { fullname, email, pass: password, role: role.toLowerCase() };
-      users.push(newUser);
+        const data = await response.json();
 
-      // Lưu lại vào localStorage (vẫn cần thiết để chức năng đăng nhập hoạt động)
-      localStorage.setItem('acognix_users', JSON.stringify(users));
-
-      // Lưu thông tin người dùng vừa đăng ký vào sessionStorage để trang tiếp theo có thể sử dụng
-      sessionStorage.setItem('currentUser', JSON.stringify(newUser));
-
-      // Thông báo thành công và hướng dẫn
-      alert('Đăng ký thành công! Dữ liệu người dùng đã được lưu. Bạn có thể xem danh sách người dùng trong trang Admin Dashboard. Bây giờ bạn sẽ được chuyển đến trang của mình.');
-
-      if (role === 'Student') {
-        window.location.href = './dashboard.html';
-      } else if (role === 'Teacher') {
-        window.location.href = './teacher-dashboard.html';
+        if (response.ok) {
+          alert(data.message || 'Your account has been created successfully.');
+          // Chuyển hướng sang trang Đăng nhập
+          window.location.href = './login.html';
+        } else {
+          // Hiển thị thông báo lỗi trực tiếp từ Backend (Ví dụ: Email đã tồn tại, định dạng không đúng,...)
+          alert(data.message || 'Failed to create account.');
+        }
+      } catch (error) {
+        console.error('Error connecting to backend:', error);
+        alert('Cannot connect to the server. Please check your backend connection.');
+      } finally {
+        // Mở lại nút bấm
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-70', 'cursor-not-allowed');
       }
     });
   </script>

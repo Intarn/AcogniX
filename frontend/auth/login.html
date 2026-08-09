@@ -15,7 +15,6 @@
       <!-- Logo và Tiêu đề -->
       <div class="mb-8 text-center">
         <div class="flex items-center justify-center gap-2.5 mb-4">
-          <!-- SVG Logo AcogniX (sao chép từ dashboard.html) -->
           <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <linearGradient id="grad-leg" x1="50" y1="15" x2="80" y2="85" gradientUnits="userSpaceOnUse">
@@ -75,8 +74,8 @@
           </div>
 
           <!-- Nút Đăng nhập -->
-          <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all">
-            Log In
+          <button id="submit-btn" type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all flex justify-center items-center gap-2">
+            <span>Log In</span>
           </button>
         </form>
       </div>
@@ -90,114 +89,61 @@
   </div>
 
   <script>
-    document.getElementById('login-form').addEventListener('submit', function(event) {
-      const USERS_KEY = 'acognix_users';
+    // Cấu hình URL endpoint Backend
+    // Thay đổi PORT hoặc đường dẫn nếu server của bạn sử dụng prefix khác (ví dụ: http://localhost:5000/api/auth)
+    const API_BASE_URL = 'http://localhost:3001/api/auth';
 
-      // Hàm khởi tạo toàn bộ dữ liệu mẫu cho ứng dụng nếu localStorage trống
-      function initializeMasterData() {
-          let users = JSON.parse(localStorage.getItem(USERS_KEY)) || [];
+    document.getElementById('login-form').addEventListener('submit', async function(event) {
+      event.preventDefault();
 
-          // Chỉ thêm người dùng mặc định nếu localStorage hoàn toàn trống
-          if (users.length === 0) {
-              users.push({ fullname: 'Admin Acognix', email: 'admin@acognix.com', role: 'admin', pass: 'password', lastActive: 'Vừa xong' });
-              users.push({ fullname: 'Teacher Acognix', email: 'teacher@acognix.com', role: 'teacher', pass: 'password', lastActive: '1 giờ trước' });
-              // Thêm sinh viên mẫu với các khóa học đã đăng ký
-              users.push({ fullname: 'Student Acognix', email: 'student@acognix.com', role: 'student', pass: 'password', lastActive: '5 giờ trước', enrolledCourses: [1, 3] });
-              users.push({ fullname: 'Ada Lovelace', email: 'ada.lovelace@example.com', role: 'student', pass: 'password', lastActive: '2 giờ trước', enrolledCourses: [2, 3] });
-              localStorage.setItem(USERS_KEY, JSON.stringify(users));
-          }
-
-          if (!localStorage.getItem('acognix_courses')) {
-              const mockCourses = [
-                  { id: 1, name: 'Calculus for Beginners', teacher: 'Teacher Acognix', enrolled: 1, status: 'Published', category: 'Mathematics' },
-                  { id: 2, name: 'Advanced Algorithms', teacher: 'Teacher Acognix', enrolled: 1, status: 'Published', category: 'Computer Science' },
-                  { id: 3, name: 'Data Structures 101', teacher: 'Teacher Acognix', enrolled: 2, status: 'Published', category: 'Computer Science' },
-                  { id: 4, name: 'Introduction to Physics', teacher: 'Evelyn Reed', enrolled: 0, status: 'Published', category: 'Science' },
-                  { id: 5, name: 'Software Engineering Principles', teacher: 'Ada Lovelace', enrolled: 0, status: 'Draft', category: 'Computer Science' },
-              ];
-              localStorage.setItem('acognix_courses', JSON.stringify(mockCourses));
-          }
-
-          if (!localStorage.getItem('acognix_posts')) {
-              const mockPosts = [
-                  { id: 1, authorName: 'Student Acognix', authorRole: 'Student', authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80', timestamp: '2h ago', title: 'Having trouble understanding inertia.', content: "I've read the textbook definition, but I'm struggling to visualize it.", tags: [{ name: '#physics', color: 'blue' }], likes: 12, comments: 3 },
-                  { id: 2, authorName: 'Teacher Acognix', authorRole: 'Professor', authorAvatar: 'https://images.unsplash.com/photo-1509228627152-72ae9ae6848d?w=100&auto=format&fit=crop', timestamp: '1d ago', title: 'Resource: Interactive Calculus Visualizer', content: 'Found this amazing open-source tool for visualizing derivatives and integrals.', tags: [{ name: '#calculus', color: 'amber' }], likes: 45, comments: 8 }
-              ];
-              localStorage.setItem('acognix_posts', JSON.stringify(mockPosts));
-          }
-
-          if (!localStorage.getItem('acognix_assignments')) {
-              const mockAssignments = [
-                  { id: 1, title: 'Problem Set 3: Derivatives', courseId: 1, dueDate: '2026-08-15T23:59' },
-                  { id: 2, title: 'Essay: The Big O Notation', courseId: 2, dueDate: '2026-08-20T23:59' },
-                  { id: 3, title: 'Lab 1: Implementing a Linked List', courseId: 3, dueDate: '2026-08-22T23:59' },
-              ];
-              localStorage.setItem('acognix_assignments', JSON.stringify(mockAssignments));
-          }
-
-          if (!localStorage.getItem('acognix_quizzes')) {
-              const mockQuizzes = [
-                  { id: 1, courseId: 1, title: 'Calculus Basics Quiz', questions: [{q: '1+1', options: ['1','2','3'], ans: '2'}], results: { 'student@acognix.com': { score: 85, date: '2026-07-28' } } },
-                  { id: 2, courseId: 2, title: 'Algorithms Intro Quiz', questions: [{q: 'What is Big O?', options: ['A','B','C'], ans: 'A'}], results: { 'student@acognix.com': { score: 70, date: '2026-07-29' } } },
-                  { id: 3, courseId: 1, title: 'Derivatives Quiz', questions: [{q: 'd/dx(x^2)', options: ['x','2x','x^2'], ans: '2x'}], results: { 'ada.lovelace@example.com': { score: 92, date: '2026-07-30' } } },
-              ];
-              localStorage.setItem('acognix_quizzes', JSON.stringify(mockQuizzes));
-          }
-
-          if (!localStorage.getItem('acognix_flashcards')) {
-              const mockFlashcards = [
-                  { id: 1, userId: 'student@acognix.com', deck: 'Physics: Chapter 1', front: 'What is inertia?', back: 'Resistance of any physical object to any change in its state of motion.', status: 'reviewing', lastReviewed: '2026-07-31' },
-                  { id: 2, userId: 'student@acognix.com', deck: 'Physics: Chapter 1', front: 'Newton\'s First Law', back: 'An object at rest stays at rest...', status: 'learning', lastReviewed: '2026-08-01' },
-                  { id: 3, userId: 'student@acognix.com', deck: 'Calculus Basics', front: 'Derivative of x^n', back: 'n*x^(n-1)', status: 'new', lastReviewed: null },
-                  { id: 4, userId: 'ada.lovelace@example.com', deck: 'Algorithms', front: 'What is a linked list?', back: 'A linear collection of data elements...', status: 'reviewing', lastReviewed: '2026-07-30' },
-              ];
-              localStorage.setItem('acognix_flashcards', JSON.stringify(mockFlashcards));
-          }
-
-          if (!localStorage.getItem('acognix_notes')) {
-              const mockNotes = [
-                  { id: 1, userId: 'student@acognix.com', title: 'Key Physics Concepts', content: 'Remember F=ma and inertia definitions.', date: 'July 30, 2026', category: 'Physics' },
-                  { id: 2, userId: 'student@acognix.com', title: 'Calculus Formulas', content: 'Integral of x^n is (x^(n+1))/(n+1).', date: 'July 29, 2026', category: 'Mathematics' },
-                  { id: 3, userId: 'ada.lovelace@example.com', title: 'Algorithm Efficiency', content: 'Big O notation helps analyze algorithm performance.', date: 'July 28, 2026', category: 'Computer Science' },
-              ];
-              localStorage.setItem('acognix_notes', JSON.stringify(mockNotes));
-          }
-      }
-
-      // Đảm bảo các tài khoản mặc định tồn tại trước khi cố gắng đăng nhập
-      initializeMasterData();
-
-      event.preventDefault(); // Ngăn form submit theo cách truyền thống
-
-      const email = document.getElementById('email').value;
+      const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
+      const submitBtn = document.getElementById('submit-btn');
 
-      // Lấy tất cả người dùng từ localStorage
-      const allUsers = JSON.parse(localStorage.getItem('acognix_users')) || [];
-      const foundUser = allUsers.find(user => user.email === email && user.pass === password); // Use allUsers here
+      // Vô hiệu hóa nút bấm trong khi chờ request
+      submitBtn.disabled = true;
+      submitBtn.classList.add('opacity-70', 'cursor-not-allowed');
 
-      if (foundUser) {
-        // Lưu thông tin người dùng hiện tại vào sessionStorage
-        sessionStorage.setItem('currentUser', JSON.stringify({ 
-          fullname: foundUser.fullname, 
-          email: foundUser.email, 
-          role: foundUser.role 
-        }));
+      try {
+        const response = await fetch(`${API_BASE_URL}/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ email, password })
+        });
 
-        // Chuyển hướng dựa trên vai trò
-        if (foundUser.role === 'admin') {
-          window.location.href = '../admin/admin-dashboard.html';
-        } else if (foundUser.role === 'teacher') {
-          window.location.href = '../teacher/teacher-dashboard.html';
-        } else if (foundUser.role === 'student') {
-          window.location.href = '../student/dashboard.html';
-        } else {
-          // Vai trò khác không xác định (phòng trường hợp dữ liệu lạ)
-          alert('Vai trò người dùng không được hỗ trợ.');
+        const data = await response.json();
+
+        if (response.ok) {
+          // 1. Lưu JWT token vào localStorage
+          localStorage.setItem('accessToken', data.token);
+
+          // 2. Ánh xạ (Map) URL từ Backend sang vị trí file HTML vật lý trên máy
+          const routeMap = {
+            '/learner-dashboard': '../student/dashboard.html',
+            '/educator-dashboard': '../teacher/teacher-dashboard.html',
+            '/admin-portal': '../admin/admin-dashboard.html'
+          };
+
+          // 3. Chuyển hướng. Nếu Backend trả về URL có trong danh sách trên, nó sẽ tới đúng file.
+          const targetUrl = routeMap[data.redirectTo];
+          
+          if (targetUrl) {
+            window.location.href = targetUrl;
+          } else {
+            // Đề phòng trường hợp Backend trả về URL lạ
+            alert("Đăng nhập thành công nhưng không tìm thấy trang đích!");
+            window.location.href = '../index.html'; 
+          }
         }
-      } else {
-        // Nếu không tìm thấy ở cả hai nơi, thông báo lỗi
-        alert('Email hoặc mật khẩu không đúng. Vui lòng thử lại.');
+      } catch (error) {
+        console.error('Error connecting to backend:', error);
+        alert('Cannot connect to the server. Please check your backend connections.');
+      } finally {
+        // Mở lại nút bấm
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-70', 'cursor-not-allowed');
       }
     });
   </script>
