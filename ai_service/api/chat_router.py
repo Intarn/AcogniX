@@ -35,7 +35,8 @@ async def chat(req: ChatRequest):
             .order("createdAt")
             .execute()
         )
-        chat_history = [{"role": m["senderRole"], "content": m["content"]} for m in history_result.data]
+        recent_messages = history_result.data[-10:] if len(history_result.data) > 10 else history_result.data
+        chat_history = [{"role": m["senderRole"], "content": m["content"]} for m in recent_messages]
     else:
         new_conv = supabase.table("Conversation").insert({"projectId": req.projectId}).execute()
         conversation_id = new_conv.data[0]["conversationId"]

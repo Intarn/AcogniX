@@ -3,6 +3,8 @@ def validate_quiz_items(items: list[dict]) -> list[dict]:
     whatever Gemini returned — e.g. {"question": "", "options": [], "correctAnswer": ""}."""
     valid = []
     for item in items:
+        if not isinstance(item, dict): continue
+
         question = (item.get("question") or item.get("Question") or "").strip()
         options = item.get("options") or item.get("Options") or []
         correct_answer = (item.get("correctAnswer") or item.get("CorrectAnswer") or "").strip()
@@ -22,6 +24,8 @@ def validate_quiz_items(items: list[dict]) -> list[dict]:
 def validate_flashcard_items(items: list[dict]) -> list[dict]:
     valid = []
     for item in items:
+        if not isinstance(item, dict): continue
+        
         front = (item.get("front") or item.get("Front") or "").strip()
         back = (item.get("back") or item.get("Back") or "").strip()
 
