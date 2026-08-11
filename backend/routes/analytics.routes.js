@@ -5,13 +5,8 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-// UC-03: Log study session
-router.post('/sessions', authorize('LEARNER'), AnalyticsController.logSession);
-
-// UC-04: Personal statistics
-router.get('/me', authorize('LEARNER'), AnalyticsController.getPersonalStats);
-
-// UC-11: Class performance statistics (for Educator)
-router.get('/courses/:courseId', authorize('EDUCATOR'), AnalyticsController.getClassPerformance);
+router.post('/ping', authorize('LEARNER'), AnalyticsController.pingSession); // UC-03
+router.get('/me', authorize('LEARNER'), AnalyticsController.getPersonalStats); // UC-04
+router.get('/courses/:courseId', authorize('EDUCATOR'), AnalyticsController.getClassPerformance); // UC-11
 
 module.exports = router;

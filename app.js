@@ -15,7 +15,8 @@ const assessmentRoutes = require('./backend/routes/assessment.routes');
 const courseContentRoutes = require('./backend/routes/coursecontent.routes');
 const learningRoutes = require('./backend/routes/learning.routes');
 const analyticsRoutes = require('./backend/routes/analytics.routes');
-const communityRoutes = require('./backend/routes/community.routes');
+const infrastructureRoutes = require('./backend/routes/infrastructure.routes');
+const scheduleWeeklyReports = require('./backend/cron/weeklyReport');
 
 function createApp(io) {
   const app = express();
@@ -41,17 +42,17 @@ function createApp(io) {
   app.use('/api/assessments', assessmentRoutes);
   app.use('/api/learning', learningRoutes);
   app.use('/api/analytics', analyticsRoutes);
-  app.use('/api/community', communityRoutes); 
-  app.use('/api/admin/community', communityRoutes)
+  app.use('/api/admin/infrastructure', infrastructureRoutes);
   return app;
 }
 
 async function initializeData() {
   console.log("Initializing system data...");
+  scheduleWeeklyReports();
   console.log("System data initialized.");
 }
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 5000;
 
 async function main() {
   const server = http.createServer();

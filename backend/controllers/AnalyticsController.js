@@ -7,11 +7,11 @@ function handleControllerError(error, res) {
 }
 
 class AnalyticsController {
-  static async logSession(req, res) {
+  static async pingSession(req, res) {
     try {
-      const { courseId, startTime, endTime } = req.body;
-      const session = await AnalyticsService.logStudySession(req.user.userId, courseId, startTime, endTime);
-      return res.status(201).json({ message: 'Study session logged successfully.', data: session });
+      const { courseId } = req.body; // Client sends a ping every 30 seconds
+      const result = await AnalyticsService.recordStudyPing(req.user.userId, courseId);
+      return res.status(200).json({ message: 'Study time tracked successfully.', data: result });
     } catch (error) {
       handleControllerError(error, res);
     }
