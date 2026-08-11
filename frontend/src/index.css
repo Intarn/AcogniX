@@ -1,1 +1,22 @@
 @import "tailwindcss";
+
+/* Thiết lập Font chữ mặc định là Inter */
+body {
+  font-family: 'Inter', sans-serif;
+}
+
+/* Khôi phục lại Thanh cuộn (Scrollbar) tàng hình siêu mượt của bạn */
+::-webkit-scrollbar { 
+  width: 4px; 
+  height: 4px; 
+}
+::-webkit-scrollbar-track { 
+  background: transparent; 
+}
+::-webkit-scrollbar-thumb { 
+  background: #E2E8F0; 
+  border-radius: 10px; 
+}
+::-webkit-scrollbar-thumb:hover { 
+  background: #CBD5E1; 
+}

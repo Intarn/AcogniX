@@ -1,7 +1,5 @@
 import { apiRequest } from '../../services/apiClient';
 
-// UC-13: Manage Course
-
 export function getCourses() {
   return apiRequest('/courses');
 }
