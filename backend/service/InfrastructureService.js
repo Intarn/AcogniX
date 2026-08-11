@@ -8,7 +8,18 @@ class InfrastructureService {
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
-    const cpuLoad = os.platform() === 'win32' ? [0, 0, 0] : os.loadavg();
+    let cpuLoadPercentage = 0;
+    if (os.platform() === 'win32') {
+        const cpus = os.cpus();
+        const usage = cpus.reduce((acc, cpu) => {
+            const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
+            return acc + ((total - cpu.times.idle) / total);
+        }, 0) / cpus.length;
+        cpuLoadPercentage = (usage * 100).toFixed(2);
+    } else {
+        // Fallback for Linux/Mac (1-minute load average, scaled to %)
+        cpuLoadPercentage = (os.loadavg()[0] * 100).toFixed(2);
+    }
 
     let dbStatus = 'ONLINE';
     try {
@@ -27,7 +38,7 @@ class InfrastructureService {
         usedGB: (usedMem / 1024 / 1024 / 1024).toFixed(2),
         usagePercentage: ((usedMem / totalMem) * 100).toFixed(1)
       },
-      cpuLoad: cpuLoad[0].toFixed(2), // 1-minute load average
+      cpuLoad: cpuLoadPercentage, 
       databaseStatus: dbStatus
     };
   }

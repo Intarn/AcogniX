@@ -25,12 +25,6 @@ function createApp(io) {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-  app.set('io', io);
-
-  app.get('/', (req, res) => {
-    res.send('AcogniX Backend is running!');
-  });
-
   app.use('/api/auth', authRoutes);
   app.use('/api/profile', profileRoutes);
   app.use('/api/admin', adminRoutes);
@@ -55,11 +49,11 @@ async function initializeData() {
 const PORT = process.env.PORT || 5000;
 
 async function main() {
+  const app = createApp(io);
   const server = http.createServer();
   const io = new Server(server, { cors: {origin: "*" } });
 
-  const app = createApp(io);
-  server.on('request', app);
+  app.set('io', io);
 
   io.on('connection', (socket) => {
     console.log(`Client connected: ${socket.id}`);

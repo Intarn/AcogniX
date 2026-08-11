@@ -9,8 +9,14 @@ function handleControllerError(error, res) {
 class AnalyticsController {
   static async pingSession(req, res) {
     try {
-      const { courseId } = req.body; // Client sends a ping every 30 seconds
+      const { courseId } = req.body; 
       const result = await AnalyticsService.recordStudyPing(req.user.userId, courseId);
+      
+      const io = req.app.get('io');
+      if (io) {
+          io.emit('study_ping_updated', { userId: req.user.userId, data: result });
+      }
+
       return res.status(200).json({ message: 'Study time tracked successfully.', data: result });
     } catch (error) {
       handleControllerError(error, res);
