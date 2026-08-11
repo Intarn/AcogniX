@@ -49,7 +49,7 @@ async function initializeData() {
 const PORT = process.env.PORT || 5000;
 
 async function main() {
-  const app = createApp(io);
+  const app = createApp();
   const server = http.createServer();
   const io = new Server(server, { cors: {origin: "*" } });
 
