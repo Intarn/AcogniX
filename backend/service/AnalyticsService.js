@@ -4,7 +4,8 @@ const AppError = require('../error/AppError');
 class AnalyticsService {
   // UC-03: Track Active Study Time (Ping Mechanism)
   static async recordStudyPing(learnerId, courseId) {
-    const now = new Date();
+    const now = new Date(); 
+    
     const { data: recentSession, error: fetchError } = await supabase
       .from('Study_Session')
       .select('*')
@@ -15,21 +16,23 @@ class AnalyticsService {
 
     if (fetchError) throw new AppError(500, 'DB_ERROR', 'Failed to fetch recent study session.');
 
-    if (recentSession && (today.getTime() - new Date(recentSession.endTime).getTime() <= 120000)) {
+    if (recentSession && (now.getTime() - new Date(recentSession.endTime).getTime() <= 120000)) {
+      // Resume and extend existing session
       const startTime = new Date(recentSession.startTime);
-      const durationMinutes = Math.round((today - startTime) / 60000);
+      const durationMinutes = Math.round((now - startTime) / 60000);
       
       const { error: updateError } = await supabase
         .from('Study_Session')
-        .update({ endTime: today.toISOString(), durationMinutes })
+        .update({ endTime: now.toISOString(), durationMinutes })
         .eq('sessionId', recentSession.sessionId);
         
       if (updateError) throw new AppError(500, 'DB_ERROR', 'Failed to update study session.');
       return { status: 'extended', sessionId: recentSession.sessionId, durationMinutes };
     } else {
+      // Create a new session after idle timeout or fresh start
       const { data: newSession, error: insertError } = await supabase
         .from('Study_Session')
-        .insert([{ learnerId, courseId: courseId || null, startTime: today.toISOString(), endTime: today.toISOString(), durationMinutes: 0 }])
+        .insert([{ learnerId, courseId: courseId || null, startTime: now.toISOString(), endTime: now.toISOString(), durationMinutes: 0 }])
         .select()
         .single();
         
