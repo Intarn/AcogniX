@@ -15,6 +15,7 @@ const assessmentRoutes = require('./backend/routes/assessment.routes');
 const courseContentRoutes = require('./backend/routes/coursecontent.routes');
 const learningRoutes = require('./backend/routes/learning.routes');
 const analyticsRoutes = require('./backend/routes/analytics.routes');
+const communityRoutes = require('./backend/routes/community.routes');
 
 function createApp(io) {
   const app = express();
@@ -37,10 +38,11 @@ function createApp(io) {
   app.use('/api/workspace', workspaceRoutes);
   app.use('/api/enrollment', enrollmentRoutes);
   app.use('/api/ai', aiRoutes);
-  
   app.use('/api/assessments', assessmentRoutes);
   app.use('/api/learning', learningRoutes);
   app.use('/api/analytics', analyticsRoutes);
+  app.use('/api/community', communityRoutes); 
+  app.use('/api/admin/community', communityRoutes)
   return app;
 }
 
