@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teacher Dashboard - AcogniX</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 font-sans h-screen overflow-hidden text-gray-800">
+
+  <div class="flex h-full w-full">
+    
+    <!-- 1. SIDEBAR (Teacher Version) -->
+    <aside class="w-60 h-full bg-white border-r border-gray-100 flex flex-col justify-between flex-shrink-0">
+      <div>
+        <!-- Logo -->
+        <div class="p-6 flex items-center gap-2.5">
+          <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="grad-leg" x1="50" y1="15" x2="80" y2="85" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#8B3DFF" /><stop offset="100%" stop-color="#6B21FF" /></linearGradient>
+              <linearGradient id="grad-left" x1="20" y1="85" x2="35" y2="50" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00A3FF" /><stop offset="100%" stop-color="#3B82F6" /></linearGradient>
+              <linearGradient id="grad-swoosh" x1="25" y1="70" x2="95" y2="45" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00C2FF" /><stop offset="50%" stop-color="#3B82F6" /><stop offset="100%" stop-color="#6B21FF" /></linearGradient>
+            </defs>
+            <path d="M 33 55 L 46 25 C 47.5 21.5 52.5 21.5 54 25 L 76 76" stroke="url(#grad-leg)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M 22 80 L 26 70" stroke="url(#grad-left)" stroke-width="14" stroke-linecap="round" />
+            <path d="M 26 65 C 50 78 70 70 92 48 C 65 68 45 74 24 73 Z" fill="url(#grad-swoosh)" />
+          </svg>
+          <span class="text-2xl font-black text-slate-900 tracking-tight font-sans">AcogniX</span>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="px-3 flex flex-col gap-1.5">
+          <a href="./teacher-dashboard.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold bg-blue-50 text-blue-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+            Dashboard
+          </a>
+          <a href="./teacher-my-courses.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+            My Courses
+          </a>
+          <a href="./teacher-assignments.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+            Assignments
+          </a>
+          <a href="./teacher-students.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Students
+          </a>
+          <a href="./teacher-student-analytics.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+            Analytics
+          </a>
+          <a href="./teacher-gradebook.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H4a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+            Gradebook
+          </a>
+          <a href="../shared/community.html" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            Community
+          </a>
+        </nav>
+      </div>
+
+      <!-- Footer Profile -->
+      <div class="p-4 border-t border-gray-100">
+        <div class="flex items-center gap-3 cursor-pointer">
+          <img id="user-avatar-sidebar" src="" class="w-9 h-9 rounded-full object-cover bg-gray-200">
+          <div class="text-left">
+            <p id="user-fullname-sidebar" class="text-xs font-bold text-gray-800 leading-tight"></p>
+            <p id="user-role-sidebar" class="text-[10px] text-gray-400"></p>
+          </div>
+          <a href="../auth/settings.html" class="ml-auto">
+            <span class="text-gray-400 text-[10px]">⚙️</span>
+          </a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <div class="flex-1 flex flex-col h-full overflow-y-auto">
+      
+      <!-- 2. TOPBAR -->
+      <header class="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0">
+        <h1 class="text-lg font-bold text-gray-800">Teacher Dashboard</h1>
+        <div class="flex items-center gap-3">
+          <a href="./teacher-course-builder.html" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm">
+            + Create New Course
+          </a>
+        </div>
+      </header>
+
+      <!-- 3. TEACHER DASHBOARD CONTENT -->
+      <main class="p-6 space-y-6">
+        <!-- Key Metrics -->
+        <div class="grid grid-cols-3 gap-6">
+          <div class="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+            <p class="text-sm font-medium text-gray-500">Total Students</p>
+            <p id="total-students" class="text-4xl font-bold text-gray-800 mt-1">0</p>
+          </div>
+          <div class="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+            <p class="text-sm font-medium text-gray-500">Courses Published</p>
+            <p id="courses-published" class="text-4xl font-bold text-gray-800 mt-1">0</p>
+          </div>
+          <div class="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+            <p class="text-sm font-medium text-gray-500">Avg. Student Rating</p>
+            <p id="avg-rating" class="text-4xl font-bold text-gray-800 mt-1 flex items-center gap-2">4.8 <span class="text-yellow-400 text-2xl">★</span></p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-6">
+          <!-- Course Management -->
+          <div class="col-span-2 bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+            <h3 class="text-base font-bold text-gray-800 mb-4">My Courses</h3>
+            <table class="w-full text-sm text-left">
+              <thead class="text-xs text-gray-500 uppercase bg-gray-50/50">
+                <tr>
+                  <th class="px-4 py-2">Course Name</th>
+                  <th class="px-4 py-2">Enrolled</th>
+                  <th class="px-4 py-2">Avg. Progress</th>
+                  <th class="px-4 py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="courses-table">
+                <!-- Dữ liệu sẽ được chèn vào đây -->
+              </tbody>
+            </table>
+          </div>
+          <!-- Recent Student Activity -->
+          <div class="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-base font-bold text-gray-800">My Students</h3>
+              <a href="./teacher-students.html" class="text-xs font-semibold text-blue-600 hover:underline">View All</a>
+            </div>
+            <div id="students-list" class="space-y-4">
+              <!-- Dữ liệu sẽ được chèn vào đây -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Student Leaderboard -->
+        <div class="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+          <h3 class="text-base font-bold text-gray-800 mb-4">Student Leaderboard</h3>
+          <div id="leaderboard-list" class="grid grid-cols-5 gap-4">
+            <!-- Dữ liệu sẽ được chèn vào đây -->
+          </div>
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <script>
+    // Script để cập nhật thông tin người dùng trên giao diện
+    document.addEventListener('DOMContentLoaded', function() {
+      // 1. Lấy và xác thực người dùng hiện tại
+      const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+      if (!currentUser || currentUser.role !== 'teacher') {
+        // window.location.href = './login.html'; 
+        return; // Dừng thực thi nếu không có người dùng
+      }
+
+      // Cập nhật thông tin trên sidebar
+      document.getElementById('user-fullname-sidebar').textContent = currentUser.fullname;
+      document.getElementById('user-role-sidebar').textContent = currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
+      document.getElementById('user-avatar-sidebar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.fullname)}&color=fff&size=36`;
+
+      // 2. Lấy dữ liệu thật từ localStorage
+      const allCourses = JSON.parse(localStorage.getItem('acognix_courses')) || [];
+      const allUsers = JSON.parse(localStorage.getItem('acognix_users')) || [];
+
+      // Lọc các khóa học của giáo viên hiện tại
+      const myCourses = allCourses.filter(course => course.teacher === currentUser.fullname);
+      const myCourseIds = myCourses.map(c => c.id);
+
+      // Lọc ra những sinh viên có đăng ký ít nhất một khóa học của giáo viên
+      const myStudents = allUsers.filter(user => 
+        user.role === 'student' && user.enrolledCourses && user.enrolledCourses.some(courseId => myCourseIds.includes(courseId))
+      );
+
+      // 3. Cập nhật các chỉ số chính
+      document.getElementById('courses-published').textContent = myCourses.filter(c => c.status === 'Published').length;
+      document.getElementById('total-students').textContent = myStudents.length.toLocaleString();
+      if (myStudents.length > 0) {
+        document.getElementById('avg-rating').innerHTML = `4.8 <span class="text-yellow-400 text-2xl">★</span>`;
+      } else {
+        document.getElementById('avg-rating').innerHTML = `N/A`;
+      }
+
+      // 4. Cập nhật bảng "My Courses"
+      const coursesTable = document.getElementById('courses-table');
+      coursesTable.innerHTML = '';
+      if (myCourses.length === 0) {
+        coursesTable.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-center text-gray-500">You have not created any courses.</td></tr>';
+      } else {
+        myCourses.slice(0, 5).forEach(course => { // Giới hạn 5 khóa học cho dashboard
+          const enrolledCount = allUsers.filter(u => u.role === 'student' && u.enrolledCourses && u.enrolledCourses.includes(course.id)).length;
+          const avgProgress = Math.floor(Math.random() * 40) + 50; // Tiến độ giả từ 50-90%
+          const row = `
+            <tr class="border-b border-gray-100 hover:bg-gray-50">
+              <td class="px-4 py-3 font-bold">${course.name}</td>
+              <td class="px-4 py-3">${enrolledCount}</td>
+              <td class="px-4 py-3">${avgProgress}%</td>
+              <td class="px-4 py-3 flex gap-2">
+                <a href="./teacher-course-builder.html?id=${course.id}" class="text-xs font-bold text-blue-600 hover:underline">Edit</a>
+                <a href="./teacher-class-detail.html?id=${course.id}" class="text-xs font-bold text-gray-500 hover:underline">View</a>
+              </td>
+            </tr>
+          `;
+          coursesTable.innerHTML += row;
+        });
+      }
+
+      // Cập nhật danh sách "My Students"
+      const studentsList = document.getElementById('students-list');
+      studentsList.innerHTML = '';
+      if (myStudents.length === 0) {
+        studentsList.innerHTML = '<p class="text-xs text-center text-gray-500 py-4">No students enrolled yet.</p>';
+      } else {
+        // Hiển thị 4 sinh viên gần đây nhất (giả sử)
+        myStudents.slice(-4).reverse().forEach(student => {
+          const studentHtml = `
+            <div class="flex items-center gap-3">
+              <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(student.fullname)}&color=fff&size=32" class="w-8 h-8 rounded-full object-cover">
+              <div>
+                <p class="text-xs font-bold">${student.fullname}</p>
+                <p class="text-[11px] text-gray-400">${student.email}</p>
+              </div>
+            </div>
+          `;
+          studentsList.innerHTML += studentHtml;
+        });
+      }
+
+      // Cập nhật Leaderboard
+      const leaderboardList = document.getElementById('leaderboard-list');
+      leaderboardList.innerHTML = '';
+      if (myStudents.length > 0) {
+          // Sắp xếp sinh viên theo tên để có thứ tự ổn định, sau đó lấy 5 người đầu
+          const leaderboardStudents = [...myStudents].sort((a, b) => a.fullname.localeCompare(b.fullname)).slice(0, 5);
+          leaderboardStudents.forEach(student => {
+              leaderboardList.innerHTML += `
+                <div class="text-center">
+                  <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(student.fullname)}&color=fff&size=64" class="w-16 h-16 rounded-full object-cover mx-auto">
+                  <p class="text-xs font-bold mt-2 truncate">${student.fullname}</p>
+                  <p class="text-[11px] text-gray-500">${Math.floor(Math.random() * 10) + 90}% Avg. Score</p>
+                </div>`;
+          });
+      }
+    });
+  </script>
+
+</body>
+</html>
