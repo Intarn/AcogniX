@@ -8,7 +8,7 @@ class InfrastructureService {
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
-    const cpuLoad = os.loadavg(); // Returns an array containing the 1, 5, and 15 minute load averages
+    const cpuLoad = os.platform() === 'win32' ? [0, 0, 0] : os.loadavg();
 
     let dbStatus = 'ONLINE';
     try {

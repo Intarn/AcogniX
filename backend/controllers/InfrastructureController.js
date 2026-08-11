@@ -1,9 +1,11 @@
 const InfrastructureService = require('../service/InfrastructureService');
 
 function handleControllerError(error, res) {
-  if (error.statusCode) return res.status(error.statusCode).json({ message: error.message });
+  if (error.statusCode) {
+     return res.status(error.statusCode).json({ code: error.code, message: error.message });
+  }
   console.error(error);
-  return res.status(500).json({ message: 'An unexpected server error occurred.' });
+  return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected server error occurred.' });
 }
 
 class InfrastructureController {

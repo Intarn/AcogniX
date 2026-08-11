@@ -5,21 +5,17 @@ class AnalyticsService {
   // UC-03: Track Active Study Time (Ping Mechanism)
   static async recordStudyPing(learnerId, courseId) {
     const now = new Date();
-    // Look for a recent active session (within the last 2 minutes / 120 seconds)
-    const twoMinutesAgo = new Date(now.getTime() - 2 * 60000).toISOString();
-
     const { data: recentSession, error: fetchError } = await supabase
       .from('Study_Session')
       .select('*')
       .eq('learnerId', learnerId)
-      .gte('endTime', twoMinutesAgo)
-      .order('endTime', { ascending: false })
+      .order('endTime', { ascending: false }) 
       .limit(1)
       .maybeSingle();
 
     if (fetchError) throw new AppError(500, 'DB_ERROR', 'Failed to fetch recent study session.');
 
-    if (recentSession) {
+    if (recentSession && (now.getTime() - new Date(recentSession.endTime).getTime() <= 150000)) {
       // Resume and extend existing session
       const startTime = new Date(recentSession.startTime);
       const durationMinutes = Math.round((now - startTime) / 60000);
@@ -96,7 +92,7 @@ class AnalyticsService {
     // 3. Fetch submissions for class average
     const { data: submissions } = await supabase
       .from('Submission')
-      .select('score, learnerId, Assessment!inner(courseId)')
+      .select('score, learnerId, Assessment!inner(courseId, totalPoints)') 
       .eq('Assessment.courseId', courseId)
       .eq('status', 'GRADED');
 
@@ -110,18 +106,26 @@ class AnalyticsService {
     const validScores = (submissions || []).filter(s => s.score !== null).map(s => s.score);
     const averageScore = validScores.length > 0 ? (validScores.reduce((a, b) => a + b, 0) / validScores.length).toFixed(2) : 0;
 
-    // Identify Students Requiring Attention (Score < 50% or Study Time == 0)
     const studentPerformance = (enrollments || []).map(enroll => {
       const studentSubmissions = (submissions || []).filter(s => s.learnerId === enroll.learnerId);
-      const avgStudentScore = studentSubmissions.length > 0 ? studentSubmissions.reduce((a, b) => a + b.score, 0) / studentSubmissions.length : 0;
+
+      let avgStudentPercentage = 0;
+      if (studentSubmissions.length > 0) {
+          const totalPercentage = studentSubmissions.reduce((a, b) => {
+            const max = b.Assessment?.totalPoints || 100;
+            return a + (b.score / max);
+          }, 0);
+          avgStudentPercentage = totalPercentage / studentSubmissions.length;
+      }
+
       const totalStudyTime = (studySessions || []).filter(s => s.learnerId === enroll.learnerId).reduce((a, b) => a + b.durationMinutes, 0);
 
       return {
         learnerId: enroll.learnerId,
         name: enroll.User?.displayName || 'Unknown',
-        averageScore: avgStudentScore,
+        averageScore: avgStudentPercentage, 
         studyTimeMinutes: totalStudyTime,
-        needsAttention: avgStudentScore < 5.0 || totalStudyTime === 0
+        needsAttention: avgStudentPercentage < 0.5 || totalStudyTime === 0 // 0.5 tương đương 50%
       };
     });
 
@@ -138,12 +142,12 @@ class AnalyticsService {
   static _calculateWeeklyTrend(sessions) {
     const trend = Array(7).fill(0); // Last 7 days
     const today = new Date();
-    now.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
     
     (sessions || []).forEach(session => {
       const sessionDate = new Date(session.startTime);
       sessionDate.setHours(0, 0, 0, 0);
-      const diffTime = Math.abs(now - sessionDate);
+      const diffTime = Math.abs(today - sessionDate);
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)); 
       
       if (diffDays < 7) {

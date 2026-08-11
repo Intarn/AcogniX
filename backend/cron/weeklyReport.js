@@ -14,34 +14,33 @@ const scheduleWeeklyReports = () => {
       if (!courses) return;
 
       for (const course of courses) {
-        // 2. Fetch performance data for the course
-        const performance = await AnalyticsService.getClassPerformance(course.courseId, course.educatorId);
-        
-        // 3. Find the educator's email
-        const { data: educator } = await supabase.from('User').select('email').eq('userId', course.educatorId).single();
-
-        if (educator && educator.email) {
-          // 4. Send email notification (UC-11 Alt Flow 1)
-          const htmlReport = `
-            <h2>Weekly Performance Report: ${course.subjectName}</h2>
-            <p><strong>Class Average Score:</strong> ${performance.classAverageScore}</p>
-            <p><strong>Total Submissions Graded:</strong> ${performance.totalGradedSubmissions}</p>
-            <br>
-            <h3>Students Requiring Attention</h3>
-            <ul>
-              ${performance.atRiskStudents.length > 0 
-                ? performance.atRiskStudents.map(s => `<li>${s.name} - Avg Score: ${s.averageScore} - Study Time: ${s.studyTimeMinutes} mins</li>`).join('') 
-                : '<li>All students are performing well.</li>'}
-            </ul>
-            <p>Log in to AcogniX to view detailed insights.</p>
-          `;
+        try {
+          const performance = await AnalyticsService.getClassPerformance(course.courseId, course.educatorId);
+          const { data: educator } = await supabase.from('User').select('email').eq('userId', course.educatorId).single();
           
-          await EmailService.send(educator.email, `Weekly Report: ${course.subjectName}`, htmlReport);
+          if (educator && educator.email) {
+            const htmlReport = `
+              <h2>Weekly Performance Report: ${course.subjectName}</h2>
+              <p><strong>Class Average Score:</strong> ${performance.classAverageScore}</p>
+              <p><strong>Total Submissions Graded:</strong> ${performance.totalGradedSubmissions}</p>
+              <br>
+              <h3>Students Requiring Attention</h3>
+              <ul>
+                ${performance.atRiskStudents.length > 0
+                   ? performance.atRiskStudents.map(s => `<li>${s.name} - Avg Score: ${s.averageScore} - Study Time: ${s.studyTimeMinutes} mins</li>`).join('')
+                   : '<li>All students are performing well.</li>'}
+              </ul>
+              <p>Log in to AcogniX to view detailed insights.</p>
+            `;
+            
+            await EmailService.send(educator.email, `Weekly Report: ${course.subjectName}`, htmlReport);
+          }
+        } catch (courseError) {
+            console.error(`[CRON] Failed to send report for course ${course.courseId}:`, courseError);
         }
       }
-      console.log('[CRON] Weekly reports sent successfully.');
-    } catch (error) {
-      console.error('[CRON] Failed to execute weekly reports:', error);
+    } catch (error) { 
+        console.error('[CRON] Failed to execute weekly reports:', error);
     }
   });
 };

@@ -58,7 +58,7 @@ async function main() {
   const server = http.createServer();
   const io = new Server(server, { cors: {origin: "*" } });
 
-  const app = createApp();
+  const app = createApp(io);
   server.on('request', app);
 
   io.on('connection', (socket) => {
