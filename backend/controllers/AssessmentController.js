@@ -48,6 +48,163 @@ class AssessmentController {
         }
     }
 
+    static async getAssessmentById(
+        req,
+        res
+    ) {
+        try {
+            const assessment =
+                await AssessmentService
+                    .getAssessmentById(
+                        req.params.assessmentId,
+                        req.user.userId
+                    );
+
+            return res.status(200).json({
+                assessment
+            });
+        } catch (error) {
+            return handleControllerError(
+                error,
+                res
+            );
+        }
+    }
+
+
+    static async getAssessmentQuestions(
+        req,
+        res
+    ) {
+        try {
+            const questions =
+                await AssessmentService
+                    .getAssessmentQuestions(
+                        req.params.assessmentId,
+                        req.user.userId
+                    );
+
+            return res.status(200).json({
+                assessmentId:
+                    req.params.assessmentId,
+
+                count:
+                    questions.length,
+
+                questions
+            });
+        } catch (error) {
+            return handleControllerError(
+                error,
+                res
+            );
+        }
+    }
+
+
+    static async getAssessmentSubmissions(
+        req,
+        res
+    ) {
+        try {
+            const submissions =
+                await AssessmentService
+                    .getAssessmentSubmissions(
+                        req.params.assessmentId,
+                        req.user.userId
+                    );
+
+            return res.status(200).json({
+                assessmentId:
+                    req.params.assessmentId,
+
+                count:
+                    submissions.length,
+
+                submissions
+            });
+        } catch (error) {
+            return handleControllerError(
+                error,
+                res
+            );
+        }
+    }
+
+
+    static async getSubmissionById(
+        req,
+        res
+    ) {
+        try {
+            const result =
+                await AssessmentService
+                    .getSubmissionById(
+                        req.params.submissionId,
+                        req.user.userId
+                    );
+
+            return res.status(200).json(
+                result
+            );
+        } catch (error) {
+            return handleControllerError(
+                error,
+                res
+            );
+        }
+    }
+
+
+    static async getCourseGradebook(
+        req,
+        res
+    ) {
+        try {
+            const result =
+                await AssessmentService
+                    .getCourseGradebook(
+                        req.params.courseId,
+                        req.user.userId
+                    );
+
+            return res.status(200).json(
+                result
+            );
+        } catch (error) {
+            return handleControllerError(
+                error,
+                res
+            );
+        }
+    }
+
+
+    static async getLearnerAssessments(
+        req,
+        res
+    ) {
+        try {
+            const assessments =
+                await AssessmentService
+                    .getLearnerAssessments(
+                        req.user.userId
+                    );
+
+            return res.status(200).json({
+                count:
+                    assessments.length,
+
+                assessments
+            });
+        } catch (error) {
+            return handleControllerError(
+                error,
+                res
+            );
+        }
+    }
+
     //UC-09: Edit Assessment.
     static async updateAssessment(req, res) {
         try {
@@ -96,6 +253,32 @@ class AssessmentController {
             });
         } catch (error) {
             return handleControllerError(error, res);
+        }
+    }
+
+    static async deleteQuestion(
+        req,
+        res
+    ) {
+        try {
+            await AssessmentService
+                .deleteQuestion(
+                    req.params.assessmentId,
+                    req.params.questionId,
+                    req.user.userId
+                );
+
+
+            return res.status(200).json({
+                message:
+                    'Question deleted successfully.'
+            });
+
+        } catch (error) {
+            return handleControllerError(
+                error,
+                res
+            );
         }
     }
 

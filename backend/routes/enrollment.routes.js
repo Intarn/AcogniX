@@ -1,48 +1,58 @@
 const express = require('express');
-const EnrollmentController = require('../controllers/EnrollmentController');
+const multer = require('multer');
+const WorkspaceController = require('../controllers/WorkspaceController');
 const { requireAuth, authorize } = require('../middleware/authMiddleware');
+const NoteController = require('../controllers/NoteController');
 const { UserRole } = require('../enums/AuthEnums');
-
 const router = express.Router();
 
-// UC-15: chỉ Learner được gửi yêu cầu tham gia lớp
-router.post(
-  '/',
-  requireAuth,
-  authorize(UserRole.LEARNER),
-  EnrollmentController.joinClass
-);
+// Use multer to store file in RAM (buffer) before uploading to Supabase
+const upload = multer({ storage: multer.memoryStorage() });
 
-// UC-14: chỉ Educator được xem thành viên 
+// Routes requiring authentication
+router.use(requireAuth);
+
+router.get('/', WorkspaceController.getWorkspaceData);
+router.post('/projects', WorkspaceController.createProject);
+
+// Route to handle file upload (expects field named 'material')
+router.post('/projects/:projectId/materials', upload.single('material'), WorkspaceController.uploadMaterial);
+
+// UC-25: Get all Personal Notes in an AI Project
 router.get(
-  '/courses/:courseId/members',
-  requireAuth,
-  authorize(UserRole.EDUCATOR),
-  EnrollmentController.getCourseMembers
+  '/projects/:projectId/notes',
+  authorize(UserRole.LEARNER),
+  NoteController.getProjectNotes
 );
 
-// UC-14: chỉ Educator được approve
-router.patch(
-  '/:enrollmentId/approve',
-  requireAuth,
-  authorize(UserRole.EDUCATOR),
-  EnrollmentController.approveEnrollment
+router.get(
+    '/notes',
+    requireAuth,
+    authorize(
+        UserRole.LEARNER
+    ),
+    NoteController.getAllNotes
 );
 
-// UC-14: chỉ Educator được reject
-router.patch(
-  '/:enrollmentId/reject',
-  requireAuth,
-  authorize(UserRole.EDUCATOR),
-  EnrollmentController.rejectEnrollment
+// UC-25: Save a new Personal Note
+router.post(
+  '/projects/:projectId/notes',
+  authorize(UserRole.LEARNER),
+  NoteController.createNote
 );
 
-// UC-14: chỉ Educator được remove
+// UC-25: Update an existing Personal Note
 router.patch(
-  '/:enrollmentId/remove',
-  requireAuth,
-  authorize(UserRole.EDUCATOR),
-  EnrollmentController.removeMember
+  '/notes/:noteId',
+  authorize(UserRole.LEARNER),
+  NoteController.updateNote
+);
+
+// UC-25: Delete a Personal Note
+router.delete(
+  '/notes/:noteId',
+  authorize(UserRole.LEARNER),
+  NoteController.deleteNote
 );
 
 module.exports = router;
