@@ -43,6 +43,35 @@ class NoteController {
         }
     }
 
+    static async getAllNotes(
+        req,
+        res
+    ) {
+        try {
+            const notes =
+                await NoteService
+                    .getAllNotes(
+                        req.user.userId
+                    );
+
+
+            return res
+                .status(200)
+                .json({
+                    count:
+                        notes.length,
+
+                    notes
+                });
+
+        } catch (error) {
+            return handleControllerError(
+                error,
+                res
+            );
+        }
+    }
+
 
     static async createNote(req, res) {
         try {

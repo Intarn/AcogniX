@@ -108,6 +108,169 @@ class EnrollmentService {
     };
   }
 
+  // UC-15: Get Courses in which the current Learner
+  // has an APPROVED Enrollment
+  static async getMyCourses(
+      learnerId
+  ) {
+      const {
+          data: enrollments,
+          error: enrollmentError
+      } = await supabase
+          .from('Enrollment')
+          .select('*')
+          .eq(
+              'learnerId',
+              learnerId
+          )
+          .eq(
+              'status',
+              EnrollmentStatus.APPROVED
+          )
+          .order(
+              'approvedAt',
+              {
+                  ascending: false
+              }
+          );
+
+      if (enrollmentError) {
+          throw enrollmentError;
+      }
+
+
+      if (
+          !enrollments ||
+          enrollments.length === 0
+      ) {
+          return [];
+      }
+
+
+      const courseIds = [
+          ...new Set(
+              enrollments.map(
+                  enrollment =>
+                      enrollment.courseId
+              )
+          )
+      ];
+
+
+      const {
+          data: courses,
+          error: courseError
+      } = await supabase
+          .from('Course')
+          .select(
+              'courseId, educatorId, subjectName, courseCode, description, status'
+          )
+          .in(
+              'courseId',
+              courseIds
+          );
+
+      if (courseError) {
+          throw courseError;
+      }
+
+
+      const educatorIds = [
+          ...new Set(
+              (courses || []).map(
+                  course =>
+                      course.educatorId
+              )
+          )
+      ];
+
+
+      let educators = [];
+
+      if (
+          educatorIds.length > 0
+      ) {
+          const {
+              data,
+              error
+          } = await supabase
+              .from('User')
+              .select(
+                  'userId, email, displayName, avatarUrl'
+              )
+              .in(
+                  'userId',
+                  educatorIds
+              );
+
+          if (error) {
+              throw error;
+          }
+
+          educators =
+              data || [];
+      }
+
+
+      const educatorById =
+          new Map(
+              educators.map(
+                  educator => [
+                      educator.userId,
+                      educator
+                  ]
+              )
+          );
+
+
+      const courseById =
+          new Map(
+              (courses || []).map(
+                  course => [
+                      course.courseId,
+                      course
+                  ]
+              )
+          );
+
+
+      return enrollments
+          .map(
+              enrollment => {
+                  const course =
+                      courseById.get(
+                          enrollment.courseId
+                      );
+
+                  if (!course) {
+                      return null;
+                  }
+
+
+                  return {
+                      ...course,
+
+                      enrollmentId:
+                          enrollment
+                              .enrollmentId,
+
+                      enrollmentStatus:
+                          enrollment.status,
+
+                      approvedAt:
+                          enrollment
+                              .approvedAt,
+
+                      educator:
+                          educatorById.get(
+                              course.educatorId
+                          ) || null
+                  };
+              }
+          )
+          .filter(Boolean);
+  }
+
   // UC-14: By default, show pending requests and approved members.
   static async getCourseMembers(courseId, educatorId, requestedStatus) {
     await this._assertCourseManagedBy(courseId, educatorId);

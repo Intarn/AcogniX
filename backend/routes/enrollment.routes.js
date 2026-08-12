@@ -13,6 +13,16 @@ router.post(
   EnrollmentController.joinClass
 );
 
+router.get(
+  '/',
+  requireAuth,
+  authorize(
+    UserRole.LEARNER
+  ),
+  EnrollmentController
+    .getMyCourses
+);
+
 // UC-14: chỉ Educator được xem thành viên 
 router.get(
   '/courses/:courseId/members',

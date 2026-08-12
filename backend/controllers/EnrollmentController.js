@@ -139,6 +139,33 @@ class EnrollmentController {
       return handleControllerError(error, res);
     }
   }
+  static async getMyCourses(
+    req,
+    res
+  ) {
+    try {
+      const courses =
+        await EnrollmentService
+          .getMyCourses(
+            req.user.userId
+          );
+
+      return res
+        .status(200)
+        .json({
+          count:
+            courses.length,
+
+          courses
+        });
+    } catch (error) {
+      return handleControllerError(
+        error,
+        res
+      );
+    }
+  }
+  
 }
 
 module.exports = EnrollmentController;
