@@ -55,11 +55,11 @@ class AuthController {
       const session = await AuthenticationService.logIn(email, password);
       
       let redirectUrl = '/';
-      if (session.userRole === UserRole.LEARNER) redirectUrl = '/learner-dashboard';
-      else if (session.userRole === UserRole.EDUCATOR) redirectUrl = '/educator-dashboard';
-      else if (session.userRole === UserRole.SYSTEM_ADMINISTRATOR) redirectUrl = '/admin-portal'; 
+      if (session.userRole === UserRole.LEARNER) redirectUrl = '/learner/dashboard';
+      else if (session.userRole === UserRole.EDUCATOR) redirectUrl = '/educator/dashboard';
+      else if (session.userRole === UserRole.SYSTEM_ADMINISTRATOR) redirectUrl = '/admin/dashboard'; 
 
-      return res.status(200).json({ message: "Login successful", token: session.tokenHash, redirectTo: redirectUrl });
+      return res.status(200).json({ message: "Login successful", token: session.tokenHash, userRole: session.userRole, redirectTo: redirectUrl });
     } catch (error) {
       if (error.message === 'BANNED_ACCOUNT') {
         return res.status(403).json({ message: "Your account has been banned. Please contact the System Administrator for assistance." }); // Alternative flow 3
