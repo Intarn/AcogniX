@@ -26,7 +26,8 @@ export default function Login() {
       status === 401 || 
       msg.includes('incorrect email or password') || 
       msg.includes('invalid') || 
-      msg.includes('credentials')
+      msg.includes('credentials') ||
+      msg.includes('thông tin')
     ) {
       return 'Email hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại!';
     }
@@ -50,7 +51,7 @@ export default function Login() {
     ) {
       return 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại đường truyền mạng.';
     }
-    return 'Email hoặc mật khẩu không chính xác. Vui lòng thử lại!';
+    return 'Email hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại!';
   };
 
   const handleSubmit = async (e) => {
@@ -70,15 +71,18 @@ export default function Login() {
     try {
       setSubmitting(true);
       
+      // Thực hiện gọi hàm đăng nhập
       const userRole = await login(cleanEmail, cleanPassword);
 
-      if (!userRole) {
-        throw new Error('Incorrect email or password.');
+      // KIỂM TRA CHẶN ĐỨNG: Nếu login() trả về rỗng, false, hoặc object lỗi mà không throw
+      if (!userRole || userRole === false || userRole?.error || userRole?.success === false) {
+        throw new Error('INVALID_CREDENTIALS');
       }
 
+      // Chỉ khi xác thực thành công thực sự mới chạy đến đây
       showToast('Đăng nhập thành công! Đang chuyển hướng...', 'success');
 
-      const role = String(userRole).toUpperCase();
+      const role = String(userRole?.userRole || userRole?.role || userRole).toUpperCase();
       if (role === 'SYSTEM_ADMINISTRATOR') {
         navigate('/admin/dashboard');
       } else if (role === 'EDUCATOR') {
@@ -89,7 +93,7 @@ export default function Login() {
 
     } catch (err) {
       console.error('Lỗi đăng nhập:', err);
-      // Hiển thị thông báo hoàn toàn bằng tiếng Việt
+      // Bắt mọi lỗi và hiển thị Toast đỏ tiếng Việt chuẩn xác
       showToast(getVietnameseError(err), 'error');
     } finally {
       setSubmitting(false);
