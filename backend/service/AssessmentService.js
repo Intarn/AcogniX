@@ -25,7 +25,7 @@ class AssessmentService {
             title, 
             description = null, 
             type, 
-            totalPoints = 0, 
+            totalPoints, 
             allowLateSubmission = false, 
             startTime = null, 
             deadline = null, 
