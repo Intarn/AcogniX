@@ -16,11 +16,36 @@ def get_active_material_ids(project_id: str) -> list[str]:
     return [row["materialId"] for row in result.data]
 
 
-def retrieve_relevant_chunks(project_id: str, query: str, top_k: int = DEFAULT_TOP_K) -> list[str]:
-    """Core RAG retrieval step: embeds the query, finds the top-k most
-    similar chunks among the project's active-context materials, and
-    returns their text — ready to drop into the LLM prompt."""
-    material_ids = get_active_material_ids(project_id)
+def _verify_material_belongs_to_project(project_id: str, material_id: str) -> None:
+    """Guards against a client passing a materialId from a different
+    project to read chunks it shouldn't have access to."""
+    result = (
+        supabase.table("Learning_Material")
+        .select("materialId")
+        .eq("materialId", material_id)
+        .eq("projectId", project_id)
+        .maybe_single()
+        .execute()
+    )
+    if not result.data:
+        raise ValueError("This material does not belong to the given project.")
+
+
+def retrieve_relevant_chunks(
+    project_id: str,
+    query: str,
+    top_k: int = DEFAULT_TOP_K,
+    material_id: str | None = None,
+) -> list[str]:
+    """Core RAG retrieval step. If material_id is given, restrict search
+    to just that one material (e.g. 'generate flashcards from this file').
+    Otherwise, fall back to the project's active-context materials (UC-01)."""
+    if material_id:
+        _verify_material_belongs_to_project(project_id, material_id)
+        material_ids = [material_id]
+    else:
+        material_ids = get_active_material_ids(project_id)
+
     if not material_ids:
         return []
 

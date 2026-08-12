@@ -48,12 +48,16 @@ const generateQuiz = async (req, res) => {
 
 const generateFlashcards = async (req, res) => {
     try {
-        const { projectId, flashcardCount, length } = req.body;
+        const { projectId, materialId, flashcardCount, length } = req.body;
+        
         if (!projectId) {
             return res.status(400).json({ code: 'MISSING_PROJECT_ID', message: 'Missing projectId.' });
         }
+        if (!materialId) {
+            return res.status(400).json({ code: 'MISSING_MATERIAL_ID', message: 'Missing materialId.' });
+        }
 
-        const result = await AIServiceClient.generateFlashcards(projectId, flashcardCount || 10, length || 'short');
+        const result = await AIServiceClient.generateFlashcards(projectId, materialId, flashcardCount || 10, length || 'short');
         return res.status(200).json({ message: 'Flashcards generated!', data: result.flashcards, flashcardSetId: result.flashcardSetId });
     } catch (error) {
         return handleControllerError(error, res);
