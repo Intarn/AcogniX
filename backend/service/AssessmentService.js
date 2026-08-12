@@ -13,7 +13,8 @@ const {
     QuestionType, 
     SubmissionStatus
 } = require('../enums/AssessmentEnums');
-
+const path = require('path');
+const crypto = require('crypto');
 
 class AssessmentService {
     // UC-09: Create an official quiz or assignment in a managed Course 
@@ -38,6 +39,8 @@ class AssessmentService {
                 'Assessment title and type are required.'
             );
         }
+
+        const numericTotalPoints = this._validateTotalPoints(totalPoints);
 
         if ((startTime && !deadline) || (!startTime && deadline)) {
             throw new AppError(
@@ -64,7 +67,7 @@ class AssessmentService {
                 type, 
                 startTime, 
                 deadline, 
-                totalPoints: Number(totalPoints || 0), 
+                totalPoints: numericTotalPoints, 
                 allowLateSubmission: Boolean(allowLateSubmission),
                 status: initialStatus
             })
@@ -361,7 +364,7 @@ class AssessmentService {
         }
 
         if (changes.totalPoints !== undefined) {
-            updateData.totalPoints = Number(changes.totalPoints);
+            updateData.totalPoints = this._validateTotalPoints(changes.totalPoints);
         }
 
         if (changes.allowLateSubmission !== undefined) {
@@ -1101,8 +1104,8 @@ class AssessmentService {
             );
         }
 
-        const filePath = `instructions/${assessmentId}/${Date.now()}_${file.originalname}`;
-
+        const safeFileName = this._generateSafeFileName(file.originalname);
+        const filePath = `instructions/${assessmentId}/${safeFileName}`;
         const { error: storageError } = await supabase.storage
             .from(bucket)
             .upload(filePath, file.buffer, {
@@ -1335,9 +1338,9 @@ class AssessmentService {
 
         // 5. Upload từng file lên Supabase Storage
         for (const file of files) {
-            const filePath =
-                `submissions/${submissionId}/${Date.now()}_${file.originalname}`;
+            const safeFileName = this._generateSafeFileName(file.originalname);
 
+            const filePath = `submissions/${submissionId}/${safeFileName}`;
             const { error: storageError } =
                 await supabase.storage
                     .from(bucket)
@@ -1691,7 +1694,7 @@ class AssessmentService {
 
         const numericScore = Number(score);
         if (
-            Number.isNaN(numericScore) ||
+            !Number.isFinite(numericScore) ||
             numericScore < 0 ||
             numericScore > Number(assessment.totalPoints)
         ) {
@@ -1727,6 +1730,56 @@ class AssessmentService {
             submission: this._toSubmission(data),
             analytics
         };
+    }
+
+    static _validateTotalPoints(value) {
+        const isValidType =
+            typeof value === 'number' ||
+            typeof value === 'string';
+
+        if (
+            !isValidType ||
+            (typeof value === 'string' && !value.trim())
+        ) {
+            throw new AppError(
+                400,
+                'INVALID_TOTAL_POINTS',
+                'Assessment total points must be a non-negative number.'
+            );
+        }
+
+        const numericTotalPoints = Number(value);
+
+        if (
+            !Number.isFinite(numericTotalPoints) ||
+            numericTotalPoints < 0
+        ) {
+            throw new AppError(
+                400,
+                'INVALID_TOTAL_POINTS',
+                'Assessment total points must be a non-negative number.'
+            );
+        }
+
+        return numericTotalPoints;
+    }
+
+    static _generateSafeFileName(originalName) {
+        const normalizedName =
+            String(originalName || '').replace(/\\/g, '/');
+
+        const baseName =
+            path.posix.basename(normalizedName);
+
+        const extension =
+            path.posix.extname(baseName).toLowerCase();
+
+        const safeExtension =
+            /^\.[a-z0-9]{1,10}$/.test(extension)
+                ? extension
+                : '';
+
+        return `${crypto.randomUUID()}${safeExtension}`;
     }
 
     static async _insertQuestion(assessmentId, questionInput) {
