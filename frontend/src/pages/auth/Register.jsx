@@ -1,139 +1,201 @@
 // frontend/src/pages/auth/Register.jsx
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
-
-export const LogoAcognix = () => (
-  <div className="flex items-center justify-center gap-2.5 mb-4">
-    <svg width="34" height="34" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="grad-leg" x1="50" y1="15" x2="80" y2="85" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#8B3DFF" />
-          <stop offset="100%" stopColor="#6B21FF" />
-        </linearGradient>
-        <linearGradient id="grad-left" x1="20" y1="85" x2="35" y2="50" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#00A3FF" />
-          <stop offset="100%" stopColor="#3B82F6" />
-        </linearGradient>
-        <linearGradient id="grad-swoosh" x1="25" y1="70" x2="95" y2="45" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#00C2FF" />
-          <stop offset="50%" stopColor="#3B82F6" />
-          <stop offset="100%" stopColor="#6B21FF" />
-        </linearGradient>
-      </defs>
-      <path d="M 33 55 L 46 25 C 47.5 21.5 52.5 21.5 54 25 L 76 76" stroke="url(#grad-leg)" strokeWidth="14" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M 22 80 L 26 70" stroke="url(#grad-left)" strokeWidth="14" strokeLinecap="round" />
-      <path d="M 26 65 C 50 78 70 70 92 48 C 65 68 45 74 24 73 Z" fill="url(#grad-swoosh)" />
-    </svg>
-    <span className="text-3xl font-black text-slate-900 tracking-tight">AcogniX</span>
-  </div>
-);
+import { useNavigate, Link } from 'react-router-dom';
+import { useToast } from '../../contexts/ToastContext';
+import { apiRequest } from '../../services/apiClient';
 
 export default function Register() {
-  const [fullname, setFullname] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState('Learner');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  
-  const { register } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useToast();
+
+  const [formData, setFormData] = useState({
+    displayName: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    role: 'LEARNER'
+  });
+
+  const [submitting, setSubmitting] = useState(false);
+
+  const validateEmail = (emailStr) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr);
+  };
+
+  const handleChange = (e) => {
+    setFormData((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setIsLoading(true);
-    
-    // Gửi tham số chuẩn thứ tự: (email, password, displayName, role)
-    const result = await register(email, password, fullname, role);
-    
-    if (result.success) {
-      if (result.role === 'educator' || result.role === 'teacher') {
-        navigate('/teacher-dashboard');
-      } else {
-        navigate('/dashboard');
-      }
-    } else {
-      setError(result.error);
+
+    const { displayName, email, password, confirmPassword, role } = formData;
+    const cleanName = displayName.trim();
+    const cleanEmail = email.trim();
+
+    // 1. Kiểm tra điền thiếu trường
+    if (!cleanName || !cleanEmail || !password || !confirmPassword) {
+      return showToast('Vui lòng điền đầy đủ tất cả các trường thông tin.', 'warning');
     }
-    
-    setIsLoading(false);
+
+    // 2. Kiểm tra định dạng Email
+    if (!validateEmail(cleanEmail)) {
+      return showToast('Địa chỉ Email không đúng định dạng. Vui lòng kiểm tra lại.', 'warning');
+    }
+
+    // 3. Kiểm tra độ dài mật khẩu
+    if (password.length < 6) {
+      return showToast('Mật khẩu phải có độ dài tối thiểu 6 ký tự.', 'warning');
+    }
+
+    // 4. Kiểm tra mật khẩu xác nhận
+    if (password !== confirmPassword) {
+      return showToast('Mật khẩu xác nhận không trùng khớp!', 'error');
+    }
+
+    try {
+      setSubmitting(true);
+      
+      await apiRequest('/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify({
+          displayName: cleanName,
+          email: cleanEmail,
+          password,
+          role
+        })
+      });
+
+      showToast('Đăng ký tài khoản thành công! Vui lòng đăng nhập.', 'success');
+      navigate('/auth/login');
+
+    } catch (err) {
+      console.error('Lỗi đăng ký:', err);
+
+      const status = err.status;
+      const message = err.message || '';
+
+      // 5. Bắt chính xác lỗi đăng ký trùng Email hoặc lỗi kết nối
+      if (status === 409 || message.includes('already registered') || message.includes('EMAIL_ALREADY_REGISTERED')) {
+        showToast('Địa chỉ email này đã được đăng ký. Vui lòng sử dụng email khác hoặc đăng nhập!', 'error');
+      } else if (message.includes('valid email')) {
+        showToast('Địa chỉ email không đúng định dạng.', 'warning');
+      } else if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+        showToast('Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng của bạn.', 'error');
+      } else if (status === 400) {
+        showToast('Thông tin đăng ký không hợp lệ. Vui lòng kiểm tra lại.', 'warning');
+      } else {
+        showToast(message || 'Đăng ký không thành công. Vui lòng thử lại sau.', 'error');
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <>
-      <div className="mb-8 text-center">
-        <LogoAcognix />
-        <h1 className="text-2xl font-bold text-gray-900">Create Your Account</h1>
-        <p className="text-sm text-gray-500 mt-1">Join AcogniX to start your AI-powered learning journey.</p>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-xl border border-gray-100">
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-black text-gray-800">Tạo Tài Khoản Mới</h1>
+          <p className="text-xs text-gray-400 mt-1">Bắt đầu trải nghiệm không gian học tập thông minh cùng AcogniX AI</p>
+        </div>
 
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 max-w-md mx-auto w-full">
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {error && (
-            <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
-              {error}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Họ và tên</label>
+            <input
+              type="text"
+              name="displayName"
+              value={formData.displayName}
+              onChange={handleChange}
+              placeholder="Nguyễn Văn A"
+              className="w-full text-xs border border-gray-200 rounded-xl p-3 outline-none focus:border-blue-500 bg-gray-50/50"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Địa chỉ Email</label>
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="nhanvien@acognix.com"
+              className="w-full text-xs border border-gray-200 rounded-xl p-3 outline-none focus:border-blue-500 bg-gray-50/50"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Vai trò của bạn</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setFormData((prev) => ({ ...prev, role: 'LEARNER' }))}
+                className={`py-2.5 rounded-xl text-xs font-bold border transition ${
+                  formData.role === 'LEARNER'
+                    ? 'border-blue-600 bg-blue-50 text-blue-600'
+                    : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                Học viên (Learner)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData((prev) => ({ ...prev, role: 'EDUCATOR' }))}
+                className={`py-2.5 rounded-xl text-xs font-bold border transition ${
+                  formData.role === 'EDUCATOR'
+                    ? 'border-blue-600 bg-blue-50 text-blue-600'
+                    : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                Giảng viên (Educator)
+              </button>
             </div>
-          )}
-
-          <div>
-            <label htmlFor="fullname" className="text-sm font-semibold text-gray-700">Full Name</label>
-            <input 
-              type="text" id="fullname" required
-              value={fullname} onChange={(e) => setFullname(e.target.value)}
-              placeholder="An Nguyen"
-              className="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
-            />
           </div>
 
           <div>
-            <label htmlFor="email" className="text-sm font-semibold text-gray-700">Email Address</label>
-            <input 
-              type="email" id="email" required
-              value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
-            />
-          </div>
-
-          {/* Ô nhập Password */}
-          <div>
-            <label htmlFor="password" className="text-sm font-semibold text-gray-700">Password</label>
-            <input 
-              type="password" id="password" required minLength="6"
-              value={password} onChange={(e) => setPassword(e.target.value)}
+            <label className="block text-xs font-bold text-gray-700 mb-1">Mật khẩu</label>
+            <input
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
               placeholder="••••••••"
-              className="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
+              className="w-full text-xs border border-gray-200 rounded-xl p-3 outline-none focus:border-blue-500 bg-gray-50/50"
             />
           </div>
 
-          {/* Khớp giá trị với Backend AuthEnums */}
           <div>
-            <label htmlFor="role" className="text-sm font-semibold text-gray-700">I am a...</label>
-            <select 
-              id="role" required
-              value={role} onChange={(e) => setRole(e.target.value)}
-              className="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
-            >
-              <option value="Learner">Student (Learner)</option>
-              <option value="Educator">Teacher (Educator)</option>
-            </select>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Xác nhận mật khẩu</label>
+            <input
+              type="password"
+              name="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              placeholder="••••••••"
+              className="w-full text-xs border border-gray-200 rounded-xl p-3 outline-none focus:border-blue-500 bg-gray-50/50"
+            />
           </div>
 
-          <button 
-            type="submit" 
-            disabled={isLoading}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all"
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3 rounded-xl transition shadow-md disabled:opacity-50 mt-2"
           >
-            {isLoading ? 'Creating Account...' : 'Create Account'}
+            {submitting ? 'Đang tạo tài khoản...' : 'Tạo Tài Khoản'}
           </button>
         </form>
-      </div>
 
-      <p className="text-center text-sm text-gray-500 mt-6">
-        Already have an account? <Link to="/auth/login" className="font-semibold text-blue-600 hover:underline">Log in</Link>
-      </p>
-    </>
+        <p className="text-center text-xs text-gray-500 mt-6">
+          Đã có tài khoản?{' '}
+          <Link to="/auth/login" className="text-blue-600 font-bold hover:underline">
+            Đăng nhập ngay
+          </Link>
+        </p>
+      </div>
+    </div>
   );
 }

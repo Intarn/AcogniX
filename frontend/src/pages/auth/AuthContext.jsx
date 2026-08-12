@@ -1,62 +1,69 @@
-// frontend/src/contexts/AuthContext.jsx
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { apiRequest } from '../services/apiClient'; // apiClient để gọi backend
+// src/contexts/AuthContext.jsx
+import { createContext, useState, useEffect } from 'react';
+import { apiRequest } from '../services/apiClient';
 
-// Tạo Context
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
-// Tạo Provider Component
-export const AuthProvider = ({ children }) => {
+export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true); // Bắt đầu với trạng thái loading
+  const [loading, setLoading] = useState(true);
 
+  // Restore session khi reload trang
   useEffect(() => {
-    // Hàm này sẽ được gọi khi ứng dụng tải lần đầu để kiểm tra session
-    const validateSession = async () => {
+    const savedUser = localStorage.getItem('currentUser');
+    const token = localStorage.getItem('accessToken');
+    if (savedUser && token) {
       try {
-        // Backend cần có một endpoint (ví dụ: /api/auth/session) để xác thực token
-        // và trả về thông tin user nếu hợp lệ.
-        const sessionUser = await apiRequest('/auth/session', { method: 'GET' });
-        if (sessionUser) {
-          setUser(sessionUser); // Lưu thông tin user (bao gồm cả role)
-        }
-      } catch (error) {
-        console.log('Không tìm thấy session hợp lệ.');
-        setUser(null);
-      } finally {
-        setLoading(false); // Kết thúc loading
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('accessToken');
       }
-    };
-
-    validateSession();
+    }
+    setLoading(false);
   }, []);
 
-  // Hàm đăng nhập
+  // HÀM LOGIN CHUẨN
   const login = async (email, password) => {
-    const sessionData = await apiRequest('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    setUser(sessionData.user); // Giả sử backend trả về { user: {..., role: '...'} }
-    return sessionData.user;
+    try {
+      const data = await apiRequest('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+
+      // Nếu không có token trả về -> Coi như thất bại
+      if (!data || !data.token) {
+        throw new Error('Đăng nhập thất bại. Không nhận được mã xác thực.');
+      }
+
+      // Lưu Session
+      localStorage.setItem('accessToken', data.token);
+      
+      const userInfo = { 
+        email, 
+        role: data.userRole || 'LEARNER',
+        token: data.token 
+      };
+      
+      setUser(userInfo);
+      localStorage.setItem('currentUser', JSON.stringify(userInfo));
+
+      return data.userRole; // Trả về role để Login.jsx điều hướng
+    } catch (err) {
+      // QUAN TRỌNG: BẮT BUỘC PHẢI THROW LỖI RA NGOÀI ĐỂ Login.jsx CÓ THỂ CATCH VÀ BÁO TOAST ERROR
+      throw err;
+    }
   };
 
-  // Hàm đăng xuất
-  const logout = async () => {
-    await apiRequest('/auth/logout', { method: 'POST' });
+  const logout = () => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('currentUser');
     setUser(null);
   };
 
-  const value = { user, loading, login, logout };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
-
-// Custom hook để sử dụng AuthContext dễ dàng hơn
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+  return (
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}

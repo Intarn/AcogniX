@@ -35,7 +35,8 @@ import CourseDetail from "../pages/learner/CourseDetail";
 import Progress from "../pages/learner/Progress";
 import DeckManagement from "../pages/learner/DeckManagement";
 import Flashcards from "../pages/learner/Flashcards";
-
+import AIPracticeQuizzes from "../pages/learner/AIPracticeQuizzes";
+import PracticeQuizViewer from "../pages/learner/PracticeQuizViewer";
 
 /**
  * Component này điều hướng người dùng từ trang chủ ('/') đến dashboard
@@ -159,6 +160,14 @@ export const router = createBrowserRouter([
       {
         path: "assessments",
         element: <Assessments />
+      },
+      {
+        path: "ai-quizzes",
+        element: <AIPracticeQuizzes />
+      },
+      {
+        path: "ai-quizzes/study",
+        element: <PracticeQuizViewer />
       },
       {
         path: "notes",

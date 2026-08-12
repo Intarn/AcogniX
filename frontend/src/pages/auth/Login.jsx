@@ -1,108 +1,148 @@
+// frontend/src/pages/auth/Login.jsx
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { LogoAcognix } from './Register';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function Login() {
+  const navigate = useNavigate();
+  const { login } = useAuth();
+  const { showToast } = useToast();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  
-  const { login } = useAuth();
-  const navigate = useNavigate();
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit =
-    async (e) => {
-      e.preventDefault();
+  const validateEmail = (emailStr) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr);
+  };
 
-      setError('');
-      setIsLoading(true);
+  // Hàm ánh xạ mọi lỗi thành thông báo tiếng Việt chuẩn xác
+  const getVietnameseError = (err) => {
+    const msg = (err?.message || '').toLowerCase();
+    const status = err?.status;
 
+    if (
+      status === 401 || 
+      msg.includes('incorrect email or password') || 
+      msg.includes('invalid') || 
+      msg.includes('credentials')
+    ) {
+      return 'Email hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại!';
+    }
+    if (
+      status === 403 || 
+      msg.includes('banned') || 
+      msg.includes('suspended')
+    ) {
+      return 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Quản trị viên để được hỗ trợ.';
+    }
+    if (
+      status === 500 || 
+      msg.includes('session creation failed') || 
+      msg.includes('unable to log in')
+    ) {
+      return 'Hệ thống gặp sự cố khi xử lý đăng nhập. Vui lòng thử lại sau.';
+    }
+    if (
+      msg.includes('failed to fetch') || 
+      msg.includes('networkerror')
+    ) {
+      return 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại đường truyền mạng.';
+    }
+    return 'Email hoặc mật khẩu không chính xác. Vui lòng thử lại!';
+  };
 
-      const result =
-        await login(
-          email,
-          password
-        );
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
+    const cleanEmail = email.trim();
+    const cleanPassword = password.trim();
 
-      if (
-        result.success
-      ) {
-        if (
-          !result.redirectTo
-        ) {
-          setError(
-            'Login succeeded but no redirect route was returned.'
-          );
+    if (!cleanEmail || !cleanPassword) {
+      return showToast('Vui lòng nhập đầy đủ Email và Mật khẩu.', 'warning');
+    }
 
-          setIsLoading(false);
-          return;
-        }
+    if (!validateEmail(cleanEmail)) {
+      return showToast('Địa chỉ Email không đúng định dạng. Vui lòng kiểm tra lại.', 'warning');
+    }
 
+    try {
+      setSubmitting(true);
+      
+      const userRole = await login(cleanEmail, cleanPassword);
 
-  navigate(
-    result.redirectTo
-  );
-}
+      if (!userRole) {
+        throw new Error('Incorrect email or password.');
+      }
 
+      showToast('Đăng nhập thành công! Đang chuyển hướng...', 'success');
 
-      setIsLoading(false);
-    };
+      const role = String(userRole).toUpperCase();
+      if (role === 'SYSTEM_ADMINISTRATOR') {
+        navigate('/admin/dashboard');
+      } else if (role === 'EDUCATOR') {
+        navigate('/educator/dashboard');
+      } else {
+        navigate('/learner/dashboard');
+      }
+
+    } catch (err) {
+      console.error('Lỗi đăng nhập:', err);
+      // Hiển thị thông báo hoàn toàn bằng tiếng Việt
+      showToast(getVietnameseError(err), 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <>
-      <div className="mb-8 text-center">
-        <LogoAcognix />
-        <h1 className="text-2xl font-bold text-gray-900">Welcome Back!</h1>
-        <p className="text-sm text-gray-500 mt-1">Log in to continue your AI-powered learning journey.</p>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-xl border border-gray-100">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-black text-gray-800">Chào mừng trở lại!</h1>
+          <p className="text-xs text-gray-400 mt-1">Đăng nhập để tiếp tục không gian học tập thông minh cùng AI</p>
+        </div>
 
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {error && (
-            <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
-              {error}
-            </div>
-          )}
-
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="text-sm font-semibold text-gray-700">Email Address</label>
-            <input 
-              type="email" id="email" required
-              value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
+            <label className="block text-xs font-bold text-gray-700 mb-1">Địa chỉ Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="student@acognix.com"
+              className="w-full text-xs border border-gray-200 rounded-xl p-3 outline-none focus:border-blue-500 bg-gray-50/50"
             />
           </div>
 
           <div>
-            <div className="flex justify-between items-center">
-              <label htmlFor="password" className="text-sm font-semibold text-gray-700">Password</label>
-              <Link to="#" className="text-xs font-semibold text-blue-600 hover:underline">Forgot password?</Link>
-            </div>
-            <input 
-              type="password" id="password" required
-              value={password} onChange={(e) => setPassword(e.target.value)}
+            <label className="block text-xs font-bold text-gray-700 mb-1">Mật khẩu</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="mt-1 w-full bg-gray-50 text-sm text-gray-700 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-200 transition-all border border-gray-200 focus:border-blue-400"
+              className="w-full text-xs border border-gray-200 rounded-xl p-3 outline-none focus:border-blue-500 bg-gray-50/50"
             />
           </div>
 
-          <button 
-            type="submit" 
-            disabled={isLoading}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all"
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-3 rounded-xl transition shadow-md disabled:opacity-50 mt-2"
           >
-            {isLoading ? 'Logging In...' : 'Log In'}
+            {submitting ? 'Đang xác thực...' : 'Đăng Nhập'}
           </button>
         </form>
-      </div>
 
-      <p className="text-center text-sm text-gray-500 mt-6">
-        Don't have an account? <Link to="/auth/register" className="font-semibold text-blue-600 hover:underline">Sign up</Link>
-      </p>
-    </>
+        <p className="text-center text-xs text-gray-500 mt-6">
+          Chưa có tài khoản?{' '}
+          <Link to="/auth/register" className="text-blue-600 font-bold hover:underline">
+            Đăng ký ngay
+          </Link>
+        </p>
+      </div>
+    </div>
   );
 }
