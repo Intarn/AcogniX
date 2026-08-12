@@ -44,14 +44,9 @@ async function generateQuiz(projectId, questionCount, difficulty) {
     }
 }
 
-async function generateFlashcards(projectId, materialId, flashcardCount, length) {
+async function generateFlashcards(projectId, flashcardCount, length) {
     try {
-        const response = await client.post('/api/generate-flashcards', { 
-            projectId, 
-            materialId, 
-            flashcardCount, 
-            length 
-        });
+        const response = await client.post('/api/generate-flashcards', { projectId, flashcardCount, length });
         return response.data;
     } catch (error) {
         handleServiceError(error);

@@ -18,20 +18,11 @@ async def generate_flashcards(req: FlashcardRequest):
     safe_count = min(max(int(req.flashcardCount), MIN_FLASHCARDS), MAX_FLASHCARDS)
     safe_length = req.length if req.length in {"short", "detailed"} else "short"
 
-    try:
-        context_chunks = retrieve_relevant_chunks(
-            req.projectId,
-            "key terms and definitions",
-            top_k=8,
-            material_id=req.materialId,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-
+    context_chunks = retrieve_relevant_chunks(req.projectId, "key terms and definitions", top_k=8)
     if not context_chunks:
         raise HTTPException(
             status_code=422,
-            detail="This material has no processed, readable content yet. Please extract it first.",
+            detail="Please select at least one Learning Material as active context before generating flashcards.",
         )
 
     prompt = build_flashcard_prompt(context_chunks, safe_count, safe_length)
@@ -42,6 +33,7 @@ async def generate_flashcards(req: FlashcardRequest):
     except AIInvalidResponseError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except ValueError as e:
+        # UC-07 alt flow: document has no clear concepts suitable for flashcards
         raise HTTPException(
             status_code=422,
             detail="Document is unsuitable for automatic flashcard generation. Try using the AI Tutor instead.",
