@@ -25,6 +25,15 @@ router.get(
   NoteController.getProjectNotes
 );
 
+router.get(
+    '/notes',
+    requireAuth,
+    authorize(
+        UserRole.LEARNER
+    ),
+    NoteController.getAllNotes
+);
+
 // UC-25: Save a new Personal Note
 router.post(
   '/projects/:projectId/notes',
