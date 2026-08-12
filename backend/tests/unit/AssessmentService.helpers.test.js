@@ -48,8 +48,8 @@ function createTableRouter(queues) {
 function assessmentRow(overrides = {}) {
   return {
     assessmentId: 'a-1', courseId: 'c-1', title: 'Quiz', description: null,
-    assessmentType: AssessmentType.QUIZ, instructionFileUrl: null,
-    startAt: '2026-08-10T08:00:00.000Z', deadline: '2026-08-10T09:00:00.000Z',
+    type: AssessmentType.QUIZ, instructionFileUrl: null,
+    startTime: '2026-08-10T08:00:00.000Z', deadline: '2026-08-10T09:00:00.000Z',
     totalPoints: 10, allowLateSubmission: false, status: AssessmentStatus.SCHEDULED,
     createdAt: '2026-08-01T00:00:00.000Z', ...overrides
   };

@@ -77,9 +77,9 @@ function row(overrides = {}) {
     courseId: 'c-1',
     title: 'Quiz 1',
     description: null,
-    assessmentType: AssessmentType.QUIZ,
+    type: AssessmentType.QUIZ,
     instructionFileUrl: null,
-    startAt: null,
+    startTime: null,
     deadline: null,
     totalPoints: 10,
     allowLateSubmission: false,
@@ -146,7 +146,7 @@ describe('AssessmentService UC-09 unit tests', () => {
       expect(insertChain.insert).toHaveBeenCalledWith(expect.objectContaining({
         courseId: 'c-1',
         title: 'Quiz 1',
-        assessmentType: AssessmentType.QUIZ,
+        type: AssessmentType.QUIZ,
         totalPoints: 10,
         status: AssessmentStatus.DRAFT
       }));
@@ -167,7 +167,7 @@ describe('AssessmentService UC-09 unit tests', () => {
         .mockResolvedValueOnce(new Question({ questionId: 'q-2', content: 'Q2', type: QuestionType.ESSAY }));
 
       const saved = row({
-        startAt: '2026-08-10T08:00:00.000Z',
+        startTime: '2026-08-10T08:00:00.000Z',
         deadline: '2026-08-10T09:00:00.000Z',
         status: AssessmentStatus.SCHEDULED
       });
@@ -176,7 +176,7 @@ describe('AssessmentService UC-09 unit tests', () => {
       const result = await AssessmentService.createAssessment('c-1', 'e-1', {
         title: 'Quiz 1',
         type: AssessmentType.QUIZ,
-        startTime: saved.startAt,
+        startTime: saved.startTime,
         deadline: saved.deadline,
         questions: [
           { content: 'Q1', type: QuestionType.ESSAY },
@@ -216,7 +216,7 @@ describe('AssessmentService UC-09 unit tests', () => {
       const result = await AssessmentService.getManagedAssessments('c-1', 'e-1');
 
       expect(chain.eq).toHaveBeenCalledWith('courseId', 'c-1');
-      expect(chain.order).toHaveBeenCalledWith('startAt', { ascending: false });
+      expect(chain.order).toHaveBeenCalledWith('startTime', { ascending: false });
       expect(AssessmentService._synchronizeAssessmentStatus).toHaveBeenCalledTimes(2);
       expect(result).toHaveLength(2);
       expect(result[0]).toBeInstanceOf(Assessment);
@@ -262,7 +262,7 @@ describe('AssessmentService UC-09 unit tests', () => {
       jest.spyOn(AssessmentService, '_synchronizeAssessmentStatus').mockResolvedValue(row());
       jest.spyOn(AssessmentService, '_notifyCourseLearners').mockResolvedValue({ sent: false });
 
-      const saved = row({ title: 'Updated', assessmentType: AssessmentType.ASSIGNMENT, totalPoints: 20 });
+      const saved = row({ title: 'Updated', type: AssessmentType.ASSIGNMENT, totalPoints: 20 });
       const chain = mutationSingle({ data: saved, error: null });
       createTableRouter({ Assessment: [chain] });
 
@@ -277,7 +277,7 @@ describe('AssessmentService UC-09 unit tests', () => {
       expect(chain.update).toHaveBeenCalledWith({
         title: 'Updated',
         description: null,
-        assessmentType: AssessmentType.ASSIGNMENT,
+        type: AssessmentType.ASSIGNMENT,
         totalPoints: 20,
         allowLateSubmission: true
       });
@@ -387,7 +387,7 @@ describe('AssessmentService UC-09 unit tests', () => {
       jest.spyOn(AssessmentService, '_notifyCourseLearners').mockResolvedValue({});
 
       const saved = row({
-        startAt: '2026-08-10T08:00:00.000Z',
+        startTime: '2026-08-10T08:00:00.000Z',
         deadline: '2026-08-10T09:00:00.000Z',
         status: AssessmentStatus.SCHEDULED
       });
@@ -399,7 +399,7 @@ describe('AssessmentService UC-09 unit tests', () => {
       );
 
       expect(chain.update).toHaveBeenCalledWith({
-        startAt: '2026-08-10T08:00:00.000Z',
+        startTime: '2026-08-10T08:00:00.000Z',
         deadline: '2026-08-10T09:00:00.000Z',
         status: AssessmentStatus.SCHEDULED
       });
@@ -436,7 +436,7 @@ describe('AssessmentService UC-09 unit tests', () => {
     ])('publishes as $name', async ({ now, expected }) => {
       jest.useFakeTimers().setSystemTime(new Date(now));
       const original = row({
-        startAt: '2026-08-10T08:00:00.000Z',
+        startTime: '2026-08-10T08:00:00.000Z',
         deadline: '2026-08-10T09:00:00.000Z',
         status: AssessmentStatus.DRAFT
       });
