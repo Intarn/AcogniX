@@ -114,6 +114,208 @@ class AssessmentService {
         return assessments;
     }
 
+    // UC-09: Get one Assessment managed by the curent Educator
+    static async getAssessmentById(
+        assessmentId,
+        educatorId
+    ) {
+        const assessmentRow =
+            await this._findAssessmentById(
+                assessmentId
+            );
+
+        await this._assertCourseManagedBy(
+            assessmentRow.courseId,
+            educatorId
+        );
+
+        const synchronized =
+            await this._synchronizeAssessmentStatus(
+                assessmentRow
+            );
+
+        return this._toAssessment(
+            synchronized
+        );
+    }
+
+    // UC-09: Get Questions for Educator view
+    static async getAssessmentQuestions(
+        assessmentId,
+        educatorId
+    ) {
+        const assessmentRow =
+            await this._findAssessmentById(
+                assessmentId
+            );
+
+        await this._assertCourseManagedBy(
+            assessmentRow.courseId,
+            educatorId
+        );
+
+        return this._loadQuestionsWithOptions(
+            assessmentId,
+            true
+        );
+    }
+
+    // UC-09: Get all Submissions of an Assessment
+    static async getAssessmentSubmissions(
+        assessmentId,
+        educatorId
+    ) {
+        const assessmentRow =
+            await this._findAssessmentById(
+                assessmentId
+            );
+
+        await this._assertCourseManagedBy(
+            assessmentRow.courseId,
+            educatorId
+        );
+
+        const {
+            data,
+            error
+        } = await supabase
+            .from('Submission')
+            .select('*')
+            .eq(
+                'assessmentId',
+                assessmentId
+            )
+            .order(
+                'submittedAt',
+                {
+                    ascending: false
+                }
+            );
+
+        if (error) {
+            throw error;
+        }
+
+        return (data || []).map(
+            row =>
+                this._toSubmission(
+                    row
+                )
+        );
+    }
+
+    // UC-09: Educator reviews one Submission
+    static async getSubmissionById(
+        submissionId,
+        educatorId
+    ) {
+        
+        // Find Submission
+        const {
+            data: submissionRow,
+            error: submissionError
+        } = await supabase
+            .from('Submission')
+            .select('*')
+            .eq(
+                'submissionId',
+                submissionId
+            )
+            .maybeSingle();
+
+        if (submissionError) {
+            throw submissionError;
+        }
+
+        if (!submissionRow) {
+            throw new AppError(
+                404,
+                'SUBMISSION_NOT_FOUND',
+                'The Submission could not be found.'
+            );
+        }
+
+
+        // Find its Assessment
+        const assessmentRow =
+            await this._findAssessmentById(
+                submissionRow.assessmentId
+            );
+
+
+
+        // Verify Educator owns Course
+        await this._assertCourseManagedBy(
+            assessmentRow.courseId,
+            educatorId
+        );
+
+        // 4. Load answers
+        const {
+            data: answerRows,
+            error: answerError
+        } = await supabase
+            .from('SubmissionAnswer')
+            .select('*')
+            .eq(
+                'submissionId',
+                submissionId
+            );
+
+        if (answerError) {
+            throw answerError;
+        }
+
+
+        // 5. Load Learner information
+        const {
+            data: learner,
+            error: learnerError
+        } = await supabase
+            .from('User')
+            .select(
+                'userId, email, displayName, avatarUrl'
+            )
+            .eq(
+                'userId',
+                submissionRow.learnerId
+            )
+            .maybeSingle();
+
+        if (learnerError) {
+            throw learnerError;
+        }
+
+
+        const submission =
+            this._toSubmission(
+                submissionRow
+            );
+
+
+        return {
+            submission,
+
+            learner:
+                learner || null,
+
+            answers:
+                (answerRows || []).map(
+                    row =>
+                        new SubmissionAnswer(
+                            row
+                        )
+                ),
+
+            files:
+                Array.isArray(
+                    submission.uploadedFileUrls
+                )
+                    ? submission.uploadedFileUrls
+                    : []
+        };
+    }
+
     // UC-09: Alternative Flow 1: Active Assessments cannot be edited.
     static async updateAssessment(assessmentId, educatorId, changes) {
         const assessmentRow = await this._findAssessmentById(assessmentId);
@@ -518,6 +720,115 @@ class AssessmentService {
         return new Question(data);
     }
 
+    static async deleteQuestion(
+        assessmentId,
+        questionId,
+        educatorId
+    ) {
+        // 1. Find Assessment
+        const assessmentRow =
+            await this._findAssessmentById(
+                assessmentId
+            );
+
+
+        // 2. Verify Educator manages this Course
+        await this._assertCourseManagedBy(
+            assessmentRow.courseId,
+            educatorId
+        );
+
+
+        // 3. Synchronize Assessment status
+        const synchronized =
+            await this._synchronizeAssessmentStatus(
+                assessmentRow
+            );
+
+        const assessment =
+            this._toAssessment(
+                synchronized
+            );
+
+
+        // 4. Active / closed Assessment
+        // cannot have Questions changed
+        if (!assessment.isEditable()) {
+            throw new AppError(
+                409,
+                'ASSESSMENT_NOT_EDITABLE',
+                'Questions cannot be changed after the Assessment becomes active.'
+            );
+        }
+
+
+        // 5. Make sure Question exists
+        // and belongs to this Assessment
+        const {
+            data: questionRow,
+            error: questionError
+        } = await supabase
+            .from('Question')
+            .select(
+                'questionId, assessmentId'
+            )
+            .eq(
+                'questionId',
+                questionId
+            )
+            .eq(
+                'assessmentId',
+                assessmentId
+            )
+            .maybeSingle();
+
+
+        if (questionError) {
+            throw questionError;
+        }
+
+
+        if (!questionRow) {
+            throw new AppError(
+                404,
+                'QUESTION_NOT_FOUND',
+                'The Question could not be found in this Assessment.'
+            );
+        }
+
+
+        // 6. Delete Question
+        const {
+            error: deleteError
+        } = await supabase
+            .from('Question')
+            .delete()
+            .eq(
+                'questionId',
+                questionId
+            )
+            .eq(
+                'assessmentId',
+                assessmentId
+            );
+
+
+        if (deleteError) {
+            throw deleteError;
+        }
+
+
+        // 7. Notify Learners
+        await this._notifyCourseLearners({
+            courseId:
+                assessmentRow.courseId,
+
+            assessmentId,
+
+            action: 'UPDATED'
+        });
+    }
+
     // UC-09: Configure or change the Assessment schedule before it becomes active.
     static async scheduleAssessment(assessmentId, educatorId, startTime, deadline) {
         const assessmentRow = await this._findAssessmentById(assessmentId);
@@ -556,6 +867,161 @@ class AssessmentService {
         });
 
         return this._toAssessment(data);
+    }
+
+    // Supporting endpoint for Educator Gradebook
+    static async getCourseGradebook(
+        courseId,
+        educatorId
+    ) {
+        /*
+        * Verify Course ownership.
+        */
+        await this._assertCourseManagedBy(
+            courseId,
+            educatorId
+        );
+
+
+        /*
+        * Load Course information.
+        */
+        const {
+            data: course,
+            error: courseError
+        } = await supabase
+            .from('Course')
+            .select(
+                'courseId, educatorId, subjectName, courseCode, description, status'
+            )
+            .eq(
+                'courseId',
+                courseId
+            )
+            .maybeSingle();
+
+        if (courseError) {
+            throw courseError;
+        }
+
+
+        /*
+        * Load Assessments.
+        */
+        const assessments =
+            await this.getManagedAssessments(
+                courseId,
+                educatorId
+            );
+
+
+        /*
+        * Load approved Learners.
+        */
+        const {
+            data: enrollments,
+            error: enrollmentError
+        } = await supabase
+            .from('Enrollment')
+            .select(
+                'learnerId'
+            )
+            .eq(
+                'courseId',
+                courseId
+            )
+            .eq(
+                'status',
+                EnrollmentStatus.APPROVED
+            );
+
+        if (enrollmentError) {
+            throw enrollmentError;
+        }
+
+
+        const learnerIds = [
+            ...new Set(
+                (enrollments || []).map(
+                    item =>
+                        item.learnerId
+                )
+            )
+        ];
+
+
+        let learners = [];
+
+        if (learnerIds.length > 0) {
+            const {
+                data,
+                error
+            } = await supabase
+                .from('User')
+                .select(
+                    'userId, email, displayName, avatarUrl'
+                )
+                .in(
+                    'userId',
+                    learnerIds
+                );
+
+            if (error) {
+                throw error;
+            }
+
+            learners =
+                data || [];
+        }
+
+
+        /*
+        * Load all Submissions for all
+        * Assessments in this Course.
+        */
+        const assessmentIds =
+            assessments.map(
+                assessment =>
+                    assessment.assessmentId
+            );
+
+
+        let submissions = [];
+
+        if (
+            assessmentIds.length > 0
+        ) {
+            const {
+                data,
+                error
+            } = await supabase
+                .from('Submission')
+                .select('*')
+                .in(
+                    'assessmentId',
+                    assessmentIds
+                );
+
+            if (error) {
+                throw error;
+            }
+
+            submissions =
+                (data || []).map(
+                    row =>
+                        this._toSubmission(
+                            row
+                        )
+                );
+        }
+
+
+        return {
+            course,
+            assessments,
+            learners,
+            submissions
+        };
     }
 
     // Design-level operation from the Assessment Management class diagram 
@@ -1081,6 +1547,114 @@ class AssessmentService {
             submission: this._toSubmission(data),
             analytics
         };
+    }
+
+    // UC-10: List Assessments visible to the current Learner
+    static async getLearnerAssessments(
+        learnerId
+    ) {
+        /*
+        * 1. Find approved Courses
+        */
+        const {
+            data: enrollments,
+            error: enrollmentError
+        } = await supabase
+            .from('Enrollment')
+            .select(
+                'courseId'
+            )
+            .eq(
+                'learnerId',
+                learnerId
+            )
+            .eq(
+                'status',
+                EnrollmentStatus.APPROVED
+            );
+
+        if (enrollmentError) {
+            throw enrollmentError;
+        }
+
+
+        const courseIds = [
+            ...new Set(
+                (enrollments || []).map(
+                    item =>
+                        item.courseId
+                )
+            )
+        ];
+
+
+        if (
+            courseIds.length === 0
+        ) {
+            return [];
+        }
+
+
+        /*
+        * 2. Load Assessments
+        */
+        const {
+            data: assessmentRows,
+            error: assessmentError
+        } = await supabase
+            .from('Assessment')
+            .select('*')
+            .in(
+                'courseId',
+                courseIds
+            )
+            .order(
+                'startTime',
+                {
+                    ascending: true
+                }
+            );
+
+        if (assessmentError) {
+            throw assessmentError;
+        }
+
+
+        /*
+        * 3. Synchronize status and hide DRAFTs.
+        */
+        const assessments = [];
+
+        for (
+            const row of
+            assessmentRows || []
+        ) {
+            const synchronized =
+                await this
+                    ._synchronizeAssessmentStatus(
+                        row
+                    );
+
+            const assessment =
+                this._toAssessment(
+                    synchronized
+                );
+
+            /*
+            * Learners must not see Educator drafts.
+            */
+            if (
+                assessment.status !==
+                AssessmentStatus.DRAFT
+            ) {
+                assessments.push(
+                    assessment
+                );
+            }
+        }
+
+
+        return assessments;
     }
     
     // Design-level operation for manually reviewed essay/file submissions.
