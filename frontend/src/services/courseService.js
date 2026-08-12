@@ -30,3 +30,9 @@ export const enrollInClass =
       }
     );
   };
+
+export function getEnrolledCourses() {
+  return apiRequest(
+    '/enrollment'
+  );
+};

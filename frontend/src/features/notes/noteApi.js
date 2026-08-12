@@ -39,7 +39,7 @@ export function createNote(
       })
     }
   );
-}
+};
 
 
 // Update an existing Personal Note
@@ -61,7 +61,7 @@ export function updateNote(
       })
     }
   );
-}
+};
 
 
 // Delete an existing Personal Note
@@ -74,4 +74,10 @@ export function deleteNote(
       method: 'DELETE'
     }
   );
-}
+};
+
+export function getAllNotes() {
+  return apiRequest(
+    '/workspace/notes'
+  );
+};

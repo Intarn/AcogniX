@@ -1,13 +1,13 @@
 // frontend/src/pages/learner/MyCourses.jsx
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getCourses, enrollInClass } from '../../services/courseService';
+import { getEnrolledCourses, joinClass } from '../../services/courseService';
 
 export default function MyCourses() {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
-  const [filter, setFilter] = useState('In Progress');
+  const [filter, setFilter] = useState('Active');
 
   // Trạng thái quản lý Modal Enroll in Class
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -24,21 +24,56 @@ export default function MyCourses() {
       const rawList = Array.isArray(data) ? data : data?.courses || data?.data || [];
       
       // Map trực tiếp thuộc tính trả về từ DB/Server
-      const realCourses = rawList.map((course, index) => {
-        const id = course.courseId || course.id || index + 1;
-        const progress = typeof course.progress === 'number' ? course.progress : 0;
-        const isCompleted = course.isCompleted ?? (progress >= 100);
+      const realCourses = rawList.map(
+        (course) => {
+          return {
+            id: course.courseId,
 
-        return {
-          id,
-          name: course.name || course.title || 'Untitled Course',
-          teacher: course.teacher || course.instructor || course.instructorName || 'Unknown Instructor',
-          category: course.category || course.code || 'General',
-          progress,
-          isCompleted,
-          imageUrl: course.imageUrl || course.coverUrl || null
-        };
-      });
+            name:
+              course.subjectName 
+              `Untitled Course`,
+
+            teacher:
+              course.educator?.displayName ||
+              course.educator?.email ||
+              'Unknown Educator',
+
+            category:
+              course.courseCode ||
+              'General',
+
+            description:
+              course.description ||
+              '',
+
+            status:
+              course.status,
+
+            enrollmentStatus:
+              course.enrollmentStatus,
+
+            approvedAt:
+              course.approvedAt,
+
+            /*
+            
+      Backend hiện chưa trả progress.
+      Tạm thời giữ 0 để UI cũ
+      vẫn render được.*/
+      progress: 0,
+
+            /*
+            
+      Course.status hiện là
+      ACTIVE / ARCHIVED,
+      không phải completion progress.*/
+      isCompleted:
+        course.status === 'ARCHIVED',
+
+            imageUrl: null
+          };
+        }
+      );
 
       setCourses(realCourses);
     } catch (err) {
@@ -76,11 +111,24 @@ export default function MyCourses() {
   };
 
   // Lọc khóa học theo trạng thái
-  const filteredCourses = courses.filter(course => {
-    if (filter === 'Completed') return course.isCompleted;
-    if (filter === 'In Progress') return !course.isCompleted;
-    return true;
-  });
+  const filteredCourses =
+    courses.filter(
+      (course) => {
+        if (filter === 'Active') {
+          return (
+            course.status === 'ACTIVE'
+          );
+        }
+
+        if (filter === 'Archived') {
+          return (
+            course.status === 'ARCHIVED'
+          );
+        }
+
+        return true;
+      }
+    );
 
   if (loading) {
     return (
@@ -100,8 +148,8 @@ export default function MyCourses() {
             onChange={(e) => setFilter(e.target.value)}
             className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white outline-none focus:ring-1 focus:ring-blue-300"
           >
-            <option value="In Progress">In Progress</option>
-            <option value="Completed">Completed</option>
+            <option value="Active">Active</option>
+            <option value="Archived">Archived</option>
             <option value="All Courses">All Courses</option>
           </select>
 

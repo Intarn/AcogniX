@@ -23,3 +23,9 @@ export const submitAssessment = async (assessmentId, answers) => {
     throw error;
   }
 };
+
+export function getLearnerAssessments() {
+  return apiRequest(
+    '/assessments'
+  );
+};

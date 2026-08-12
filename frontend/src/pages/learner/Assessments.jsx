@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAssessments } from '../../services/assessmentService';
+import { getLearnerAssessments } from '../../services/assessmentService';
 
 export default function Assessments() {
   const [assessments, setAssessments] = useState([]);
@@ -12,7 +12,7 @@ export default function Assessments() {
     const fetchList = async () => {
       try {
         setLoading(true);
-        const data = await getAssessments();
+        const data = await getLearnerAssessments();
         setAssessments(Array.isArray(data) ? data : data.assessments || []);
       } catch (err) {
         console.error("Lỗi API assessments:", err);

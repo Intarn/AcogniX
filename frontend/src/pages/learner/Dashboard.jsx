@@ -8,6 +8,7 @@ import { Line } from 'react-chartjs-2';
 import { getProgressOverview } from '../../services/progressService';
 import { getWorkspaceData, uploadProjectMaterial } from '../../services/workspaceService';
 import { getProjectNotes } from '../../features/notes/noteApi';
+import { getAllNotes } from '../../features/notes/noteApi';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip);
 
@@ -239,102 +240,40 @@ export default function Dashboard() {
       );
 
 
-      /*
-      * Bước 4:
-      * Sau khi đã có Project IDs
-      * mới gọi Notes API.
-      *
-      * Vì Note API là project-scoped,
-      * load Notes của từng Project.
-      */
-      const validProjects =
-        projects.filter(
-          (project) =>
-            Boolean(
-              project.projectId
-            )
-        );
+      const noteResult =
+      await getAllNotes();
 
 
-      const noteResponses =
-        await Promise.all(
-          validProjects.map(
-            (project) =>
-              getProjectNotes(
-                project.projectId
-              ).catch(
-                (error) => {
-                  console.error(
-                    `Unable to load notes for project ${project.projectId}:`,
-                    error
-                  );
-
-                  return {
-                    notes: []
-                  };
-                }
-              )
-          )
-        );
-
-
-      /*
-      * Backend trả:
-      *
-      * {
-      *   projectId,
-      *   count,
-      *   notes
-      * }
-      *
-      * → gom notes của tất cả Project.
-      */
       const allNotes =
-        noteResponses.flatMap(
-          (response) => {
-            if (
-              Array.isArray(response)
-            ) {
-              return response;
-            }
-
-            if (
-              Array.isArray(
-                response?.notes
-              )
-            ) {
-              return response.notes;
-            }
-
-            return [];
-          }
-        );
+        Array.isArray(
+          noteResult?.notes
+        )
+          ? noteResult.notes
+          : [];
 
 
-      /*
-      * Note mới cập nhật nhất
-      * nằm trên cùng.
-      */
-      allNotes.sort(
-        (a, b) => {
-          const dateA =
-            new Date(
-              a.updatedAt ||
-              a.createdAt ||
-              0
-            ).getTime();
+      setRecentNotes(
+        allNotes
+          .slice(0, 3)
+          .map(
+            (note) => ({
+              id:
+                note.noteId,
 
-          const dateB =
-            new Date(
-              b.updatedAt ||
-              b.createdAt ||
-              0
-            ).getTime();
+              title:
+                note.title 
+                `Untitled Note`,
 
-          return dateB - dateA;
-        }
+              date:
+                note.updatedAt || 
+                note.createdAt,
+
+              projectName:
+                note.project?.name ||
+                null
+            })
+          )
       );
-
 
       setRecentNotes(
         allNotes.slice(0, 3)

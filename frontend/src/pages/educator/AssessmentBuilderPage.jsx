@@ -1599,30 +1599,59 @@ export default function AssessmentBuilderPage() {
   }
 
 
-  function confirmDeleteQuestion() {
+  async function confirmDeleteQuestion() {
     if (!questionToDelete) {
       return;
     }
 
+    try {
+      /*
+      * Existing Question:
+      * delete it from Backend first.
+      */
+      if (
+        assessmentId &&
+        questionToDelete.questionId
+      ) {
+        await deleteAssessmentQuestion(
+          assessmentId,
+          questionToDelete.questionId
+        );
+      }
 
-    setQuestions(
-      (previous) =>
-        previous.filter(
-          (question) =>
-            Number(
-              question.questionId
-            ) !==
-            Number(
-              questionToDelete
-                .questionId
-            )
-        )
-    );
+
+      /*
+      * Remove from local UI
+      * only after Backend succeeds.
+      */
+      setQuestions(
+        (previous) =>
+          previous.filter(
+            (question) =>
+              String(
+                question.questionId
+              ) !==
+              String(
+                questionToDelete
+                  .questionId
+              )
+          )
+      );
 
 
-    setQuestionToDelete(
-      null
-    );
+      setQuestionToDelete(null);
+
+    } catch (error) {
+      console.error(
+        'Unable to delete question:',
+        error
+      );
+
+      alert(
+        error.message ||
+        'Unable to delete question.'
+      );
+    }
   }
 
 
