@@ -14,7 +14,9 @@ function mockSupabaseChain(result) {
     single: jest.fn().mockResolvedValue(result),
     maybeSingle: jest.fn().mockResolvedValue(result),
     insert: jest.fn().mockReturnThis(),
-    update: jest.fn().mockReturnThis()
+    update: jest.fn().mockReturnThis(),
+    // BỔ SUNG QUAN TRỌNG: Biến object này thành một Promise (Thenable) để có thể dùng await trực tiếp
+    then: jest.fn((resolve) => resolve(result))
   };
 }
 
@@ -38,8 +40,11 @@ describe('AnalyticsService unit tests', () => {
 
   describe('recordStudyPing', () => {
     test('creates new session if no recent session exists', async () => {
+      // Mock trả về null cho lần gọi fetch đầu tiên, và trả về session mới cho lần gọi insert
+      supabase.from.mockImplementationOnce(() => mockSupabaseChain({ data: null, error: null }));
+      
       const insertMock = mockSupabaseChain({ data: { sessionId: 's-1' }, error: null });
-      supabase.from.mockImplementation(() => insertMock);
+      supabase.from.mockImplementationOnce(() => insertMock);
 
       const result = await AnalyticsService.recordStudyPing('l-1', 'c-1');
       
@@ -70,16 +75,16 @@ describe('AnalyticsService unit tests', () => {
 
   describe('getClassPerformance', () => {
     test('calculates class average as percentage and finds at-risk students', async () => {
-      // Mock course ownership
+      // 1. Mock course ownership
       supabase.from.mockImplementationOnce(() => mockSupabaseChain({ data: { educatorId: 'e-1' }, error: null }));
-      // Mock enrollments
+      // 2. Mock enrollments
       supabase.from.mockImplementationOnce(() => mockSupabaseChain({ data: [{ learnerId: 'l-1', User: { displayName: 'John' } }], error: null }));
-      // Mock submissions
+      // 3. Mock submissions (Có hàm then() ở trên nên data sẽ được đọc thành công)
       supabase.from.mockImplementationOnce(() => mockSupabaseChain({ 
         data: [{ score: 4, learnerId: 'l-1', Assessment: { totalPoints: 10 } }], // 40%
         error: null 
       }));
-      // Mock study sessions
+      // 4. Mock study sessions
       supabase.from.mockImplementationOnce(() => mockSupabaseChain({ data: [], error: null }));
 
       const result = await AnalyticsService.getClassPerformance('c-1', 'e-1');
