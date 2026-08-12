@@ -33,10 +33,37 @@ router.patch(
 );
 
 router.delete(
+  '/:assessmentId/questions/:questionId',
+  requireAuth,
+  authorize(UserRole.EDUCATOR),
+  AssessmentController.deleteQuestion
+);
+
+router.delete(
   '/:assessmentId',
   requireAuth,
   authorize(UserRole.EDUCATOR),
   AssessmentController.deleteAssessment
+);
+
+router.get(
+    '/:assessmentId',
+    requireAuth,
+    authorize(
+        UserRole.EDUCATOR
+    ),
+    AssessmentController
+        .getAssessmentById
+);
+
+router.get(
+    '/:assessmentId/questions',
+    requireAuth,
+    authorize(
+        UserRole.EDUCATOR
+    ),
+    AssessmentController
+        .getAssessmentQuestions
 );
 
 router.post(
@@ -75,6 +102,15 @@ router.post(
   AssessmentController.uploadInstructionFile
 );
 
+router.get(
+    '/',
+    requireAuth,
+    authorize(
+        UserRole.LEARNER
+    ),
+    AssessmentController
+        .getLearnerAssessments
+);
 
 // UC-10: Learner submits Assessments
 router.get(
@@ -118,6 +154,36 @@ router.patch(
   requireAuth,
   authorize(UserRole.EDUCATOR),
   AssessmentController.gradeSubmission
+);
+
+router.get(
+    '/:assessmentId/submissions',
+    requireAuth,
+    authorize(
+        UserRole.EDUCATOR
+    ),
+    AssessmentController
+        .getAssessmentSubmissions
+);
+
+router.get(
+    '/submissions/:submissionId',
+    requireAuth,
+    authorize(
+        UserRole.EDUCATOR
+    ),
+    AssessmentController
+        .getSubmissionById
+);
+
+router.get(
+    '/courses/:courseId/gradebook',
+    requireAuth,
+    authorize(
+        UserRole.EDUCATOR
+    ),
+    AssessmentController
+        .getCourseGradebook
 );
 
 module.exports = router;
