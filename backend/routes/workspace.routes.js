@@ -18,6 +18,7 @@ router.post('/projects', WorkspaceController.createProject);
 // Route to handle file upload (expects field named 'material')
 router.post('/projects/:projectId/materials', upload.single('material'), WorkspaceController.uploadMaterial);
 
+router.delete('/projects/:projectId/materials/:materialId', WorkspaceController.deleteMaterial);
 // UC-25: Get all Personal Notes in an AI Project
 router.get(
   '/projects/:projectId/notes',

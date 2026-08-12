@@ -1,23 +1,15 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+// frontend/src/main.jsx
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { RouterProvider } from "react-router-dom";
+import { AuthProvider } from "./contexts/AuthContext";
+import { router } from "./routes/router"; // Đảm bảo dòng này trỏ đúng đường dẫn
+import "./index.css";
 
-import {
-  RouterProvider
-} from 'react-router';
-
-import { router }
-  from './routes/router';
-
-import './index.css';
-
-ReactDOM
-  .createRoot(
-    document.getElementById('root')
-  )
-  .render(
-    <React.StrictMode>
-      <RouterProvider
-        router={router}
-      />
-    </React.StrictMode>
-  );
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
+  </React.StrictMode>
+);

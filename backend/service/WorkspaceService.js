@@ -6,9 +6,10 @@ class WorkspaceService {
   static async getWorkspace(learnerId) {
     const { data, error } = await supabase
       .from('AI_Workspace')
-      .select('*, AI_Project(*)')
+      .select('*, AI_Project(*, Learning_Material(*))') 
       .eq('learnerId', learnerId)
       .single();
+      
     if (error) throw new Error('WORKSPACE_NOT_FOUND');
     return data;
   }
@@ -126,11 +127,11 @@ class WorkspaceService {
     const { data: insertedData, error: dbError } = await supabase.from('Learning_Material').insert([{
       projectId,
       title: originalName,
-      sourceUrl: urlData.publicUrl, 
+      sourceUrl: urlData.publicUrl,
       sourceType: 'PERSONAL',
       fileType: mimeType,
       sizeBytes: sizeBytes,
-      selectedAsContext: false
+      selectedAsContext: true
     }]).select().single();
 
     if (dbError) throw dbError;
@@ -179,6 +180,34 @@ class WorkspaceService {
 
     return data;
   }
+
+  static async deletePersonalMaterial(projectId, materialId) {
+    // Sửa .eq('id', materialId) thành .eq('materialId', materialId)
+    const { data: material } = await supabase
+      .from('Learning_Material')
+      .select('sourceUrl')
+      .eq('materialId', materialId) // Sửa ở đây
+      .eq('projectId', projectId)
+      .maybeSingle();
+    
+    if (material && material.sourceUrl) {
+      const filePath = material.sourceUrl.split('materials/')[1];
+      if (filePath) {
+        await supabase.storage.from('materials').remove([filePath]);
+      }
+    }
+
+    // Sửa .eq('id', materialId) thành .eq('materialId', materialId)
+    const { error } = await supabase
+      .from('Learning_Material')
+      .delete()
+      .eq('materialId', materialId) // Sửa ở đây
+      .eq('projectId', projectId);
+      
+    if (error) throw error;
+    return true;
+  }
 }
+
 
 module.exports = WorkspaceService;
