@@ -24,6 +24,132 @@ class NoteService {
         );
     }
 
+    static async getAllNotes(
+        learnerId
+    ) {
+        /*
+        * 1. Find Learner Workspace
+        */
+        const {
+            data: workspace,
+            error: workspaceError
+        } = await supabase
+            .from('AI_Workspace')
+            .select('workspaceId')
+            .eq(
+                'learnerId',
+                learnerId
+            )
+            .maybeSingle();
+
+
+        if (workspaceError) {
+            throw workspaceError;
+        }
+
+
+        /*
+        * Learner may not have a Workspace yet.
+        */
+        if (!workspace) {
+            return [];
+        }
+
+
+        /*
+        * 2. Find all Projects
+        * belonging to this Workspace
+        */
+        const {
+            data: projects,
+            error: projectError
+        } = await supabase
+            .from('AI_Project')
+            .select(
+                'projectId, name, type'
+            )
+            .eq(
+                'workspaceId',
+                workspace.workspaceId
+            );
+
+
+        if (projectError) {
+            throw projectError;
+        }
+
+
+        if (
+            !projects ||
+            projects.length === 0
+        ) {
+            return [];
+        }
+
+
+        const projectIds =
+            projects.map(
+                project =>
+                    project.projectId
+            );
+
+
+        /*
+        * 3. Load all Notes
+        * belonging to those Projects
+        */
+        const {
+            data: notes,
+            error: noteError
+        } = await supabase
+            .from('PersonalNote')
+            .select('*')
+            .in(
+                'projectId',
+                projectIds
+            )
+            .order(
+                'updatedAt',
+                {
+                    ascending: false
+                }
+            );
+
+
+        if (noteError) {
+            throw noteError;
+        }
+
+
+        /*
+        * 4. Attach basic Project info
+        * for frontend display.
+        */
+        const projectMap =
+            new Map(
+                projects.map(
+                    project => [
+                        project.projectId,
+                        project
+                    ]
+                )
+            );
+
+
+        return (notes || []).map(
+            note => ({
+                ...new PersonalNote(
+                    note
+                ),
+
+                project:
+                    projectMap.get(
+                        note.projectId
+                    ) || null
+            })
+        );
+    }
+
 
     // UC-25 Basic Flow: Save a new Personal Note
     static async createNote(projectId, learnerId, content, title = undefined) {
