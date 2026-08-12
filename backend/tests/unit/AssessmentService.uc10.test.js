@@ -66,9 +66,9 @@ function assessmentRow(overrides = {}) {
     courseId: 'c-1',
     title: 'Quiz 1',
     description: null,
-    assessmentType: AssessmentType.QUIZ,
+    type: AssessmentType.QUIZ,
     instructionFileUrl: null,
-    startAt: '2026-08-10T08:00:00.000Z',
+    startTime: '2026-08-10T08:00:00.000Z',
     deadline: '2026-08-10T09:00:00.000Z',
     totalPoints: 10,
     allowLateSubmission: false,
@@ -388,7 +388,7 @@ describe('AssessmentService UC-10 unit tests', () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-08-10T08:45:00.000Z'));
       jest.spyOn(AssessmentService, '_assertOwnedSubmission').mockResolvedValue(submissionRow());
       jest.spyOn(AssessmentService, '_findAssessmentById').mockResolvedValue(
-        assessmentRow({ assessmentType: AssessmentType.ASSIGNMENT })
+        assessmentRow({ type: AssessmentType.ASSIGNMENT })
       );
       jest.spyOn(AssessmentService, '_loadQuestionsWithOptions').mockResolvedValue([
         new Question({ questionId: 'q-1', content: 'Essay', type: QuestionType.ESSAY, points: 10 })
@@ -415,7 +415,7 @@ describe('AssessmentService UC-10 unit tests', () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-08-10T10:00:00.000Z'));
       jest.spyOn(AssessmentService, '_assertOwnedSubmission').mockResolvedValue(submissionRow());
       jest.spyOn(AssessmentService, '_findAssessmentById').mockResolvedValue(
-        assessmentRow({ assessmentType: AssessmentType.ASSIGNMENT, allowLateSubmission: true })
+        assessmentRow({ type: AssessmentType.ASSIGNMENT, allowLateSubmission: true })
       );
       jest.spyOn(AssessmentService, '_loadQuestionsWithOptions').mockResolvedValue([]);
 
