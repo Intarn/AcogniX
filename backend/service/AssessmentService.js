@@ -1528,16 +1528,6 @@ class AssessmentService {
             );
         }
 
-
-        // 3. Phải có ít nhất một file
-        if (!files || files.length === 0) {
-            throw new AppError(
-                400,
-                'SUBMISSION_FILES_REQUIRED',
-                'Please select at least one file.'
-            );
-        }
-
         // 4. Lấy tên bucket từ .env
         const bucket = process.env.ASSESSMENT_STORAGE_BUCKET;
 
@@ -1596,7 +1586,7 @@ class AssessmentService {
             // Không insert vào Submission_File nữa.
             // Chỉ giữ metadata tạm để trả về Controller.
             uploadedFiles.push({
-                fileName: file.originalname,
+                fileName: originalFileName,
                 fileUrl: filePath,
                 sizeBytes: file.size
             });
@@ -2057,13 +2047,49 @@ class AssessmentService {
             learnerId
         );
 
-        // 2. Submission chỉ được submit một lần
-        
+        const assessmentRow =
+            await this._findAssessmentById(
+                submissionRow.assessmentId
+            );
 
-        // 3. Lấy Assessment tương ứng
-        const assessmentRow = await this._findAssessmentById(
-            submissionRow.assessmentId
-        );
+        if (
+            !assessmentRow.startTime ||
+            !assessmentRow.deadline
+        ) {
+            throw new AppError(
+                409,
+                'ASSESSMENT_SCHEDULE_NOT_CONFIGURED',
+                'This Assessment does not have a valid submission schedule.'
+            );
+        }
+
+        const startTime =
+            new Date(
+                assessmentRow.startTime
+            );
+
+
+        const deadline =
+            new Date(
+                assessmentRow.deadline
+            );
+
+
+        if (
+            Number.isNaN(
+                startTime.getTime()
+            ) ||
+            Number.isNaN(
+                deadline.getTime()
+            ) ||
+            startTime >= deadline
+        ) {
+            throw new AppError(
+                500,
+                'INVALID_ASSESSMENT_SCHEDULE',
+                'The Assessment contains an invalid submission schedule.'
+            );
+        }
 
         const synchronized =
             await this
@@ -2071,7 +2097,7 @@ class AssessmentService {
                     assessmentRow
                 );
 
-        
+
         const assessment =
             this._toAssessment(
                 synchronized
@@ -2081,24 +2107,12 @@ class AssessmentService {
         const now =
             new Date();
 
-        /*
-        * Quiz:
-        * only IN_PROGRESS Submission
-        * may be submitted.
-        */
         const quizCanSubmit =
             assessment.type ===
                 AssessmentType.QUIZ &&
             submissionRow.status ===
                 SubmissionStatus.IN_PROGRESS;
 
-
-        /*
-        * Assignment:
-        * may be initially submitted
-        * or resubmitted while the
-        * Assessment is still open.
-        */
         const assignmentCanSubmit =
             assessment.type ===
                 AssessmentType.ASSIGNMENT &&
@@ -2123,13 +2137,6 @@ class AssessmentService {
             );
         }
 
-        const startTime = new Date(
-            assessmentRow.startTime
-        );
-
-        const deadline = new Date(
-            assessmentRow.deadline
-        );
 
         // 4. Không cho submit trước giờ bắt đầu
         if (now < startTime) {
