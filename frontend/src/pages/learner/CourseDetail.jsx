@@ -6,7 +6,7 @@ import {
 
 import {
   Link,
-  useSearchParams
+  useParams
 } from 'react-router-dom';
 
 import {
@@ -120,8 +120,9 @@ function formatFileSize(
 }
 
 export default function CourseDetail() {
-  const [searchParams] = useSearchParams();
-  const courseId = searchParams.get('id');
+  const {
+    courseId
+  } = useParams();
 
   const [
     course,
@@ -481,1275 +482,892 @@ export default function CourseDetail() {
     );
   }
 
+  const isArchived =
+    course.status ===
+    'ARCHIVED';
+
   return (
-    <main
-      className="
-        flex-1
-        min-h-full
-        bg-gray-50
-        p-6
-        overflow-y-auto
-      "
-    >
-      <div
+    <>
+      {/* =====================================================
+          TOPBAR
+      ===================================================== */}
+      <header
         className="
-          max-w-6xl
-          mx-auto
-          space-y-5
+          min-h-16
+          bg-white
+          border-b
+          border-gray-100
+          flex
+          items-center
+          justify-between
+          gap-4
+          px-6
+          py-3
+          flex-shrink-0
         "
       >
-
-        {/* =========================
-            BREADCRUMB
-        ========================= */}
         <div
           className="
-            flex
-            items-center
-            gap-2
-            text-xs
-            text-gray-500
+            min-w-0
           "
         >
-          <Link
-            to="/learner/my-courses"
-            className="
-              hover:text-blue-600
-              transition-colors
-            "
-          >
-            My Courses
-          </Link>
-
-
-          <span>
-            /
-          </span>
-
-
-          <span
-            className="
-              text-gray-700
-            "
-          >
-            {
-              course.subjectName ||
-              'Course'
-            }
-          </span>
-        </div>
-
-
-        {/* =========================
-            COURSE INFORMATION
-        ========================= */}
-        <section
-          className="
-            bg-white
-            border
-            border-gray-100
-            rounded-2xl
-            shadow-sm
-            p-6
-          "
-        >
+          {/* Breadcrumb */}
           <div
             className="
               flex
-              items-start
-              justify-between
-              gap-5
+              items-center
+              gap-2
+              text-xs
+              text-gray-400
+              mb-1
+            "
+          >
+            <Link
+              to="/learner/my-courses"
+              className="
+                hover:text-blue-600
+                transition
+              "
+            >
+              My Courses
+            </Link>
+
+            <span>
+              /
+            </span>
+
+            <span
+              className="
+                truncate
+                text-gray-500
+              "
+            >
+              {
+                course.subjectName ||
+                'Course'
+              }
+            </span>
+          </div>
+
+
+          {/* Course title + status */}
+          <div
+            className="
+              flex
+              items-center
+              gap-3
+              flex-wrap
+            "
+          >
+            <h1
+              className="
+                text-lg
+                font-bold
+                text-gray-800
+              "
+            >
+              {
+                course.subjectName ||
+                'Untitled Course'
+              }
+            </h1>
+
+
+            <span
+              className={`
+                inline-flex
+                items-center
+                rounded-full
+                px-2.5
+                py-1
+                text-[10px]
+                font-bold
+
+                ${
+                  isArchived
+                    ? `
+                      bg-gray-100
+                      text-gray-600
+                    `
+                    : `
+                      bg-green-100
+                      text-green-700
+                    `
+                }
+              `}
+            >
+              {
+                course.status ||
+                'ACTIVE'
+              }
+            </span>
+          </div>
+        </div>
+      </header>
+
+
+      {/* =====================================================
+          MAIN CONTENT
+      ===================================================== */}
+      <main
+        className="
+          flex-1
+          p-6
+          space-y-6
+          bg-gray-50
+          overflow-y-auto
+        "
+      >
+
+        {/* ===================================================
+            ARCHIVED NOTICE
+        =================================================== */}
+        {isArchived && (
+          <div
+            className="
+              bg-amber-50
+              border
+              border-amber-200
+              rounded-xl
+              px-4
+              py-3
             "
           >
             <div
               className="
-                min-w-0
+                flex
+                items-start
+                gap-3
+              "
+            >
+              <div
+                className="
+                  w-5
+                  h-5
+                  rounded-full
+                  bg-amber-100
+                  text-amber-700
+                  flex
+                  items-center
+                  justify-center
+                  flex-shrink-0
+                  text-xs
+                  font-bold
+                "
+              >
+                !
+              </div>
+
+
+              <div>
+                <p
+                  className="
+                    text-sm
+                    font-semibold
+                    text-amber-800
+                  "
+                >
+                  This course is archived.
+                </p>
+
+                <p
+                  className="
+                    text-xs
+                    text-amber-700
+                    mt-1
+                  "
+                >
+                  Historical course content
+                  remains available for viewing.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+        {/* ===================================================
+            COURSE OVERVIEW
+        =================================================== */}
+        <section
+          className="
+            bg-white
+            rounded-xl
+            border
+            border-gray-100
+            shadow-sm
+            overflow-hidden
+          "
+        >
+          {/* Section header */}
+          <div
+            className="
+              px-6
+              py-4
+              border-b
+              border-gray-100
+            "
+          >
+            <h2
+              className="
+                text-base
+                font-bold
+                text-gray-800
+              "
+            >
+              Course Overview
+            </h2>
+
+            <p
+              className="
+                text-xs
+                text-gray-400
+                mt-1
+              "
+            >
+              Basic information about
+              your classroom.
+            </p>
+          </div>
+
+
+          {/* Course information */}
+          <div
+            className="
+              p-6
+            "
+          >
+            <div
+              className="
+                grid
+                grid-cols-1
+                md:grid-cols-3
+                gap-5
+              "
+            >
+
+              {/* =============================================
+                  COURSE CODE
+              ============================================= */}
+              <div
+                className="
+                  bg-gray-50
+                  rounded-xl
+                  p-4
+                "
+              >
+                <p
+                  className="
+                    text-[11px]
+                    uppercase
+                    tracking-wide
+                    font-semibold
+                    text-gray-400
+                  "
+                >
+                  Course Code
+                </p>
+
+                <p
+                  className="
+                    text-base
+                    font-bold
+                    text-gray-800
+                    mt-2
+                  "
+                >
+                  {
+                    course.courseCode ||
+                    'N/A'
+                  }
+                </p>
+              </div>
+
+
+              {/* =============================================
+                  EDUCATOR
+              ============================================= */}
+              <div
+                className="
+                  bg-gray-50
+                  rounded-xl
+                  p-4
+                "
+              >
+                <p
+                  className="
+                    text-[11px]
+                    uppercase
+                    tracking-wide
+                    font-semibold
+                    text-gray-400
+                  "
+                >
+                  Educator
+                </p>
+
+                <p
+                  className="
+                    text-base
+                    font-bold
+                    text-gray-800
+                    mt-2
+                  "
+                >
+                  {
+                    course.educator
+                      ?.displayName ||
+                    course.educator
+                      ?.email ||
+                    'Unknown Educator'
+                  }
+                </p>
+              </div>
+
+
+              {/* =============================================
+                  STATUS
+              ============================================= */}
+              <div
+                className="
+                  bg-gray-50
+                  rounded-xl
+                  p-4
+                "
+              >
+                <p
+                  className="
+                    text-[11px]
+                    uppercase
+                    tracking-wide
+                    font-semibold
+                    text-gray-400
+                  "
+                >
+                  Status
+                </p>
+
+                <div
+                  className="
+                    mt-2
+                  "
+                >
+                  <span
+                    className={`
+                      inline-flex
+                      rounded-full
+                      px-3
+                      py-1
+                      text-xs
+                      font-bold
+
+                      ${
+                        isArchived
+                          ? `
+                            bg-gray-200
+                            text-gray-600
+                          `
+                          : `
+                            bg-green-100
+                            text-green-700
+                          `
+                      }
+                    `}
+                  >
+                    {
+                      course.status ||
+                      'ACTIVE'
+                    }
+                  </span>
+                </div>
+              </div>
+            </div>
+
+
+            {/* =============================================
+                DESCRIPTION
+            ============================================= */}
+            <div
+              className="
+                mt-6
+                pt-5
+                border-t
+                border-gray-100
+              "
+            >
+              <p
+                className="
+                  text-[11px]
+                  uppercase
+                  tracking-wide
+                  font-semibold
+                  text-gray-400
+                "
+              >
+                Description
+              </p>
+
+              <p
+                className="
+                  text-sm
+                  text-gray-600
+                  leading-6
+                  mt-2
+                  whitespace-pre-wrap
+                "
+              >
+                {
+                  course.description ||
+                  'No description provided.'
+                }
+              </p>
+            </div>
+          </div>
+        </section>
+
+
+        {/* ===================================================
+            CLASSROOM CONTENT
+        =================================================== */}
+        <section>
+          {/* Section title */}
+          <div
+            className="
+              mb-4
+            "
+          >
+            <h2
+              className="
+                text-base
+                font-bold
+                text-gray-800
+              "
+            >
+              Classroom Content
+            </h2>
+
+            <p
+              className="
+                text-xs
+                text-gray-400
+                mt-1
+              "
+            >
+              Access learning materials,
+              announcements, and assessments
+              for this course.
+            </p>
+          </div>
+
+
+          {/* =================================================
+              CARDS
+          ================================================= */}
+          <div
+            className="
+              grid
+              grid-cols-1
+              md:grid-cols-2
+              xl:grid-cols-3
+              gap-4
+            "
+          >
+
+            {/* =================================================
+                COURSE MATERIALS CARD
+            ================================================= */}
+            <Link
+              to={
+                `/learner/courses/${course.courseId}/materials`
+              }
+              className="
+                group
+                bg-white
+                rounded-xl
+                border
+                border-gray-100
+                shadow-sm
+                p-5
+                hover:border-blue-200
+                hover:shadow-md
+                transition
               "
             >
               <div
                 className="
                   flex
-                  flex-wrap
-                  items-center
-                  gap-2
-                  mb-3
+                  items-start
+                  justify-between
+                  gap-4
                 "
               >
-                <span
+                <div
                   className="
-                    inline-flex
-                    px-2.5
-                    py-1
-                    rounded-full
+                    w-11
+                    h-11
+                    rounded-xl
                     bg-blue-50
-                    text-blue-600
-                    text-xs
-                    font-semibold
+                    flex
+                    items-center
+                    justify-center
+                    flex-shrink-0
                   "
                 >
-                  {
-                    course.courseCode ||
-                    'Course'
-                  }
-                </span>
-
-
-                {course.status && (
-                  <span
+                  <svg
                     className="
-                      inline-flex
-                      px-2.5
-                      py-1
-                      rounded-full
-                      bg-gray-100
-                      text-gray-600
-                      text-xs
-                      font-semibold
+                      w-5
+                      h-5
+                      text-blue-600
                     "
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    {
-                      course.status
-                    }
-                  </span>
-                )}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="
+                        M7 4h10
+                        a2 2 0 012 2v12
+                        a2 2 0 01-2 2H7
+                        a2 2 0 01-2-2V6
+                        a2 2 0 012-2
+                        M9 8h6
+                        M9 12h6
+                        M9 16h4
+                      "
+                    />
+                  </svg>
+                </div>
+
+
+                <span
+                  className="
+                    text-gray-300
+                    text-lg
+                    group-hover:text-blue-500
+                    group-hover:translate-x-1
+                    transition
+                  "
+                >
+                  →
+                </span>
               </div>
 
 
-              <h1
+              <h3
                 className="
-                  text-2xl
+                  text-sm
                   font-bold
-                  text-gray-900
+                  text-gray-800
+                  mt-4
+                  group-hover:text-blue-600
+                  transition
                 "
               >
-                {
-                  course.subjectName ||
-                  'Untitled Course'
-                }
-              </h1>
+                Course Materials
+              </h3>
 
 
               <p
                 className="
-                  text-sm
+                  text-xs
                   text-gray-500
-                  mt-2
+                  mt-1
+                  leading-5
                 "
               >
-                By{' '}
-                {
-                  course.educator
-                    ?.displayName ||
-                  course.educator
-                    ?.email ||
-                  'Unknown Educator'
-                }
+                Browse and view learning
+                materials shared by your
+                educator.
               </p>
 
 
-              {course.description && (
-                <p
+              <div
+                className="
+                  mt-4
+                  pt-4
+                  border-t
+                  border-gray-100
+                "
+              >
+                <span
                   className="
-                    text-sm
-                    text-gray-600
-                    mt-4
-                    max-w-3xl
-                    leading-relaxed
+                    text-xs
+                    font-semibold
+                    text-blue-600
                   "
                 >
-                  {
-                    course.description
-                  }
-                </p>
-              )}
-            </div>
-          </div>
-        </section>
+                  View Materials
+                </span>
+              </div>
+            </Link>
 
 
-        {/* =========================
-            CLASS CONTENT
-        ========================= */}
-        <section
-          className="
-            bg-white
-            border
-            border-gray-100
-            rounded-2xl
-            shadow-sm
-            overflow-hidden
-          "
-        >
-
-          {/* =====================
-              TABS
-          ===================== */}
-          <div
-            className="
-              flex
-              border-b
-              border-gray-100
-            "
-          >
-            <button
-              type="button"
-              onClick={() =>
-                setActiveTab(
-                  'Announcements'
-                )
+            {/* =================================================
+                ANNOUNCEMENTS CARD
+            ================================================= */}
+            <Link
+              to={
+                `/learner/courses/${course.courseId}/announcements`
               }
-              className={`
-                px-6
-                py-4
-                text-sm
-                font-semibold
-                border-b-2
-                transition
-
-                ${
-                  activeTab ===
-                  'Announcements'
-                    ? `
-                      border-blue-600
-                      text-blue-600
-                    `
-                    : `
-                      border-transparent
-                      text-gray-500
-                      hover:text-gray-700
-                    `
-                }
-              `}
-            >
-              Announcements
-
-              <span
-                className="
-                  ml-2
-                  px-2
-                  py-0.5
-                  rounded-full
-                  bg-gray-100
-                  text-[10px]
-                  text-gray-500
-                "
-              >
-                {
-                  announcements.length
-                }
-              </span>
-            </button>
-
-
-            <button
-              type="button"
-              onClick={() =>
-                setActiveTab(
-                  'Materials'
-                )
-              }
-              className={`
-                px-6
-                py-4
-                text-sm
-                font-semibold
-                border-b-2
-                transition
-
-                ${
-                  activeTab ===
-                  'Materials'
-                    ? `
-                      border-blue-600
-                      text-blue-600
-                    `
-                    : `
-                      border-transparent
-                      text-gray-500
-                      hover:text-gray-700
-                    `
-                    
-                }
-              `}
-            >
-              Course Materials
-
-              <span
-                className="
-                  ml-2
-                  px-2
-                  py-0.5
-                  rounded-full
-                  bg-gray-100
-                  text-[10px]
-                  text-gray-500
-                "
-              >
-                {
-                  materials.length
-                }
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                setActiveTab(
-                  'Assessments'
-                )
-              }
-              className={`
-                px-6
-                py-4
-                text-sm
-                font-semibold
-                border-b-2
-                transition
-
-                ${
-                  activeTab ===
-                  'Assessments'
-                    ? `
-                      border-blue-600
-                      text-blue-600
-                    `
-                    : `
-                      border-transparent
-                      text-gray-500
-                      hover:text-gray-700
-                    `
-                }
-              `}
-            >
-              Assessments
-
-              <span
-                className="
-                  ml-2
-                  px-2
-                  py-0.5
-                  rounded-full
-                  bg-gray-100
-                  text-[10px]
-                  text-gray-500
-                "
-              >
-                {assessments.length}
-              </span>
-            </button>
-          </div>
-
-
-          {/* =====================
-              ANNOUNCEMENTS TAB
-          ===================== */}
-          {activeTab ===
-            'Announcements' && (
-            <div
               className="
-                p-6
+                group
+                bg-white
+                rounded-xl
+                border
+                border-gray-100
+                shadow-sm
+                p-5
+                hover:border-amber-200
+                hover:shadow-md
+                transition
               "
             >
               <div
                 className="
-                  mb-5
+                  flex
+                  items-start
+                  justify-between
+                  gap-4
                 "
               >
-                <h2
+                <div
                   className="
+                    w-11
+                    h-11
+                    rounded-xl
+                    bg-amber-50
+                    flex
+                    items-center
+                    justify-center
+                    flex-shrink-0
+                  "
+                >
+                  <svg
+                    className="
+                      w-5
+                      h-5
+                      text-amber-600
+                    "
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="
+                        M18 8
+                        a6 6 0 01-6 6H8
+                        l-4 3v-6
+                        a6 6 0 1114-3
+                      "
+                    />
+                  </svg>
+                </div>
+
+
+                <span
+                  className="
+                    text-gray-300
                     text-lg
-                    font-bold
-                    text-gray-800
+                    group-hover:text-amber-500
+                    group-hover:translate-x-1
+                    transition
                   "
                 >
-                  Announcements
-                </h2>
-
-
-                <p
-                  className="
-                    text-xs
-                    text-gray-500
-                    mt-1
-                  "
-                >
-                  Updates from your educator
-                </p>
+                  →
+                </span>
               </div>
 
 
-              {announcements.length ===
-              0 ? (
-                /*
-                 * UC-16 Alternative Flow:
-                 * no announcement yet.
-                 */
-                <div
+              <h3
+                className="
+                  text-sm
+                  font-bold
+                  text-gray-800
+                  mt-4
+                  group-hover:text-amber-600
+                  transition
+                "
+              >
+                Announcements
+              </h3>
+
+
+              <p
+                className="
+                  text-xs
+                  text-gray-500
+                  mt-1
+                  leading-5
+                "
+              >
+                Read classroom updates and
+                messages posted by your
+                educator.
+              </p>
+
+
+              <div
+                className="
+                  mt-4
+                  pt-4
+                  border-t
+                  border-gray-100
+                "
+              >
+                <span
                   className="
-                    py-16
-                    text-center
+                    text-xs
+                    font-semibold
+                    text-amber-600
                   "
                 >
-                  <div
-                    className="
-                      w-12
-                      h-12
-                      mx-auto
-                      rounded-full
-                      bg-blue-50
-                      flex
-                      items-center
-                      justify-center
-                      mb-3
-                    "
-                  >
-                    <span
-                      className="
-                        text-xl
-                      "
-                    >
-                      📢
-                    </span>
-                  </div>
+                  View Announcements
+                </span>
+              </div>
+            </Link>
 
 
-                  <p
-                    className="
-                      text-sm
-                      font-semibold
-                      text-gray-600
-                    "
-                  >
-                    No announcements yet.
-                  </p>
-
-
-                  <p
-                    className="
-                      text-xs
-                      text-gray-400
-                      mt-1
-                    "
-                  >
-                    Updates from your educator
-                    will appear here.
-                  </p>
-                </div>
-
-              ) : (
-                <div
-                  className="
-                    space-y-3
-                  "
-                >
-                  {announcements.map(
-                    (
-                      announcement
-                    ) => (
-                      <article
-                        key={
-                          announcement
-                            .announcementId
-                        }
-                        className="
-                          border
-                          border-gray-100
-                          rounded-xl
-                          p-4
-                          bg-gray-50/50
-                        "
-                      >
-                        <div
-                          className="
-                            flex
-                            items-start
-                            gap-3
-                          "
-                        >
-                          <div
-                            className="
-                              w-10
-                              h-10
-                              rounded-lg
-                              bg-blue-100
-                              text-blue-600
-                              flex
-                              items-center
-                              justify-center
-                              flex-shrink-0
-                            "
-                          >
-                            📢
-                          </div>
-
-
-                          <div
-                            className="
-                              flex-1
-                              min-w-0
-                            "
-                          >
-                            <div
-                              className="
-                                flex
-                                flex-wrap
-                                items-start
-                                justify-between
-                                gap-2
-                              "
-                            >
-                              <h3
-                                className="
-                                  text-sm
-                                  font-bold
-                                  text-gray-800
-                                "
-                              >
-                                {
-                                  announcement
-                                    .title
-                                }
-                              </h3>
-
-
-                              <span
-                                className="
-                                  text-[11px]
-                                  text-gray-400
-                                "
-                              >
-                                {
-                                  formatDateTime(
-                                    announcement
-                                      .publishedAt
-                                  )
-                                }
-                              </span>
-                            </div>
-
-
-                            <p
-                              className="
-                                text-sm
-                                text-gray-600
-                                mt-3
-                                leading-relaxed
-                                whitespace-pre-wrap
-                              "
-                            >
-                              {
-                                announcement
-                                  .body
-                              }
-                            </p>
-
-
-                            {Array.isArray(
-                              announcement
-                                .attachmentUrls
-                            ) &&
-                              announcement
-                                .attachmentUrls
-                                .length >
-                                0 && (
-                              <div
-                                className="
-                                  mt-4
-                                  pt-3
-                                  border-t
-                                  border-gray-100
-                                "
-                              >
-                                <p
-                                  className="
-                                    text-[11px]
-                                    font-semibold
-                                    text-gray-500
-                                    mb-2
-                                  "
-                                >
-                                  Attachments
-                                </p>
-
-
-                                <div
-                                  className="
-                                    flex
-                                    flex-wrap
-                                    gap-2
-                                  "
-                                >
-                                  {
-                                    announcement
-                                      .attachmentUrls
-                                      .map(
-                                        (
-                                          url,
-                                          index
-                                        ) => (
-                                          <a
-                                            key={
-                                              `${announcement.announcementId}-${index}`
-                                            }
-                                            href={
-                                              url
-                                            }
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="
-                                              px-3
-                                              py-1.5
-                                              rounded-lg
-                                              bg-white
-                                              border
-                                              border-gray-200
-                                              text-xs
-                                              font-semibold
-                                              text-blue-600
-                                              hover:bg-blue-50
-                                              transition
-                                            "
-                                          >
-                                            Attachment{' '}
-                                            {
-                                              index +
-                                              1
-                                            }
-                                          </a>
-                                        )
-                                      )
-                                  }
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </article>
-                    )
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-
-          {/* =====================
-              MATERIALS TAB
-          ===================== */}
-          {activeTab ===
-            'Materials' && (
-            <div
+            {/* =================================================
+                ASSESSMENTS CARD
+            ================================================= */}
+            <Link
+              to={
+                `/learner/courses/${course.courseId}/assessments`
+              }
               className="
-                p-6
+                group
+                bg-white
+                rounded-xl
+                border
+                border-gray-100
+                shadow-sm
+                p-5
+                hover:border-emerald-200
+                hover:shadow-md
+                transition
               "
             >
               <div
                 className="
-                  mb-5
+                  flex
+                  items-start
+                  justify-between
+                  gap-4
                 "
               >
-                <h2
-                  className="
-                    text-lg
-                    font-bold
-                    text-gray-800
-                  "
-                >
-                  Course Materials
-                </h2>
-
-
-                <p
-                  className="
-                    text-xs
-                    text-gray-500
-                    mt-1
-                  "
-                >
-                  Materials shared by your educator
-                </p>
-              </div>
-
-
-              {materials.length ===
-              0 ? (
-                /*
-                 * UC-16 Alternative Flow:
-                 * no material yet.
-                 */
                 <div
                   className="
-                    py-16
-                    text-center
+                    w-11
+                    h-11
+                    rounded-xl
+                    bg-emerald-50
+                    flex
+                    items-center
+                    justify-center
+                    flex-shrink-0
                   "
                 >
-                  <div
+                  <svg
                     className="
-                      w-12
-                      h-12
-                      mx-auto
-                      rounded-full
-                      bg-blue-50
-                      flex
-                      items-center
-                      justify-center
-                      mb-3
+                      w-5
+                      h-5
+                      text-emerald-600
                     "
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <span
-                      className="
-                        text-xl
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="
+                        M9 5H7
+                        a2 2 0 00-2 2v12
+                        a2 2 0 002 2h10
+                        a2 2 0 002-2V7
+                        a2 2 0 00-2-2h-2
+                        M9 5
+                        a3 3 0 006 0
+                        M9 12h6
+                        M9 16h6
                       "
-                    >
-                      📄
-                    </span>
-                  </div>
-
-
-                  <p
-                    className="
-                      text-sm
-                      font-semibold
-                      text-gray-600
-                    "
-                  >
-                    No materials have been uploaded for this class.
-                  </p>
-
-
-                  <p
-                    className="
-                      text-xs
-                      text-gray-400
-                      mt-1
-                    "
-                  >
-                    Materials shared by your educator
-                    will appear here.
-                  </p>
+                    />
+                  </svg>
                 </div>
 
-              ) : (
-                <div
+
+                <span
                   className="
-                    space-y-3
-                  "
-                >
-                  {materials.map(
-                    (
-                      material
-                    ) => {
-                      const fileSize =
-                        formatFileSize(
-                          material
-                            .sizeBytes
-                        );
-
-
-                      const typeLabel =
-                        material
-                          .resourceType ===
-                        'LINK'
-                          ? 'External Link'
-                          : getFileTypeLabel(
-                              material
-                                .fileType
-                            );
-
-
-                      return (
-                        <div
-                          key={
-                            material
-                              .materialId
-                          }
-                          className="
-                            border
-                            border-gray-100
-                            rounded-xl
-                            p-4
-                            flex
-                            items-center
-                            justify-between
-                            gap-4
-                            bg-white
-                            hover:border-blue-200
-                            hover:shadow-sm
-                            transition
-                          "
-                        >
-                          <div
-                            className="
-                              flex
-                              items-center
-                              gap-3
-                              min-w-0
-                            "
-                          >
-                            <div
-                              className="
-                                w-11
-                                h-11
-                                rounded-xl
-                                bg-blue-50
-                                text-blue-600
-                                flex
-                                items-center
-                                justify-center
-                                flex-shrink-0
-                              "
-                            >
-                              <span
-                                className="
-                                  text-lg
-                                "
-                              >
-                                {
-                                  material
-                                    .resourceType ===
-                                  'LINK'
-                                    ? '🔗'
-                                    : '📄'
-                                }
-                              </span>
-                            </div>
-
-
-                            <div
-                              className="
-                                min-w-0
-                              "
-                            >
-                              <h3
-                                className="
-                                  text-sm
-                                  font-semibold
-                                  text-gray-800
-                                  truncate
-                                "
-                              >
-                                {
-                                  material
-                                    .title ||
-                                  'Untitled Material'
-                                }
-                              </h3>
-
-
-                              {material
-                                .description && (
-                                <p
-                                  className="
-                                    text-xs
-                                    text-gray-500
-                                    mt-1
-                                    line-clamp-2
-                                  "
-                                >
-                                  {
-                                    material
-                                      .description
-                                  }
-                                </p>
-                              )}
-
-
-                              <div
-                                className="
-                                  flex
-                                  flex-wrap
-                                  items-center
-                                  gap-2
-                                  mt-2
-                                  text-[11px]
-                                  text-gray-400
-                                "
-                              >
-                                <span>
-                                  {
-                                    typeLabel
-                                  }
-                                </span>
-
-
-                                {fileSize && (
-                                  <>
-                                    <span>
-                                      •
-                                    </span>
-
-
-                                    <span>
-                                      {
-                                        fileSize
-                                      }
-                                    </span>
-                                  </>
-                                )}
-
-
-                                {material
-                                  .uploadedAt && (
-                                  <>
-                                    <span>
-                                      •
-                                    </span>
-
-
-                                    <span>
-                                      {
-                                        formatDateTime(
-                                          material
-                                            .uploadedAt
-                                        )
-                                      }
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-
-                          {material
-                            .resourceUrl ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleOpenMaterial(
-                                  material
-                                )
-                              }
-                              className="
-                                flex-shrink-0
-                                px-4
-                                py-2
-                                rounded-lg
-                                bg-blue-50
-                                text-blue-600
-                                text-xs
-                                font-semibold
-                                hover:bg-blue-100
-                                transition
-                              "
-                            >
-                              {
-                                material
-                                  .resourceType ===
-                                'LINK'
-                                  ? 'Open Link'
-                                  : 'Open'
-                              }
-                            </button>
-
-                          ) : (
-                            <span
-                              className="
-                                flex-shrink-0
-                                text-xs
-                                font-medium
-                                text-red-400
-                              "
-                            >
-                              Unavailable
-                            </span>
-                          )}
-                        </div>
-                      );
-                    }
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab ===
-            'Assessments' && (
-            <div className="p-6">
-
-              <div className="mb-5">
-                <h2
-                  className="
+                    text-gray-300
                     text-lg
-                    font-bold
-                    text-gray-800
+                    group-hover:text-emerald-500
+                    group-hover:translate-x-1
+                    transition
                   "
                 >
-                  Assessments
-                </h2>
-
-                <p
-                  className="
-                    text-xs
-                    text-gray-500
-                    mt-1
-                  "
-                >
-                  Official quizzes and assignments
-                  for this course.
-                </p>
+                  →
+                </span>
               </div>
 
 
-              {assessments.length ===
-              0 ? (
-                <div
+              <h3
+                className="
+                  text-sm
+                  font-bold
+                  text-gray-800
+                  mt-4
+                  group-hover:text-emerald-600
+                  transition
+                "
+              >
+                Assessments
+              </h3>
+
+
+              <p
+                className="
+                  text-xs
+                  text-gray-500
+                  mt-1
+                  leading-5
+                "
+              >
+                View and complete official
+                quizzes and assignments for
+                this course.
+              </p>
+
+
+              <div
+                className="
+                  mt-4
+                  pt-4
+                  border-t
+                  border-gray-100
+                "
+              >
+                <span
                   className="
-                    py-16
-                    text-center
+                    text-xs
+                    font-semibold
+                    text-emerald-600
                   "
                 >
-                  <div
-                    className="
-                      w-12
-                      h-12
-                      mx-auto
-                      rounded-full
-                      bg-emerald-50
-                      flex
-                      items-center
-                      justify-center
-                      mb-3
-                    "
-                  >
-                    <span className="text-xl">
-                      📝
-                    </span>
-                  </div>
+                  View Assessments
+                </span>
+              </div>
+            </Link>
 
-                  <p
-                    className="
-                      text-sm
-                      font-semibold
-                      text-gray-600
-                    "
-                  >
-                    No assessments are available
-                    for this course.
-                  </p>
-                </div>
-
-              ) : (
-                <div className="space-y-3">
-                  {assessments.map(
-                    (assessment) => {
-                      const isOpen =
-                        assessment.status ===
-                        'IN_PROGRESS';
-
-
-                      return (
-                        <div
-                          key={
-                            assessment
-                              .assessmentId
-                          }
-                          className="
-                            border
-                            border-gray-100
-                            rounded-xl
-                            p-4
-                            bg-white
-                            flex
-                            items-center
-                            justify-between
-                            gap-4
-                            hover:border-blue-200
-                            hover:shadow-sm
-                            transition
-                          "
-                        >
-                          <div
-                            className="
-                              flex
-                              items-start
-                              gap-3
-                              min-w-0
-                            "
-                          >
-                            <div
-                              className="
-                                w-11
-                                h-11
-                                rounded-xl
-                                bg-emerald-50
-                                flex
-                                items-center
-                                justify-center
-                                flex-shrink-0
-                              "
-                            >
-                              📝
-                            </div>
-
-
-                            <div className="min-w-0">
-                              <div
-                                className="
-                                  flex
-                                  items-center
-                                  flex-wrap
-                                  gap-2
-                                "
-                              >
-                                <h3
-                                  className="
-                                    text-sm
-                                    font-bold
-                                    text-gray-800
-                                  "
-                                >
-                                  {
-                                    assessment.title
-                                  }
-                                </h3>
-
-
-                                <span
-                                  className="
-                                    px-2
-                                    py-0.5
-                                    rounded-full
-                                    bg-gray-100
-                                    text-[10px]
-                                    font-semibold
-                                    text-gray-600
-                                  "
-                                >
-                                  {
-                                    assessment.type
-                                  }
-                                </span>
-
-
-                                <span
-                                  className="
-                                    px-2
-                                    py-0.5
-                                    rounded-full
-                                    bg-blue-50
-                                    text-[10px]
-                                    font-semibold
-                                    text-blue-600
-                                  "
-                                >
-                                  {
-                                    assessment.status
-                                  }
-                                </span>
-                              </div>
-
-
-                              {assessment.description && (
-                                <p
-                                  className="
-                                    text-xs
-                                    text-gray-500
-                                    mt-1
-                                  "
-                                >
-                                  {
-                                    assessment
-                                      .description
-                                  }
-                                </p>
-                              )}
-
-
-                              <div
-                                className="
-                                  flex
-                                  flex-wrap
-                                  gap-3
-                                  mt-2
-                                  text-[11px]
-                                  text-gray-400
-                                "
-                              >
-                                <span>
-                                  {
-                                    assessment
-                                      .totalPoints
-                                  }{' '}
-                                  points
-                                </span>
-
-
-                                {assessment.startTime && (
-                                  <span>
-                                    Starts:{' '}
-                                    {
-                                      formatDateTime(
-                                        assessment
-                                          .startTime
-                                      )
-                                    }
-                                  </span>
-                                )}
-
-
-                                {assessment.deadline && (
-                                  <span>
-                                    Due:{' '}
-                                    {
-                                      formatDateTime(
-                                        assessment
-                                          .deadline
-                                      )
-                                    }
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-
-                          {isOpen ? (
-                            <Link
-                              to={
-                                `/learner/quizzes?id=${assessment.assessmentId}`
-                              }
-                              className="
-                                flex-shrink-0
-                                bg-blue-600
-                                hover:bg-blue-700
-                                text-white
-                                text-xs
-                                font-semibold
-                                px-4
-                                py-2
-                                rounded-lg
-                              "
-                            >
-                              Open
-                            </Link>
-                          ) : (
-                            <span
-                              className="
-                                flex-shrink-0
-                                text-xs
-                                font-semibold
-                                text-gray-400
-                              "
-                            >
-                              {
-                                assessment.status ===
-                                'SCHEDULED'
-                                  ? 'Not Open Yet'
-                                  : 'Closed'
-                              }
-                            </span>
-                          )}
-                        </div>
-                      );
-                    }
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+          </div>
         </section>
-      </div>
-    </main>
+      </main>
+    </>
   );
 }

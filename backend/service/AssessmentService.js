@@ -1186,10 +1186,52 @@ class AssessmentService {
         if (existingError) throw existingError; 
 
         if (existing) {
-            if (existing.status === SubmissionStatus.IN_PROGRESS) {
-                return this._toSubmission(existing);
+
+            /*
+            * Quiz hoặc Assignment
+            * đang làm dở.
+            */
+            if (
+                existing.status ===
+                SubmissionStatus.IN_PROGRESS
+            ) {
+                return this._toSubmission(
+                    existing
+                );
             }
 
+
+            /*
+            * Assignment đã submit nhưng
+            * Assessment vẫn đang mở:
+            *
+            * Learner được phép quay lại
+            * chỉnh sửa và resubmit.
+            */
+            const editableSubmittedAssignment =
+                assessment.type ===
+                    AssessmentType.ASSIGNMENT &&
+                [
+                    SubmissionStatus.SUBMITTED,
+                    SubmissionStatus.PENDING_REVIEW
+                ].includes(
+                    existing.status
+                );
+
+
+            if (
+                editableSubmittedAssignment
+            ) {
+                return this._toSubmission(
+                    existing
+                );
+            }
+
+
+            /*
+            * Quiz đã submit,
+            * hoặc Submission đã GRADED.
+            */
             throw new AppError(
                 409,
                 'ASSESSMENT_ALREADY_SUBMITTED',
@@ -1224,11 +1266,62 @@ class AssessmentService {
             learnerId
         );
 
-        if (submission.status !== SubmissionStatus.IN_PROGRESS) {
+        const assessmentRow =
+            await this._findAssessmentById(
+                submission.assessmentId
+            );
+
+
+        const synchronized =
+            await this
+                ._synchronizeAssessmentStatus(
+                    assessmentRow
+                );
+
+
+        const assessment =
+            this._toAssessment(
+                synchronized
+            );
+
+
+        /*
+        * Quiz:
+        * editable only before submit.
+        */
+        const editableQuiz =
+            assessment.type ===
+                AssessmentType.QUIZ &&
+            submission.status ===
+                SubmissionStatus.IN_PROGRESS;
+
+
+        /*
+        * Assignment:
+        * editable until Assessment
+        * reaches its deadline.
+        */
+        const editableAssignment =
+            assessment.type ===
+                AssessmentType.ASSIGNMENT &&
+            assessment.isOpen() &&
+            [
+                SubmissionStatus.IN_PROGRESS,
+                SubmissionStatus.SUBMITTED,
+                SubmissionStatus.PENDING_REVIEW
+            ].includes(
+                submission.status
+            );
+
+
+        if (
+            !editableQuiz &&
+            !editableAssignment
+        ) {
             throw new AppError(
                 409,
                 'SUBMISSION_NOT_EDITABLE',
-                'A submitted Assessment can no longer be changed.'
+                'This Submission can no longer be changed.'
             );
         }
 
@@ -1289,25 +1382,145 @@ class AssessmentService {
         return new SubmissionAnswer(savedAnswer);
     }
 
-    // UC-10 Basic FLow step 2: Upload asignment files
-    static async uploadFiles(submissionId, learnerId, files) {
-        // 1. Kiểm tra Submission có thuộc Learner hiện tại không
-        const submission = await this._assertOwnedSubmission(
-            submissionId,
-            learnerId
-        );
+    static async getSubmissionAnswers(
+        submissionId,
+        learnerId
+    ) {
+        /*
+        * 1. Verify that this Submission
+        * belongs to the current Learner.
+        */
+        const submission =
+            await this._assertOwnedSubmission(
+                submissionId,
+                learnerId
+            );
 
-        // 2. Chỉ được upload khi Submission còn IN_PROGRESS
-        if (submission.status !== SubmissionStatus.IN_PROGRESS) {
+
+        /*
+        * 2. Load all saved answers.
+        */
+        const {
+            data: answerRows,
+            error: answerError
+        } =
+            await supabase
+                .from('SubmissionAnswer')
+                .select('*')
+                .eq(
+                    'submissionId',
+                    submission.submissionId
+                );
+
+
+        if (answerError) {
+            throw answerError;
+        }
+
+
+        return (
+            answerRows || []
+        ).map(
+            row =>
+                new SubmissionAnswer(
+                    row
+                )
+        );
+    }
+
+    // UC-10 Basic FLow step 2: Upload asignment files
+    static async uploadFiles(
+        submissionId,
+        learnerId,
+        files
+    ) {
+        /*
+        * 1. Check Submission ownership.
+        */
+        const submission =
+            await this._assertOwnedSubmission(
+                submissionId,
+                learnerId
+            );
+
+
+        /*
+        * 2. Load Assessment.
+        */
+        const assessmentRow =
+            await this._findAssessmentById(
+                submission.assessmentId
+            );
+
+
+        const synchronized =
+            await this
+                ._synchronizeAssessmentStatus(
+                    assessmentRow
+                );
+
+
+        const assessment =
+            this._toAssessment(
+                synchronized
+            );
+
+
+        /*
+        * 3. Assessment must still
+        * be open.
+        */
+        if (!assessment.isOpen()) {
             throw new AppError(
                 409,
-                'SUBMISSION_NOT_EDITABLE',
-                'A submitted Assessment can no longer be changed.'
+                'ASSESSMENT_NOT_OPEN',
+                'This Assessment is no longer open for editing.'
             );
         }
 
-        // 3. Phải có ít nhất một file
-        if (!files || files.length === 0) {
+
+        /*
+        * 4. Determine whether this
+        * Submission is editable.
+        */
+        const editableAssignment =
+            assessment.type ===
+                AssessmentType.ASSIGNMENT &&
+            [
+                SubmissionStatus.IN_PROGRESS,
+                SubmissionStatus.SUBMITTED,
+                SubmissionStatus.PENDING_REVIEW
+            ].includes(
+                submission.status
+            );
+
+
+        const editableQuiz =
+            assessment.type ===
+                AssessmentType.QUIZ &&
+            submission.status ===
+                SubmissionStatus.IN_PROGRESS;
+
+
+        if (
+            !editableAssignment &&
+            !editableQuiz
+        ) {
+            throw new AppError(
+                409,
+                'SUBMISSION_NOT_EDITABLE',
+                'This Submission can no longer be changed.'
+            );
+        }
+
+
+        /*
+        * 5. Require at least one file.
+        */
+        if (
+            !files ||
+            files.length === 0
+        ) {
             throw new AppError(
                 400,
                 'SUBMISSION_FILES_REQUIRED',
@@ -1338,9 +1551,22 @@ class AssessmentService {
 
         // 5. Upload từng file lên Supabase Storage
         for (const file of files) {
-            const safeFileName = this._generateSafeFileName(file.originalname);
+            const originalFileName =
+                String(
+                    file.originalname || 'file'
+                )
+                    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+                    .replace(/\s+/g, ' ')
+                    .trim();
 
-            const filePath = `submissions/${submissionId}/${safeFileName}`;
+
+            const storedFileName =
+                `${crypto.randomUUID()}__${originalFileName}`;
+
+
+            const filePath =
+                `submissions/${submissionId}/${storedFileName}`;
+
             const { error: storageError } =
                 await supabase.storage
                     .from(bucket)
@@ -1360,7 +1586,7 @@ class AssessmentService {
             // Không insert vào Submission_File nữa.
             // Chỉ giữ metadata tạm để trả về Controller.
             uploadedFiles.push({
-                fileName: file.originalname,
+                fileName: originalFileName,
                 fileUrl: filePath,
                 sizeBytes: file.size
             });
@@ -1388,6 +1614,431 @@ class AssessmentService {
         return uploadedFiles;
     }
 
+    static async deleteSubmissionFile(
+        submissionId,
+        learnerId,
+        fileUrl
+    ) {
+        /*
+        * 1. Check Submission ownership.
+        */
+        const submission =
+            await this._assertOwnedSubmission(
+                submissionId,
+                learnerId
+            );
+
+
+        /*
+        * 2. Validate file path.
+        */
+        if (
+            !fileUrl ||
+            !String(fileUrl).trim()
+        ) {
+            throw new AppError(
+                400,
+                'SUBMISSION_FILE_REQUIRED',
+                'The Submission file is required.'
+            );
+        }
+
+
+        const normalizedFileUrl =
+            String(fileUrl).trim();
+
+
+        /*
+        * 3. Load Assessment.
+        */
+        const assessmentRow =
+            await this._findAssessmentById(
+                submission.assessmentId
+            );
+
+
+        const synchronized =
+            await this
+                ._synchronizeAssessmentStatus(
+                    assessmentRow
+                );
+
+
+        const assessment =
+            this._toAssessment(
+                synchronized
+            );
+
+
+        /*
+        * 4. Only ASSIGNMENT files
+        * may be edited here.
+        */
+        if (
+            assessment.type !==
+            AssessmentType.ASSIGNMENT
+        ) {
+            throw new AppError(
+                409,
+                'SUBMISSION_FILE_NOT_EDITABLE',
+                'Files can only be edited for Assignment submissions.'
+            );
+        }
+
+
+        /*
+        * 5. Assignment must still
+        * be open.
+        */
+        if (!assessment.isOpen()) {
+            throw new AppError(
+                409,
+                'ASSESSMENT_NOT_OPEN',
+                'This Assignment is no longer open for editing.'
+            );
+        }
+
+
+        /*
+        * 6. Submission must still
+        * be editable.
+        */
+        const editableStatuses = [
+            SubmissionStatus.IN_PROGRESS,
+            SubmissionStatus.SUBMITTED,
+            SubmissionStatus.PENDING_REVIEW
+        ];
+
+
+        if (
+            !editableStatuses.includes(
+                submission.status
+            )
+        ) {
+            throw new AppError(
+                409,
+                'SUBMISSION_NOT_EDITABLE',
+                'This Submission can no longer be changed.'
+            );
+        }
+
+
+        /*
+        * 7. Make sure this file
+        * actually belongs to the
+        * current Submission.
+        */
+        const existingFileUrls =
+            Array.isArray(
+                submission.uploadedFileUrls
+            )
+                ? submission.uploadedFileUrls
+                : [];
+
+
+        if (
+            !existingFileUrls.includes(
+                normalizedFileUrl
+            )
+        ) {
+            throw new AppError(
+                404,
+                'SUBMISSION_FILE_NOT_FOUND',
+                'The Submission file could not be found.'
+            );
+        }
+
+
+        /*
+        * Additional path safety.
+        *
+        * Every uploaded Assignment
+        * file must live inside:
+        *
+        * submissions/<submissionId>/
+        */
+        const expectedPrefix =
+            `submissions/${submissionId}/`;
+
+
+        if (
+            !normalizedFileUrl
+                .startsWith(
+                    expectedPrefix
+                )
+        ) {
+            throw new AppError(
+                403,
+                'SUBMISSION_FILE_ACCESS_DENIED',
+                'The file does not belong to this Submission.'
+            );
+        }
+
+
+        /*
+        * 8. Get Storage bucket.
+        */
+        const bucket =
+            process.env
+                .ASSESSMENT_STORAGE_BUCKET;
+
+
+        if (!bucket) {
+            throw new AppError(
+                500,
+                'ASSESSMENT_STORAGE_NOT_CONFIGURED',
+                'Assessment storage is not configured.'
+            );
+        }
+
+
+        /*
+        * 9. Delete physical file
+        * from Supabase Storage.
+        */
+        const {
+            error: storageError
+        } =
+            await supabase
+                .storage
+                .from(bucket)
+                .remove([
+                    normalizedFileUrl
+                ]);
+
+
+        if (storageError) {
+            throw storageError;
+        }
+
+
+        /*
+        * 10. Remove path from
+        * Submission.uploadedFileUrls.
+        */
+        const updatedFileUrls =
+            existingFileUrls.filter(
+                item =>
+                    item !==
+                    normalizedFileUrl
+            );
+
+
+        const {
+            data,
+            error: updateError
+        } =
+            await supabase
+                .from('Submission')
+                .update({
+                    uploadedFileUrls:
+                        updatedFileUrls
+                })
+                .eq(
+                    'submissionId',
+                    submissionId
+                )
+                .select()
+                .single();
+
+
+        if (updateError) {
+            throw updateError;
+        }
+
+
+        return {
+            submission:
+                this._toSubmission(
+                    data
+                ),
+
+            uploadedFileUrls:
+                updatedFileUrls
+        };
+    }
+
+    static async getLearnerAssessmentReview(
+        assessmentId,
+        learnerId
+    ) {
+        /*
+        * 1. Find Assessment
+        */
+        const assessmentRow =
+            await this._findAssessmentById(
+                assessmentId
+            );
+
+
+        /*
+        * 2. Learner must belong
+        * to this Course.
+        */
+        await this._assertLearnerEnrolled(
+            assessmentRow.courseId,
+            learnerId
+        );
+
+
+        /*
+        * 3. Synchronize current status.
+        */
+        const synchronized =
+            await this
+                ._synchronizeAssessmentStatus(
+                    assessmentRow
+                );
+
+
+        const assessment =
+            this._toAssessment(
+                synchronized
+            );
+
+
+        
+
+
+        /*
+        * 5. Load questions.
+        *
+        * false:
+        * do NOT expose correctAnswer.
+        */
+        const questions =
+            await this
+                ._loadQuestionsWithOptions(
+                    assessmentId,
+                    false
+                );
+
+
+        /*
+        * 6. Find this Learner's
+        * Submission.
+        */
+        const {
+            data: submissionRow,
+            error: submissionError
+        } =
+            await supabase
+                .from('Submission')
+                .select('*')
+                .eq(
+                    'assessmentId',
+                    assessmentId
+                )
+                .eq(
+                    'learnerId',
+                    learnerId
+                )
+                .maybeSingle();
+
+
+        if (submissionError) {
+            throw submissionError;
+        }
+
+        const finalizedStatuses = [
+            SubmissionStatus.SUBMITTED,
+            SubmissionStatus.PENDING_REVIEW,
+            SubmissionStatus.GRADED
+        ];
+
+
+        const hasFinalizedSubmission =
+            submissionRow &&
+            finalizedStatuses.includes(
+                submissionRow.status
+            );
+
+
+        const assessmentClosed =
+            assessment.status ===
+            AssessmentStatus.CLOSED;
+
+
+        if (
+            !assessmentClosed &&
+            !hasFinalizedSubmission
+        ) {
+            throw new AppError(
+                409,
+                'ASSESSMENT_NOT_REVIEWABLE',
+                'This Assessment cannot be reviewed yet.'
+            );
+        }
+
+
+        /*
+        * Learner may not have submitted
+        * anything before the Assessment
+        * was closed.
+        */
+        if (!submissionRow) {
+            return {
+                assessment,
+                questions,
+                submission: null,
+                answers: [],
+                files: []
+            };
+        }
+
+
+        /*
+        * 7. Load Learner's answers.
+        */
+        const {
+            data: answerRows,
+            error: answerError
+        } =
+            await supabase
+                .from('SubmissionAnswer')
+                .select('*')
+                .eq(
+                    'submissionId',
+                    submissionRow
+                        .submissionId
+                );
+
+
+        if (answerError) {
+            throw answerError;
+        }
+
+
+        const submission =
+            this._toSubmission(
+                submissionRow
+            );
+
+
+        return {
+            assessment,
+
+            questions,
+
+            submission,
+
+            answers:
+                (answerRows || []).map(
+                    row =>
+                        new SubmissionAnswer(
+                            row
+                        )
+                ),
+
+            files:
+                Array.isArray(
+                    submission.uploadedFileUrls
+                )
+                    ? submission.uploadedFileUrls
+                    : []
+        };
+    }
+
     // UC-10 Basic Flow steps 3-5 and Alternative Flow 1
     static async submitSubmission(submissionId, learnerId) {
         // 1. Kiểm tra Submission thuộc Learner hiện tại
@@ -1396,29 +2047,96 @@ class AssessmentService {
             learnerId
         );
 
-        // 2. Submission chỉ được submit một lần
-        if (submissionRow.status !== SubmissionStatus.IN_PROGRESS) {
+        const assessmentRow =
+            await this._findAssessmentById(
+                submissionRow.assessmentId
+            );
+
+        if (
+            !assessmentRow.startTime ||
+            !assessmentRow.deadline
+        ) {
             throw new AppError(
                 409,
-                'SUBMISSION_ALREADY_FINALIZED',
-                'This Assessment has already been submitted.'
+                'ASSESSMENT_SCHEDULE_NOT_CONFIGURED',
+                'This Assessment does not have a valid submission schedule.'
             );
         }
 
-        // 3. Lấy Assessment tương ứng
-        const assessmentRow = await this._findAssessmentById(
-            submissionRow.assessmentId
-        );
+        const startTime =
+            new Date(
+                assessmentRow.startTime
+            );
 
-        const now = new Date();
 
-        const startTime = new Date(
-            assessmentRow.startTime
-        );
+        const deadline =
+            new Date(
+                assessmentRow.deadline
+            );
 
-        const deadline = new Date(
-            assessmentRow.deadline
-        );
+
+        if (
+            Number.isNaN(
+                startTime.getTime()
+            ) ||
+            Number.isNaN(
+                deadline.getTime()
+            ) ||
+            startTime >= deadline
+        ) {
+            throw new AppError(
+                500,
+                'INVALID_ASSESSMENT_SCHEDULE',
+                'The Assessment contains an invalid submission schedule.'
+            );
+        }
+
+        const synchronized =
+            await this
+                ._synchronizeAssessmentStatus(
+                    assessmentRow
+                );
+
+
+        const assessment =
+            this._toAssessment(
+                synchronized
+            );
+
+
+        const now =
+            new Date();
+
+        const quizCanSubmit =
+            assessment.type ===
+                AssessmentType.QUIZ &&
+            submissionRow.status ===
+                SubmissionStatus.IN_PROGRESS;
+
+        const assignmentCanSubmit =
+            assessment.type ===
+                AssessmentType.ASSIGNMENT &&
+            assessment.isOpen(now) &&
+            [
+                SubmissionStatus.IN_PROGRESS,
+                SubmissionStatus.SUBMITTED,
+                SubmissionStatus.PENDING_REVIEW
+            ].includes(
+                submissionRow.status
+            );
+
+
+        if (
+            !quizCanSubmit &&
+            !assignmentCanSubmit
+        ) {
+            throw new AppError(
+                409,
+                'SUBMISSION_ALREADY_FINALIZED',
+                'This Submission can no longer be submitted or changed.'
+            );
+        }
+
 
         // 4. Không cho submit trước giờ bắt đầu
         if (now < startTime) {
@@ -1623,9 +2341,58 @@ class AssessmentService {
         }
 
 
-        /*
-        * 3. Synchronize status and hide DRAFTs.
-        */
+        const assessmentIds =
+            (assessmentRows || [])
+                .map(
+                    row =>
+                        row.assessmentId
+                );
+
+
+
+        const submissionByAssessmentId =
+            new Map();
+
+
+        if (
+            assessmentIds.length > 0
+        ) {
+            const {
+                data: submissionRows,
+                error: submissionError
+            } =
+                await supabase
+                    .from('Submission')
+                    .select('*')
+                    .eq(
+                        'learnerId',
+                        learnerId
+                    )
+                    .in(
+                        'assessmentId',
+                        assessmentIds
+                    );
+
+
+            if (submissionError) {
+                throw submissionError;
+            }
+
+
+            for (
+                const submissionRow of
+                submissionRows || []
+            ) {
+                submissionByAssessmentId.set(
+                    String(
+                        submissionRow
+                            .assessmentId
+                    ),
+                    submissionRow
+                );
+            }
+        }
+        
         const assessments = [];
 
         for (
@@ -1650,9 +2417,51 @@ class AssessmentService {
                 assessment.status !==
                 AssessmentStatus.DRAFT
             ) {
-                assessments.push(
-                    assessment
-                );
+                const submissionRow =
+                    submissionByAssessmentId
+                        .get(
+                            String(
+                                assessment
+                                    .assessmentId
+                            )
+                        ) ||
+                    null;
+
+
+                assessments.push({
+                    ...assessment,
+
+                    submission:
+                        submissionRow
+                            ? {
+                                submissionId:
+                                    submissionRow
+                                        .submissionId,
+
+                                status:
+                                    submissionRow
+                                        .status,
+
+                                startedAt:
+                                    submissionRow
+                                        .startedAt,
+
+                                submittedAt:
+                                    submissionRow
+                                        .submittedAt,
+
+                                late:
+                                    Boolean(
+                                        submissionRow
+                                            .late
+                                    ),
+
+                                score:
+                                    submissionRow
+                                        .score
+                            }
+                            : null
+                });
             }
         }
 
@@ -1682,6 +2491,31 @@ class AssessmentService {
             submission.assessmentId
         );
 
+        const synchronized =
+            await this
+                ._synchronizeAssessmentStatus(
+                    assessment
+                );
+
+
+        const currentAssessment =
+            this._toAssessment(
+                synchronized
+            );
+
+
+        if (
+            currentAssessment.type ===
+                AssessmentType.ASSIGNMENT &&
+            currentAssessment.status !==
+                AssessmentStatus.CLOSED
+        ) {
+            throw new AppError(
+                409,
+                'ASSESSMENT_STILL_OPEN',
+                'This Assignment cannot be graded until its submission period has closed.'
+            );
+        }
         await this._assertCourseManagedBy(assessment.courseId, educatorId);
 
         if (submission.status !== SubmissionStatus.PENDING_REVIEW) {

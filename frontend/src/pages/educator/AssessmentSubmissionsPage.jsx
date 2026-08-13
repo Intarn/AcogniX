@@ -126,18 +126,44 @@ function getFileNameFromUrl(
         .split('?')[0];
 
 
-    const fileName =
+    const storedFileName =
       cleanUrl
         .split('/')
         .pop();
 
 
-    return (
+    if (!storedFileName) {
+      return `Submitted file ${index + 1}`;
+    }
+
+
+    const decodedFileName =
       decodeURIComponent(
-        fileName
-      ) ||
+        storedFileName
+      );
+
+    const separatorIndex =
+      decodedFileName.indexOf('__');
+
+
+    if (
+      separatorIndex !== -1
+    ) {
+      return decodedFileName.slice(
+        separatorIndex + 2
+      );
+    }
+
+
+    /*
+     * File cũ không có "__"
+     * thì giữ nguyên tên.
+     */
+    return (
+      decodedFileName ||
       `Submitted file ${index + 1}`
     );
+
   } catch {
     return (
       `Submitted file ${index + 1}`

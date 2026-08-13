@@ -235,7 +235,9 @@ export default function MyCourses() {
                       <div className={`${course.isCompleted ? 'bg-gray-400' : progressColor} h-full`} style={{ width: `${course.isCompleted ? 100 : course.progress}%` }}></div>
                     </div>
                     <Link 
-                      to={`/learner/course-detail?id=${course.id}`}
+                      to={
+                        `/learner/courses/${course.id}`
+                      }
                       className={`block w-full text-center ${course.isCompleted ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-blue-50 hover:bg-blue-100 text-blue-600'} font-bold text-xs py-2 rounded-lg transition-colors`}
                     >
                       {course.isCompleted ? 'Review Course' : 'Continue Learning'}
