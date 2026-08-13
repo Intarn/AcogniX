@@ -22,6 +22,11 @@ export default function Login() {
     const msg = (err?.message || '').toLowerCase();
     const status = err?.status;
 
+    // BẮT LỖI CHƯA XÁC THỰC EMAIL TỪ SUPABASE
+    if (msg.includes('email not confirmed') || msg.includes('unverified') || msg.includes('xác thực')) {
+      return 'Tài khoản chưa được xác thực. Vui lòng kiểm tra hộp thư email (kể cả thư rác) để bấm vào link xác thực!';
+    }
+
     if (
       status === 401 || 
       msg.includes('incorrect email or password') || 

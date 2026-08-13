@@ -11,8 +11,8 @@ class AuthenticationService {
   // +signUp(email, password, displayName, role) : User
 
   static async signUp(email, password, displayName, role) {
-    // Gọi Supabase Auth
-    const {data: existing} = await supabase
+    // 1. Kiểm tra email trong bảng User
+    const { data: existing } = await supabase
       .from('User')
       .select('userId')
       .eq('email', email)
@@ -24,9 +24,13 @@ class AuthenticationService {
       throw err;
     }
 
-    const { data: authData, error: authError } = await supabaseAuth.auth.signUp({email, password});
-    
+    // 2. Tạo tài khoản trong Supabase Auth
+    const { data: authData, error: authError } = await supabaseAuth.auth.signUp({ email, password });
+
     if (authError) {
+      // ➔ THÊM DÒNG NÀY ĐỂ IN LỖI CHI TIẾT RA TERMINAL
+      console.error('=== LỖI SUPABASE AUTH SIGNUP ===:', authError);
+
       const err = new Error('SIGNUP_FAILED');
       err.status = 500;
       throw err;
@@ -40,7 +44,7 @@ class AuthenticationService {
 
     const newUser = new User(authData.user.id, email, null, displayName, null, role, 'ACTIVE');
 
-    // Lưu vào bảng User
+    // 3. Lưu thông tin vào bảng User
     const { error: dbError } = await supabase.from('User').insert([{
       userId: newUser.userId,
       email: newUser.email,
@@ -48,9 +52,12 @@ class AuthenticationService {
       role: newUser.role,
       status: newUser.status
     }]);
-    
+
     if (dbError) {
-      const err = new Error('SIGNUP_FAILED'); // altermative flow 5 (UC-22)
+      // ➔ THÊM DÒNG NÀY ĐỂ IN LỖI CHI TIẾT RA TERMINAL
+      console.error('=== LỖI INSERT BẢNG USER ===:', dbError);
+
+      const err = new Error('SIGNUP_FAILED');
       err.status = 500;
       throw err;
     }
