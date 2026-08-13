@@ -20,7 +20,7 @@ export default function CourseManagementPage() {
     try {
       const response = await getAllCoursesForAdmin(search);
       // Update according to the actual API response structure later
-      setCourses(response.courses || []);
+      setCourses(response?.courses || []);
     } catch (error) {
       console.error('Failed to fetch courses:', error);
     } finally {

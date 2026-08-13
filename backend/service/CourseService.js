@@ -7,7 +7,6 @@ function generateEnrollmentCode() {
 }
 
 class CourseService {
-
   // Basic Flow #1-5 (UC-13): Create course
   static async createCourse(educatorId, { subjectName, courseCode, description }) {
     if (!subjectName || !courseCode) {
@@ -139,6 +138,124 @@ class CourseService {
     }
 
     return data;
+  }
+
+  static async countActiveCourses() {
+    const { data, error } = await supabase
+      .from('Course')
+      .select('courseId')
+      .eq('status', 'ACTIVE');
+
+    if (error) {
+      const err = new Error('COUNT_FAILED');
+      err.status = 500;
+      throw err;
+    }
+    return data ? data.length : 0;
+  }
+
+  // Get all courses for Admin (Includes educator names & student count)
+  static async getAllCoursesForAdmin(searchQuery = '') {
+    let dbQuery = supabase
+      .from('Course')
+      .select('*')
+      .order('createdAt', { ascending: false });
+
+    // Search by subject name or course code
+    if (searchQuery && searchQuery.trim() !== '') {
+      dbQuery = dbQuery.or(`subjectName.ilike.%${searchQuery}%,courseCode.ilike.%${searchQuery}%`);
+    }
+
+    const { data: courses, error: courseError } = await dbQuery;
+
+    if (courseError) {
+      const err = new Error('ADMIN_COURSE_LIST_FAILED');
+      err.status = 500;
+      throw err;
+    }
+
+    // Fetch Users to map the educator's name
+    const { data: users } = await supabase.from('User').select('userId, displayName, email');
+    
+    // Fetch the count of approved students in each class
+    const { data: enrollments } = await supabase.from('Enrollment').select('courseId').eq('status', 'APPROVED');
+
+    // Combine data to return to the Frontend
+    return (courses || []).map(course => {
+      const educator = users?.find(u => u.userId === course.educatorId);
+      const studentCount = enrollments?.filter(e => e.courseId === course.courseId).length || 0;
+      
+      return {
+        ...course,
+        educatorName: educator?.displayName || 'Unknown Educator',
+        educatorEmail: educator?.email || 'N/A',
+        studentCount
+      };
+    });
+  }
+
+  // Admin Archive Course (Bypasses the Educator ownership check)
+  static async adminArchiveCourse(courseId) {
+    const { data, error } = await supabase
+      .from('Course')
+      .update({ status: CourseStatus.ARCHIVED, updatedAt: new Date() })
+      .eq('courseId', courseId)
+      .select()
+      .single();
+
+    if (error) {
+      const err = new Error('ADMIN_COURSE_ARCHIVE_FAILED');
+      err.status = 500;
+      throw err;
+    }
+    return data;
+  }
+
+  static async getCourseDetailForAdmin(courseId) {
+    const { data: course, error: courseError } = await supabase
+      .from('Course')
+      .select('*')
+      .eq('courseId', courseId)
+      .single();
+
+    if (courseError || !course) {
+      const err = new Error('COURSE_NOT_FOUND');
+      err.status = 404;
+      throw err;
+    }
+
+    const { data: educator } = await supabase
+      .from('User')
+      .select('userId, displayName, email')
+      .eq('userId', course.educatorId)
+      .single();
+
+    const { data: enrollments } = await supabase
+      .from('Enrollment')
+      .select('learnerId, status, requestedAt')
+      .eq('courseId', courseId)
+      .eq('status', 'APPROVED');
+
+    let students = [];
+    if (enrollments && enrollments.length > 0) {
+      const learnerIds = enrollments.map(e => e.learnerId);
+      
+      const { data: users } = await supabase
+        .from('User')
+        .select('userId, displayName, email')
+        .in('userId', learnerIds);
+
+      if (users) {
+        students = users;
+      }
+    }
+
+    return {
+      ...course,
+      educatorName: educator?.displayName || 'Unknown Educator',
+      educatorEmail: educator?.email || 'N/A',
+      students
+    };
   }
 }
 
