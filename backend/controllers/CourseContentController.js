@@ -51,14 +51,61 @@ class CourseContentController {
 
   static async getMaterials(req, res) {
     try {
-      const { courseId } = req.params;
-      const materials = await CourseContentService.getMaterialsForLearner(req.user.userId, courseId);
-      
-      // UC-16 Alt Flow 1 handled seamlessly (returns empty array if none)
-      return res.status(200).json({ materials });
+      const { courseId } =
+        req.params;
+
+      const userId =
+        req.user.userId;
+
+      const role =
+        req.user.role;
+
+      let materials;
+
+      if (
+        role ===
+        UserRole.EDUCATOR
+      ) {
+        materials =
+          await CourseContentService
+            .getMaterialsForEducator(
+              userId,
+              courseId
+            );
+      } else if (
+        role ===
+        UserRole.LEARNER
+      ) {
+        materials =
+          await CourseContentService
+            .getMaterialsForLearner(
+              userId,
+              courseId
+            );
+      } else {
+        return res
+          .status(403)
+          .json({
+            message:
+              'You do not have permission to access this class content.'
+          });
+      }
+
+      return res
+        .status(200)
+        .json({
+          materials
+        });
     } catch (error) {
-      const status = error.statusCode || 500;
-      return res.status(status).json({ message: error.message });
+      const status =
+        error.statusCode || 500;
+
+      return res
+        .status(status)
+        .json({
+          message:
+            error.message
+        });
     }
   }
 
@@ -87,16 +134,67 @@ class CourseContentController {
     }
   }
 
-  static async getAnnouncements(req, res) {
+  static async getAnnouncements(
+    req,
+    res
+  ) {
     try {
-      const { courseId } = req.params;
-      const announcements = await CourseContentService.getAnnouncementsForLearner(req.user.userId, courseId);
-      
-      // UC-16 Alt Flow 1: Return empty array, Frontend displays "No announcement yet"
-      return res.status(200).json({ announcements });
+      const {
+        courseId
+      } = req.params;
+
+      const userId =
+        req.user.userId;
+
+      const role =
+        req.user.role;
+
+      let announcements;
+
+      if (
+        role ===
+        UserRole.EDUCATOR
+      ) {
+        announcements =
+          await CourseContentService
+            .getAnnouncementsForEducator(
+              userId,
+              courseId
+            );
+      } else if (
+        role ===
+        UserRole.LEARNER
+      ) {
+        announcements =
+          await CourseContentService
+            .getAnnouncementsForLearner(
+              userId,
+              courseId
+            );
+      } else {
+        return res
+          .status(403)
+          .json({
+            message:
+              'You do not have permission to access this class content.'
+          });
+      }
+
+      return res
+        .status(200)
+        .json({
+          announcements
+        });
     } catch (error) {
-      const status = error.statusCode || 500;
-      return res.status(status).json({ message: error.message });
+      const status =
+        error.statusCode || 500;
+
+      return res
+        .status(status)
+        .json({
+          message:
+            error.message
+        });
     }
   }
 }

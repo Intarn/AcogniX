@@ -492,6 +492,25 @@ export default function AssessmentDetailPage() {
       questions
     ]);
 
+  const pendingReviewCount =
+    useMemo(() => {
+      return submissions.filter(
+        (submission) =>
+          submission?.status ===
+          'PENDING_REVIEW'
+      ).length;
+    }, [submissions]);
+
+
+  const gradedCount =
+    useMemo(() => {
+      return submissions.filter(
+        (submission) =>
+          submission?.status ===
+          'GRADED'
+      ).length;
+    }, [submissions]);
+
   if (loading) {
     return (
       <div
@@ -577,28 +596,6 @@ export default function AssessmentDetailPage() {
     );
   }
 
-  const pendingReviewCount =
-    useMemo(() => {
-      return submissions.filter(
-        (submission) =>
-          submission.status ===
-          'PENDING_REVIEW'
-      ).length;
-    }, [
-      submissions
-    ]);
-
-
-  const gradedCount =
-    useMemo(() => {
-      return submissions.filter(
-        (submission) =>
-          submission.status ===
-          'GRADED'
-      ).length;
-    }, [
-      submissions
-    ]);
   const courseArchived =
     course.status ===
     'ARCHIVED';
