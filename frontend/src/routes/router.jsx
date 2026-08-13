@@ -13,6 +13,9 @@ import {
 import AuthLayout from "../layouts/AuthLayout";
 import LearnerLayout from "../layouts/LearnerLayout";
 
+import AssignmentSubmission
+  from "../pages/learner/AssignmentSubmission";
+
 
 // Protected Route Component
 import ProtectedRoute from "./ProtectedRoute";
@@ -209,6 +212,12 @@ export const router = createBrowserRouter([
           "courses/:courseId/assessments",
         element:
           <CourseAssessments />
+      },
+      {
+        path:
+          "courses/:courseId/assessments/:assessmentId/assignment",
+        element:
+          <AssignmentSubmission />
       },
       {
         path:

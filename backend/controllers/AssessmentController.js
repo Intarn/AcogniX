@@ -404,6 +404,36 @@ class AssessmentController {
         }
     }
 
+    static async getSubmissionAnswers(
+        req,
+        res
+    ) {
+        try {
+            const answers =
+                await AssessmentService
+                    .getSubmissionAnswers(
+                        req.params.submissionId,
+                        req.user.userId
+                    );
+
+
+            return res
+                .status(200)
+                .json({
+                    count:
+                        answers.length,
+
+                    answers
+                });
+
+        } catch (error) {
+            return handleControllerError(
+                error,
+                res
+            );
+        }
+    }
+
     static async uploadSubmissionFiles(req, res) {
         try {
             const files = await AssessmentService.uploadFiles(
@@ -422,6 +452,38 @@ class AssessmentController {
             });
         } catch(error) {
             return handleControllerError(error, res);
+        }
+    }
+
+    static async deleteSubmissionFile(
+        req,
+        res
+    ) {
+        try {
+            const result =
+                await AssessmentService
+                    .deleteSubmissionFile(
+                        req.params.submissionId,
+                        req.user.userId,
+                        req.body.fileUrl
+                    );
+
+
+            return res
+                .status(200)
+                .json({
+                    message:
+                        'Submission file deleted successfully.',
+
+                    uploadedFileUrls:
+                        result.uploadedFileUrls
+                });
+
+        } catch (error) {
+            return handleControllerError(
+                error,
+                res
+            );
         }
     }
 

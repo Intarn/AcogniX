@@ -134,6 +134,13 @@ router.post(
   AssessmentController.startSubmission
 );
 
+router.get(
+  '/submissions/:submissionId/answers',
+  requireAuth,
+  authorize(UserRole.LEARNER),
+  AssessmentController.getSubmissionAnswers
+);
+
 router.put(
   '/submissions/:submissionId/answers/:questionId',
   requireAuth,
@@ -147,6 +154,13 @@ router.post(
   authorize(UserRole.LEARNER),
   upload.array('files', 10),
   AssessmentController.uploadSubmissionFiles
+);
+
+router.delete(
+  '/submissions/:submissionId/files',
+  requireAuth,
+  authorize(UserRole.LEARNER),
+  AssessmentController.deleteSubmissionFile
 );
 
 router.post(

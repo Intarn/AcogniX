@@ -118,16 +118,37 @@ function getFileNameFromUrl(
         .split('?')[0];
 
 
-    const name =
+    const storedName =
       cleanUrl
         .split('/')
         .pop();
 
 
-    return (
-      decodeURIComponent(name) ||
-      `Submitted File ${index + 1}`
-    );
+    if (!storedName) {
+      return `Submitted File ${index + 1}`;
+    }
+
+
+    const decodedName =
+      decodeURIComponent(
+        storedName
+      );
+
+
+    const separatorIndex =
+      decodedName.indexOf('__');
+
+
+    if (
+      separatorIndex !== -1
+    ) {
+      return decodedName.slice(
+        separatorIndex + 2
+      );
+    }
+
+
+    return decodedName;
 
   } catch {
     return `Submitted File ${index + 1}`;

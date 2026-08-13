@@ -526,6 +526,64 @@ export default function CourseAssessments() {
                     const isClosed =
                       assessment.status ===
                       'CLOSED';
+                      
+                    const submissionStatus =
+                      assessment.submission
+                        ?.status ||
+                      null;
+
+
+                    const submissionInProgress =
+                      submissionStatus ===
+                      'IN_PROGRESS';
+
+
+                    const hasFinalizedSubmission =
+                      [
+                        'SUBMITTED',
+                        'PENDING_REVIEW',
+                        'GRADED'
+                      ].includes(
+                        submissionStatus
+                      );
+
+
+                    /*
+                    * Assignment đã submit,
+                    * nhưng Assessment còn mở:
+                    * Learner vẫn được edit.
+                    */
+                    const assignmentSubmittedButEditable =
+                      isAssignment &&
+                      isOpen &&
+                      [
+                        'SUBMITTED',
+                        'PENDING_REVIEW'
+                      ].includes(
+                        submissionStatus
+                      );
+
+
+                    /*
+                    * Quiz submit là khóa ngay.
+                    */
+                    const quizFinalized =
+                      isQuiz &&
+                      hasFinalizedSubmission;
+
+
+                    /*
+                    * Review khi:
+                    *
+                    * - Assessment CLOSED
+                    * - Quiz đã finalize
+                    * - Submission đã GRADED
+                    */
+                    const canReview =
+                      isClosed ||
+                      quizFinalized ||
+                      submissionStatus ===
+                        'GRADED';
 
 
                     return (
@@ -717,7 +775,35 @@ export default function CourseAssessments() {
                             flex-shrink-0
                           "
                         >
-                          {isScheduled && (
+                          {/* Already submitted
+                              OR Assessment closed */}
+                          {canReview && (
+                            <Link
+                              to={
+                                `/learner/courses/${course.courseId}/assessments/${assessment.assessmentId}/review`
+                              }
+                              className="
+                                inline-flex
+                                items-center
+                                px-4
+                                py-2
+                                rounded-lg
+                                bg-gray-100
+                                text-gray-700
+                                text-xs
+                                font-semibold
+                                hover:bg-gray-200
+                                transition
+                              "
+                            >
+                              View Review
+                            </Link>
+                          )}
+
+
+                          {/* Not opened yet */}
+                          {!canReview &&
+                            isScheduled && (
                             <span
                               className="
                                 text-xs
@@ -730,31 +816,9 @@ export default function CourseAssessments() {
                           )}
 
 
-                          {isClosed && (
-                            <Link
-                                to={
-                                `/learner/courses/${course.courseId}/assessments/${assessment.assessmentId}/review`
-                                }
-                                className="
-                                inline-flex
-                                items-center
-                                px-4
-                                py-2
-                                rounded-lg
-                                bg-gray-100
-                                text-gray-700
-                                text-xs
-                                font-semibold
-                                hover:bg-gray-200
-                                transition
-                                "
-                            >
-                                View Review
-                            </Link>
-                            )}
-
-
-                          {isOpen &&
+                          {/* Open Quiz */}
+                          {!canReview &&
+                            isOpen &&
                             isQuiz && (
                             <Link
                               to={
@@ -773,27 +837,46 @@ export default function CourseAssessments() {
                                 transition
                               "
                             >
-                              Open Quiz
+                              {
+                                submissionInProgress
+                                  ? 'Continue Quiz'
+                                  : 'Open Quiz'
+                              }
                             </Link>
                           )}
 
 
-                          {isOpen &&
+                          {/* Assignment */}
+                          {!canReview &&
+                            isOpen &&
                             isAssignment && (
-                            <span
+                            <Link
+                              to={
+                                `/learner/courses/${course.courseId}/assessments/${assessment.assessmentId}/assignment`
+                              }
                               className="
                                 inline-flex
-                                px-3
+                                px-4
                                 py-2
                                 rounded-lg
-                                bg-emerald-50
-                                text-emerald-700
+                                bg-emerald-600
+                                text-white
                                 text-xs
                                 font-semibold
+                                hover:bg-emerald-700
+                                transition
                               "
                             >
-                              Assignment
-                            </span>
+                              {
+                                 submissionInProgress
+                                  ? 'Continue Assignment'
+
+                                  : assignmentSubmittedButEditable
+                                    ? 'Edit Assignment'
+
+                                    : 'Open Assignment'
+                              }
+                            </Link>
                           )}
                         </div>
                       </article>
