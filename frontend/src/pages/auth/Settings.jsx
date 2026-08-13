@@ -6,7 +6,8 @@ import { useConfirm } from '../../contexts/ConfirmContext';
 import { getUserProfile, updateUserProfile, changePassword } from '../../services/profileService';
 
 export default function Settings() {
-  const { user, logout } = useAuth();
+  // Chỉ khai báo useAuth 1 lần duy nhất
+  const { user, updateUser, logout } = useAuth();
   const { showToast } = useToast();
   const { confirm } = useConfirm();
 
@@ -55,9 +56,8 @@ export default function Settings() {
           avatarPreview: ''
         });
       } catch (err) {
-        // Fallback lấy dữ liệu tạm từ Auth Context nếu gọi API lỗi
         setProfileForm({
-          displayName: user?.displayName || user?.name || '',
+          displayName: user?.displayName || user?.name || user?.fullname || '',
           email: user?.email || '',
           role: user?.role || 'LEARNER',
           avatarUrl: user?.avatarUrl || '',
@@ -72,7 +72,7 @@ export default function Settings() {
     fetchProfileData();
   }, [user]);
 
-  // Xử lý khi chọn ảnh đại diện mới
+  // Xử lý chọn ảnh đại diện
   const handleAvatarChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -89,7 +89,7 @@ export default function Settings() {
     }));
   };
 
-  // Submit Tab Profile
+  // Submit Tab Profile (chỉ khai báo DUY NHẤT 1 LẦN)
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     if (!profileForm.displayName.trim()) {
@@ -104,12 +104,24 @@ export default function Settings() {
         profileForm.avatarFile
       );
 
+      const newAvatarUrl = res.profile?.avatarUrl || profileForm.avatarUrl;
+
       showToast('Cập nhật thông tin cá nhân thành công!', 'success');
+      
       setProfileForm((prev) => ({
         ...prev,
-        avatarUrl: res.profile?.avatarUrl || prev.avatarUrl,
-        avatarFile: null
+        avatarUrl: newAvatarUrl,
+        avatarFile: null,
+        avatarPreview: ''
       }));
+
+      // Cập nhật AuthContext toàn cục
+      if (updateUser) {
+        updateUser({
+          displayName: profileForm.displayName.trim(),
+          avatarUrl: newAvatarUrl
+        });
+      }
     } catch (err) {
       showToast(err.message || 'Không thể cập nhật thông tin.', 'error');
     } finally {
@@ -147,18 +159,17 @@ export default function Settings() {
     e.preventDefault();
     try {
       setSubmitting(true);
-      // Giả lập lưu cài đặt thông báo
       setTimeout(() => {
         showToast('Đã lưu cấu hình thông báo!', 'success');
         setSubmitting(false);
-      }, 500);
+      }, 300);
     } catch (err) {
       showToast('Lưu cài đặt thất bại.', 'error');
       setSubmitting(false);
     }
   };
 
-  // Đăng xuất tài khoản
+  // Đăng xuất
   const handleLogout = async () => {
     const confirmed = await confirm({
       title: 'Xác nhận Đăng Xuất',

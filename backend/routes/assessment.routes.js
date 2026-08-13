@@ -120,11 +120,25 @@ router.get(
   AssessmentController.getOpenAssessment
 );
 
+router.get(
+  '/:assessmentId/review',
+  requireAuth,
+  authorize(UserRole.LEARNER),
+  AssessmentController.getLearnerAssessmentReview
+);
+
 router.post(
   '/:assessmentId/submissions',
   requireAuth,
   authorize(UserRole.LEARNER),
   AssessmentController.startSubmission
+);
+
+router.get(
+  '/submissions/:submissionId/answers',
+  requireAuth,
+  authorize(UserRole.LEARNER),
+  AssessmentController.getSubmissionAnswers
 );
 
 router.put(
@@ -140,6 +154,13 @@ router.post(
   authorize(UserRole.LEARNER),
   upload.array('files', 10),
   AssessmentController.uploadSubmissionFiles
+);
+
+router.delete(
+  '/submissions/:submissionId/files',
+  requireAuth,
+  authorize(UserRole.LEARNER),
+  AssessmentController.deleteSubmissionFile
 );
 
 router.post(

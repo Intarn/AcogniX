@@ -13,6 +13,9 @@ import {
 import AuthLayout from "../layouts/AuthLayout";
 import LearnerLayout from "../layouts/LearnerLayout";
 
+import AssignmentSubmission
+  from "../pages/learner/AssignmentSubmission";
+
 
 // Protected Route Component
 import ProtectedRoute from "./ProtectedRoute";
@@ -32,6 +35,16 @@ import Quiz from "../pages/learner/Quiz";
 import Assessments from "../pages/learner/Assessments";
 import Notes from "../pages/learner/Notes";
 import CourseDetail from "../pages/learner/CourseDetail";
+import CourseMaterials
+  from "../pages/learner/CourseMaterials";
+
+import CourseAnnouncements
+  from "../pages/learner/CourseAnnouncements";
+
+import CourseAssessments
+  from "../pages/learner/CourseAssessments";
+import AssessmentReview
+  from "../pages/learner/AssessmentReview";
 import Progress from "../pages/learner/Progress";
 import DeckManagement from "../pages/learner/DeckManagement";
 import Flashcards from "../pages/learner/Flashcards";
@@ -175,8 +188,43 @@ export const router = createBrowserRouter([
         element: <Notes />
       },
       {
-        path: "course-detail",
-        element: <CourseDetail />
+        path:
+          "courses/:courseId",
+        element:
+          <CourseDetail />
+      },
+
+      {
+        path:
+          "courses/:courseId/materials",
+        element:
+          <CourseMaterials />
+      },
+
+      {
+        path:
+          "courses/:courseId/announcements",
+        element:
+          <CourseAnnouncements />
+      },
+
+      {
+        path:
+          "courses/:courseId/assessments",
+        element:
+          <CourseAssessments />
+      },
+      {
+        path:
+          "courses/:courseId/assessments/:assessmentId/assignment",
+        element:
+          <AssignmentSubmission />
+      },
+      {
+        path:
+          "courses/:courseId/assessments/:assessmentId/review",
+        element:
+          <AssessmentReview />
       },
       {
         path: "progress",

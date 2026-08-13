@@ -188,6 +188,35 @@ class AuthenticationService {
       role: userProfile.role
     }
   }
+  // ===================================================================
+  // CHANGE PASSWORD (Đổi mật khẩu tài khoản)
+  // ===================================================================
+  static async changePassword(userId, email, currentPassword, newPassword) {
+    // 1. Xác thực mật khẩu hiện tại bằng cách thử đăng nhập với Supabase Auth
+    const { error: authError } = await supabaseAuth.auth.signInWithPassword({
+      email,
+      password: currentPassword
+    });
+
+    if (authError) {
+      const err = new Error('INVALID_CURRENT_PASSWORD');
+      err.status = 400;
+      throw err;
+    }
+
+    // 2. Cập nhật mật khẩu mới bằng Supabase Admin API
+    const { error: updateError } = await supabase.auth.admin.updateUserById(userId, {
+      password: newPassword
+    });
+
+    if (updateError) {
+      const err = new Error('CHANGE_PASSWORD_FAILED');
+      err.status = 500;
+      throw err;
+    }
+
+    return true;
+  }
 }
 
 module.exports = AuthenticationService;

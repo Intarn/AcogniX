@@ -1,6 +1,10 @@
 // frontend/src/pages/learner/Quiz.jsx
 import { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import {
+  Link,
+  useNavigate,
+  useSearchParams
+} from 'react-router-dom';
 import { useConfirm } from '../../contexts/ConfirmContext';
 import { useToast } from '../../contexts/ToastContext';
 import { 
@@ -10,9 +14,12 @@ import {
   submitSubmissionAPI 
 } from '../../services/quizService';
 
+
 export default function Quiz() {
   const [searchParams] = useSearchParams();
   const assessmentId = searchParams.get('id');
+
+  const navigate = useNavigate();
 
   const [assessment, setAssessment] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -34,33 +41,108 @@ export default function Quiz() {
 
   // 1. Khởi tạo bài thi & Tạo phiên làm bài
   useEffect(() => {
-    const initializeQuiz = async () => {
+    const initializeQuiz =
+      async () => {
+
       if (!assessmentId) {
         setLoading(false);
         return;
       }
 
+
       try {
         setLoading(true);
-        // Lấy đề bài
-        const { assessment: asmt, questions: qs } = await getOpenAssessment(assessmentId);
-        setAssessment(asmt);
-        setQuestions(qs || []);
 
-        // Tạo phiên làm bài (Backend sẽ trả về phiên cũ nếu đang IN_PROGRESS)
-        const subRes = await startSubmission(assessmentId);
-        setSubmission(subRes.submission);
-        
+        setErrorMsg(null);
+
+
+        /*
+        * Lấy Assessment
+        * và Questions.
+        */
+        const {
+          assessment: asmt,
+          questions: qs
+        } =
+          await getOpenAssessment(
+            assessmentId
+          );
+
+
+        setAssessment(
+          asmt
+        );
+
+
+        setQuestions(
+          qs || []
+        );
+
+
+        /*
+        * Tạo / lấy Submission.
+        */
+        try {
+          const subRes =
+            await startSubmission(
+              assessmentId
+            );
+
+
+          setSubmission(
+            subRes.submission
+          );
+
+        } catch (
+          submissionError
+        ) {
+
+          /*
+          * Learner đã submit
+          * Assessment này rồi.
+          */
+          if (
+            submissionError.code ===
+            'ASSESSMENT_ALREADY_SUBMITTED'
+          ) {
+            navigate(
+              `/learner/courses/${asmt.courseId}/assessments/${assessmentId}/review`,
+              {
+                replace: true
+              }
+            );
+
+            return;
+          }
+
+
+          throw submissionError;
+        }
+
       } catch (err) {
-        console.error("Lỗi khởi tạo Quiz:", err);
-        setErrorMsg(err.message || "Không thể tải bài kiểm tra. Có thể bài chưa mở hoặc bạn không có quyền.");
+        console.error(
+          'Lỗi khởi tạo Quiz:',
+          err
+        );
+
+
+        setErrorMsg(
+          err.message ||
+          'Không thể tải bài kiểm tra. Có thể bài chưa mở hoặc bạn không có quyền.'
+        );
+
       } finally {
         setLoading(false);
       }
     };
 
+
     initializeQuiz();
-  }, [assessmentId]);
+
+  }, [
+    assessmentId,
+    navigate
+  ]);
 
   // 2. Xử lý khi chọn đáp án (Lưu nháp ngay lập tức)
   const handleSelectOption = async (questionId, optionContent) => {
@@ -147,27 +229,154 @@ export default function Quiz() {
                 
                 <p className="text-lg font-semibold text-gray-800 mb-6">{currentQuestion.content}</p>
                 <div className="space-y-3">
-                  {currentQuestion.options?.map((option, idx) => {
-                    const isSelected = userAnswers[currentQuestion.questionId] === option.content;
-                    return (
-                      <label 
-                        key={option.optionId || idx} 
-                        className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-100 hover:border-blue-200'}`}
-                      >
-                        <input 
-                          type="radio" 
-                          name={`quiz_${currentQuestion.questionId}`} 
-                          checked={isSelected}
-                          onChange={() => handleSelectOption(currentQuestion.questionId, option.content)} 
-                          className="hidden" 
-                        />
-                        <span className={`w-6 h-6 border-2 rounded-full flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
-                          <span className={`w-2 h-2 bg-white rounded-full ${isSelected ? 'block' : 'hidden'}`}></span>
-                        </span>
-                        <span className="text-sm font-medium text-gray-700">{option.content}</span>
-                      </label>
-                    );
-                  })}
+                  {currentQuestion.options?.map(
+                    (option, idx) => {
+
+                      /*
+                      * Backend hiện tại có thể trả:
+                      *
+                      * [
+                      *   '=',
+                      *   '==',
+                      *   '===',
+                      *   '!='
+                      * ]
+                      *
+                      * hoặc sau này có thể trả:
+                      *
+                      * [
+                      *   {
+                      *     optionId: '...',
+                      *     content: '='
+                      *   }
+                      * ]
+                      *
+                      * Vì vậy frontend hỗ trợ cả 2.
+                      */
+                      const optionContent =
+                        option &&
+                        typeof option === 'object'
+                          ? String(
+                              option.content ?? ''
+                            )
+                          : String(
+                              option ?? ''
+                            );
+
+
+                      const optionId =
+                        option &&
+                        typeof option === 'object'
+                          ? (
+                              option.optionId ||
+                              `${currentQuestion.questionId}-option-${idx}`
+                            )
+                          : `${currentQuestion.questionId}-option-${idx}`;
+
+
+                      const isSelected =
+                        userAnswers[
+                          currentQuestion.questionId
+                        ] === optionContent;
+
+
+                      return (
+                        <label
+                          key={optionId}
+                          className={`
+                            flex
+                            items-center
+                            gap-4
+                            p-4
+                            rounded-xl
+                            border-2
+                            cursor-pointer
+                            transition-all
+
+                            ${
+                              isSelected
+                                ? `
+                                  border-blue-500
+                                  bg-blue-50
+                                `
+                                : `
+                                  border-gray-100
+                                  hover:border-blue-200
+                                `
+                            }
+                          `}
+                        >
+                          <input
+                            type="radio"
+                            name={
+                              `quiz_${currentQuestion.questionId}`
+                            }
+                            checked={
+                              isSelected
+                            }
+                            onChange={() =>
+                              handleSelectOption(
+                                currentQuestion.questionId,
+                                optionContent
+                              )
+                            }
+                            className="hidden"
+                          />
+
+
+                          <span
+                            className={`
+                              w-6
+                              h-6
+                              border-2
+                              rounded-full
+                              flex
+                              items-center
+                              justify-center
+                              flex-shrink-0
+
+                              ${
+                                isSelected
+                                  ? `
+                                    bg-blue-500
+                                    border-blue-500
+                                  `
+                                  : `
+                                    border-gray-300
+                                  `
+                              }
+                            `}
+                          >
+                            <span
+                              className={`
+                                w-2
+                                h-2
+                                bg-white
+                                rounded-full
+
+                                ${
+                                  isSelected
+                                    ? 'block'
+                                    : 'hidden'
+                                }
+                              `}
+                            />
+                          </span>
+
+
+                          <span
+                            className="
+                              text-sm
+                              font-medium
+                              text-gray-700
+                            "
+                          >
+                            {optionContent}
+                          </span>
+                        </label>
+                      );
+                    }
+                  )}
                 </div>
               </div>
               
@@ -234,7 +443,56 @@ export default function Quiz() {
               </div>
             </div>
             <p className="text-sm text-gray-500 font-bold uppercase mb-8">Điểm Của Bạn</p>
-            <Link to="/learner/my-courses" className="px-6 py-3 text-sm font-bold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">Quay lại Khóa Học</Link>
+            <div
+              className="
+                flex
+                items-center
+                justify-center
+                gap-3
+                flex-wrap
+              "
+            >
+              {/* VIEW REVIEW */}
+              <Link
+                to={
+                  `/learner/courses/${assessment.courseId}/assessments/${assessment.assessmentId}/review`
+                }
+                className="
+                  px-6
+                  py-3
+                  text-sm
+                  font-bold
+                  text-white
+                  bg-blue-600
+                  rounded-lg
+                  hover:bg-blue-700
+                  transition
+                "
+              >
+                View Review
+              </Link>
+
+
+              {/* BACK TO ASSESSMENTS */}
+              <Link
+                to={
+                  `/learner/courses/${assessment.courseId}/assessments`
+                }
+                className="
+                  px-6
+                  py-3
+                  text-sm
+                  font-bold
+                  text-gray-600
+                  bg-gray-100
+                  rounded-lg
+                  hover:bg-gray-200
+                  transition
+                "
+              >
+                Back to Assessments
+              </Link>
+            </div>
           </div>
         </div>
       )}

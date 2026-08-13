@@ -19,7 +19,79 @@ export const saveAnswer = async (submissionId, questionId, response) => {
   });
 };
 
+// Upload Assignment files
+export const uploadSubmissionFiles =
+  async (
+    submissionId,
+    files
+  ) => {
+
+    const formData =
+      new FormData();
+
+
+    files.forEach(
+      (file) => {
+        formData.append(
+          'files',
+          file
+        );
+      }
+    );
+
+
+    return await apiRequest(
+      `/assessments/submissions/${submissionId}/files`,
+      {
+        method: 'POST',
+        body: formData
+      }
+    );
+  };
+
 // 4. Chốt nộp bài
 export const submitSubmissionAPI = async (submissionId) => {
   return await apiRequest(`/assessments/submissions/${submissionId}/submit`, { method: 'POST' });
 };
+
+export const getAssessmentReview =
+  async (
+    assessmentId
+  ) => {
+    return apiRequest(
+      `/assessments/${assessmentId}/review`,
+      {
+        method: 'GET'
+      }
+    );
+  };
+
+export const deleteSubmissionFile =
+  async (
+    submissionId,
+    fileUrl
+  ) => {
+    return await apiRequest(
+      `/assessments/submissions/${submissionId}/files`,
+      {
+        method: 'DELETE',
+
+        body:
+          JSON.stringify({
+            fileUrl
+          })
+      }
+    );
+  };
+
+export const getSubmissionAnswers =
+  async (
+    submissionId
+  ) => {
+    return await apiRequest(
+      `/assessments/submissions/${submissionId}/answers`,
+      {
+        method: 'GET'
+      }
+    );
+  };
