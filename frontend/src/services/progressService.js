@@ -1,4 +1,3 @@
-// frontend/src/services/progressService.js
 import { apiRequest } from './apiClient';
 
 const USERS_KEY = 'acognix_users';
@@ -10,7 +9,7 @@ const NOTES_KEY = 'acognix_notes';
 // Lấy toàn bộ tổng quan tiến độ học tập (GET /api/progress/overview)
 export const getProgressOverview = async (userEmail, timeRange = 'Last 7 days') => {
   try {
-    return await apiRequest(`/progress/overview?timeRange=${encodeURIComponent(timeRange)}`, { method: 'GET' });
+    return await apiRequest(`/analytics/me?timeRange=${encodeURIComponent(timeRange)}`, { method: 'GET' });
   } catch (error) {
     // Dự phòng tính toán dữ liệu LocalStorage khi Backend chưa triển khai endpoint
     const allUsers = JSON.parse(localStorage.getItem(USERS_KEY)) || [];

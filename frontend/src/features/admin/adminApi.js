@@ -36,6 +36,11 @@ export function confirmDeleteUser(userId, code) {
 
 // Append to the end of adminApi.js
 export async function getAllCoursesForAdmin(query = '') {
-  // To be updated with actual API implementation later
-  return await apiRequest(`/admin/courses?query=${encodeURIComponent(query)}`);
+  try {
+    const data = await apiRequest(`/admin/courses?query=${encodeURIComponent(query)}`);
+    return data ?? { courses: [] };
+  } catch (error) {
+    console.error('getAllCoursesForAdmin failed:', error);
+    return { courses: [] };
+  }
 }

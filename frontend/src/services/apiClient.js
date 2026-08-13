@@ -2,7 +2,7 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   'http://localhost:5000/api';
-
+console.log('API_BASE_URL:', API_BASE_URL);
 export async function apiRequest(
   path,
   options = {}
@@ -32,20 +32,18 @@ export async function apiRequest(
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    if (response.status === 401 && path !== '/auth/login') {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('currentUser');
-    }
+  const error = new Error(data?.message || 'Request failed.');
+  error.status = response.status;
+  error.code = data?.code;
+  error.details = data?.details;
+  throw error;
+}
 
-    const error = new Error(
-      data?.message || 'Request failed.'
-    );
-    error.status = response.status;
-    error.code = data?.code;
-    error.details = data?.details;
+if (data === null) {
+  const error = new Error('Invalid or empty response from server.');
+  error.status = response.status;
+  throw error;
+}
 
-    throw error;
-  }
-
-  return data;
+return data;
 }

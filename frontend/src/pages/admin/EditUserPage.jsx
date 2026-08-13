@@ -1,36 +1,56 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { resetUserPassword, requestDeleteUser } from '../../features/admin/adminApi';
+import { useConfirm } from '../../contexts/ConfirmContext';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function EditUserPage() {
   const navigate = useNavigate();
   const { userId } = useParams();
   
   // Mock Data đợi Backend trả về details
+  const { confirm } = useConfirm();
+  const { showToast } = useToast();
   const [user, setUser] = useState({
     userId: userId, email: 'mock@example.com', displayName: 'Mock User', role: 'LEARNER', status: 'ACTIVE'
   });
 
   const handleResetPassword = async () => {
-    if(!confirm("Reset password for this user?")) return;
+    const confirmed = await confirm({
+      title: 'Reset user password?',
+      message: 'A password reset email will be sent to this user.',
+      confirmLabel: 'Reset Password',
+      cancelLabel: 'Cancel',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     try {
       await resetUserPassword(user.userId);
-      alert('Password reset successfully. An email has been sent.');
-    } catch (err) { alert(err.message); }
+      showToast('Password reset successfully. An email has been sent.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
   };
 
   const handleDeleteRequest = async () => {
-    if(!confirm("Request account deletion? A 2FA code will be sent to your email.")) return;
+    const confirmed = await confirm({
+      title: 'Request account deletion?',
+      message: 'A 2FA verification code will be sent to the user before deletion can be completed.',
+      confirmLabel: 'Request Deletion',
+      cancelLabel: 'Cancel',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     try {
       await requestDeleteUser(user.userId);
-      // Chuyển sang bước nhập 2FA code (hoặc hiển thị modal)
-      const code = prompt("Enter 2FA code sent to your email:");
-      if(code) {
-        // Tích hợp confirmDeleteUser(user.userId, code)
-        alert('User deleted permanently.');
+      const code = prompt('Enter 2FA code sent to your email:');
+      if (code) {
+        showToast('Deletion confirmation submitted. Connect confirmDeleteUser() here to finish the flow.', 'info');
         navigate('/admin/users');
       }
-    } catch (err) { alert(err.message); }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
   };
 
   return (

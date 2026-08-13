@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function AddUserPage() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -13,7 +15,7 @@ export default function AddUserPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     // TODO: Gắn API tạo user ở đây (hiện tại gọi Auth API signup)
-    alert('User added successfully!');
+    showToast('User added successfully.', 'success');
     navigate('/admin/users');
   };
 

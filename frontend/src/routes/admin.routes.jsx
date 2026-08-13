@@ -9,7 +9,7 @@ import CourseDetailPage from '../pages/admin/CourseDetailPage';
 import CommunityManagementPage from '../pages/admin/CommunityManagementPage';
 import AnalyticsPage from '../pages/admin/AnalyticsPage';
 import SettingsPage from '../pages/admin/SettingsPage';
-
+import SupportTicketsPage from '../pages/admin/SupportTicketsPage';
 
 export const adminRoutes = {
   path: '/admin',
@@ -29,5 +29,6 @@ export const adminRoutes = {
     { path: 'community', element: <CommunityManagementPage /> },
     { path: 'analytics', element: <AnalyticsPage /> },
     { path: 'settings', element: <SettingsPage /> },
+    { path: 'tickets', element: <SupportTicketsPage /> }
   ]
 };
