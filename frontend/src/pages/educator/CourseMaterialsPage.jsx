@@ -359,6 +359,27 @@ export default function CourseMaterialsPage() {
     course.status ===
     'ARCHIVED';
 
+  const editingMaterial =
+    editingMaterialId !== null
+      ? materials.find(
+          (material) =>
+            String(
+              material.materialId
+            ) ===
+            String(
+              editingMaterialId
+            )
+        ) || null
+      : null;
+
+
+  const hasExistingFile =
+    editingMaterial
+      ?.resourceType === 'FILE' &&
+    Boolean(
+      editingMaterial
+        ?.resourceUrl
+    );
 
   function openAddModal() {
     setEditingMaterialId(
@@ -457,6 +478,36 @@ export default function CourseMaterialsPage() {
     );
   }
 
+  function handleFileChange(
+    event
+  ) {
+    const file =
+      event.target.files?.[0] ||
+      null;
+
+
+    setForm(
+      (previous) => ({
+        ...previous,
+
+        file: file,
+
+        fileName:
+          file?.name || ''
+      })
+    );
+
+
+    setErrors(
+      (previous) => ({
+        ...previous,
+
+        fileName: null
+      })
+    );
+  }
+
+
   function updateForm(
     field,
     value
@@ -488,33 +539,8 @@ export default function CourseMaterialsPage() {
     }
 
 
-    const editingMaterial =
-      editingMaterialId !== null
-        ? materials.find(
-            (material) =>
-              String(
-                material.materialId
-              ) ===
-              String(
-                editingMaterialId
-              )
-          )
-        : null;
-
-
-    const hasExistingFile =
-      editingMaterial
-        ?.resourceType ===
-        'FILE' &&
-      Boolean(
-        editingMaterial
-          ?.resourceUrl
-      );
-
-
     if (
-      form.resourceType ===
-        'FILE' &&
+      form.resourceType === 'FILE' &&
       !form.file &&
       !hasExistingFile
     ) {
@@ -524,8 +550,7 @@ export default function CourseMaterialsPage() {
 
 
     if (
-      form.resourceType ===
-        'LINK' &&
+      form.resourceType === 'LINK' &&
       !form.resourceUrl.trim()
     ) {
       nextErrors.resourceUrl =
@@ -849,7 +874,6 @@ export default function CourseMaterialsPage() {
       );
     }
   }
-
 
   return (
     <>
@@ -1479,13 +1503,14 @@ export default function CourseMaterialsPage() {
                   >
                     <input
                       type="radio"
+                      name="resourceType"
+                      value="FILE"
                       checked={
                         form.resourceType ===
                         'FILE'
                       }
                       onChange={() =>
-                        updateForm(
-                          'resourceType',
+                        handleResourceTypeChange(
                           'FILE'
                         )
                       }
@@ -1505,13 +1530,14 @@ export default function CourseMaterialsPage() {
                   >
                     <input
                       type="radio"
+                      name="resourceType"
+                      value="LINK"
                       checked={
                         form.resourceType ===
                         'LINK'
                       }
                       onChange={() =>
-                        updateForm(
-                          'resourceType',
+                        handleResourceTypeChange(
                           'LINK'
                         )
                       }
@@ -1529,49 +1555,386 @@ export default function CourseMaterialsPage() {
                 <div>
                   <label
                     className="
+                      block
                       text-sm
                       font-semibold
                       text-gray-700
+                      mb-2
                     "
                   >
                     File *
                   </label>
 
 
+                  {/* Hidden real file input */}
                   <input
+                    id="course-material-file"
                     type="file"
+                    className="hidden"
                     onChange={
-                      (event) =>
-                        updateForm(
-                          'fileName',
-                          event.target
-                            .files?.[0]
-                            ?.name || ''
-                        )
+                      handleFileChange
                     }
-                    className="
-                      mt-2
-                      block
-                      w-full
-                      text-sm
-                      text-gray-600
-                    "
                   />
 
-
-                  {form.fileName && (
-                    <p
+                    
+                  {/* Existing file when editing */}
+                  {hasExistingFile &&
+                  !form.file && (
+                    <div
                       className="
-                        text-xs
-                        text-gray-500
-                        mt-2
+                        border
+                        border-gray-200
+                        bg-gray-50
+                        rounded-xl
+                        p-3
+                        flex
+                        items-center
+                        justify-between
+                        gap-3
                       "
                     >
-                      Selected:{' '}
-                      {
-                        form.fileName
-                      }
-                    </p>
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-3
+                          min-w-0
+                        "
+                      >
+                        <div
+                          className="
+                            w-9
+                            h-9
+                            rounded-lg
+                            bg-blue-100
+                            text-blue-600
+                            flex
+                            items-center
+                            justify-center
+                            flex-shrink-0
+                          "
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            className="w-5 h-5"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="
+                                M14 2H6
+                                a2 2 0 0 0-2 2
+                                v16
+                                a2 2 0 0 0 2 2
+                                h12
+                                a2 2 0 0 0 2-2
+                                V8z
+                              "
+                            />
+
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M14 2v6h6"
+                            />
+                          </svg>
+                        </div>
+
+
+                        <div className="min-w-0">
+                          <p
+                            className="
+                              text-xs
+                              text-gray-400
+                            "
+                          >
+                            Current file
+                          </p>
+
+                          <p
+                            className="
+                              text-sm
+                              font-semibold
+                              text-gray-700
+                              truncate
+                            "
+                          >
+                            {
+                              editingMaterial
+                                ?.fileName ||
+                              'Course material file'
+                            }
+                          </p>
+                        </div>
+                      </div>
+
+
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-3
+                          flex-shrink-0
+                        "
+                      >
+                        <a
+                          href={
+                            editingMaterial
+                              ?.resourceUrl
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                          className="
+                            text-xs
+                            font-semibold
+                            text-gray-600
+                            hover:text-blue-600
+                          "
+                        >
+                          Open
+                        </a>
+
+
+                        <label
+                          htmlFor="course-material-file"
+                          className="
+                            text-xs
+                            font-semibold
+                            text-blue-600
+                            hover:text-blue-700
+                            cursor-pointer
+                          "
+                        >
+                          Replace
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Upload area */}
+                  {!form.file && 
+                    !hasExistingFile && (
+                    <label
+                      htmlFor="course-material-file"
+                      className={`
+                        w-full
+                        min-h-[120px]
+                        border-2
+                        border-dashed
+                        rounded-xl
+                        flex
+                        flex-col
+                        items-center
+                        justify-center
+                        cursor-pointer
+                        transition
+
+                        ${
+                          errors.fileName
+                            ? `
+                              border-red-300
+                              bg-red-50/30
+                            `
+                            : `
+                              border-gray-200
+                              bg-gray-50/50
+                              hover:border-blue-300
+                              hover:bg-blue-50/30
+                            `
+                        }
+                      `}
+                    >
+                      {/* Upload icon */}
+                      <div
+                        className="
+                          w-10
+                          h-10
+                          rounded-full
+                          bg-blue-50
+                          flex
+                          items-center
+                          justify-center
+                          text-blue-600
+                          mb-2
+                        "
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          className="w-5 h-5"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="
+                              M12 16V4
+                              m0 0-4 4
+                              m4-4 4 4
+                              M4 16v2
+                              a2 2 0 0 0 2 2
+                              h12
+                              a2 2 0 0 0 2-2
+                              v-2
+                            "
+                          />
+                        </svg>
+                      </div>
+
+
+                      <p
+                        className="
+                          text-sm
+                          font-semibold
+                          text-gray-700
+                        "
+                      >
+                        Choose a file
+                      </p>
+
+
+                      <p
+                        className="
+                          text-xs
+                          text-gray-400
+                          mt-1
+                        "
+                      >
+                        Click to browse from your device
+                      </p>
+                    </label>
+                  )}
+
+
+                  {/* Selected file */}
+                  {form.file && (
+                    <div
+                      className="
+                        mt-2
+                        border
+                        border-gray-200
+                        bg-gray-50
+                        rounded-xl
+                        p-3
+                        flex
+                        items-center
+                        justify-between
+                        gap-3
+                      "
+                    >
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-3
+                          min-w-0
+                        "
+                      >
+                        <div
+                          className="
+                            w-9
+                            h-9
+                            rounded-lg
+                            bg-blue-100
+                            text-blue-600
+                            flex
+                            items-center
+                            justify-center
+                            flex-shrink-0
+                          "
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            className="w-5 h-5"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="
+                                M14 2H6
+                                a2 2 0 0 0-2 2
+                                v16
+                                a2 2 0 0 0 2 2
+                                h12
+                                a2 2 0 0 0 2-2
+                                V8z
+                              "
+                            />
+
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M14 2v6h6"
+                            />
+                          </svg>
+                        </div>
+
+
+                        <div className="min-w-0">
+                          <p
+                            className="
+                              text-sm
+                              font-semibold
+                              text-gray-700
+                              truncate
+                            "
+                          >
+                            {
+                              form.file.name
+                            }
+                          </p>
+
+
+                          <p
+                            className="
+                              text-xs
+                              text-gray-400
+                              mt-0.5
+                            "
+                          >
+                            {
+                              (
+                                form.file.size /
+                                1024 /
+                                1024
+                              ).toFixed(2)
+                            } MB
+                          </p>
+                        </div>
+                      </div>
+
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm(
+                            (previous) => ({
+                              ...previous,
+                              file: null,
+                              fileName: ''
+                            })
+                          );
+                        }}
+                        className="
+                          text-xs
+                          font-semibold
+                          text-red-500
+                          hover:text-red-600
+                          flex-shrink-0
+                        "
+                      >
+                        Remove
+                      </button>
+                    </div>
                   )}
 
 
@@ -1580,7 +1943,7 @@ export default function CourseMaterialsPage() {
                       className="
                         text-xs
                         text-red-500
-                        mt-1
+                        mt-1.5
                       "
                     >
                       {
