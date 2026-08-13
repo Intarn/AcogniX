@@ -5,7 +5,7 @@ const WorkspaceIntegrationService = require('./WorkspaceIntegrationService');
 const { ResourceType } = require('../enums/CourseContentEnums');
 const { EnrollmentStatus } = require('../enums/ClassroomEnums');
 
-const BUCKET_MATERIALS = 'course_materials';
+const BUCKET_MATERIALS = 'materials';
 const BUCKET_ANNOUNCEMENTS = 'announcements';
 
 class CourseContentService {
@@ -56,52 +56,271 @@ class CourseContentService {
   }
 
   // Basic Flow (UC-05): Edit existing material
-  static async updateMaterial(educatorId, materialId, updates, newFile) {
-    const oldMaterial = await this._getMaterialAndVerifyOwnership(materialId, educatorId);
-    let updateData = { ...updates, updatedAt: new Date() };
+  static async updateMaterial(
+    educatorId,
+    materialId,
+    updates,
+    newFile
+  ) {
+    const oldMaterial =
+      await this._getMaterialAndVerifyOwnership(
+        materialId,
+        educatorId
+      );
 
-    if (updates.resourceType === ResourceType.FILE && newFile) {
-      const fileExt = newFile.originalname.split('.').pop();
-      const filePath = `${oldMaterial.courseId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from(BUCKET_MATERIALS)
-        .upload(filePath, newFile.buffer, { contentType: newFile.mimetype });
-      
-      if (uploadError) throw new AppError(500, 'UPLOAD_FAILED', 'Failed to upload new material file.');
+    /*
+    * Chỉ đưa những field thực sự tồn tại
+    * trong bảng CourseMaterial vào updateData.
+    *
+    * Không spread toàn bộ req.body.
+    */
+    const updateData = {};
 
-      const { data: publicUrlData } = supabase.storage.from(BUCKET_MATERIALS).getPublicUrl(filePath);
-      updateData.resourceUrl = publicUrlData.publicUrl;
-      updateData.fileType = newFile.mimetype;
-      updateData.sizeBytes = newFile.size;
 
-      if (oldMaterial.resourceUrl && oldMaterial.resourceUrl.includes(BUCKET_MATERIALS)) {
-         const oldFilePath = oldMaterial.resourceUrl.split(`${BUCKET_MATERIALS}/`)[1];
-         if(oldFilePath) await supabase.storage.from(BUCKET_MATERIALS).remove([oldFilePath]);
-      }
-    } 
-    else if (updates.resourceType === ResourceType.LINK) {
-      updateData.resourceUrl = updates.linkUrl;
-      updateData.fileType = null;
-      updateData.sizeBytes = 0;
+    if (updates.title !== undefined) {
+      updateData.title =
+        String(
+          updates.title
+        ).trim();
     }
 
-    const { data, error } = await supabase
-      .from('CourseMaterial')
-      .update(updateData)
-      .eq('materialId', materialId)
-      .select().single();
-      
-    if (error) throw new AppError(500, 'UPDATE_FAILED', 'Failed to update material.');
+
+    if (updates.description !== undefined) {
+      updateData.description =
+        updates.description
+          ? String(
+              updates.description
+            ).trim()
+          : null;
+    }
+
+
+    if (updates.resourceType !== undefined) {
+      updateData.resourceType =
+        updates.resourceType;
+    }
+
+
+    /*
+    * ==============================
+    * REPLACE WITH FILE
+    * ==============================
+    */
+    if (
+      updates.resourceType ===
+        ResourceType.FILE &&
+      newFile
+    ) {
+      const fileExt =
+        newFile.originalname
+          .split('.')
+          .pop();
+
+
+      const filePath =
+        `${oldMaterial.courseId}/` +
+        `${Date.now()}_` +
+        `${Math.random()
+          .toString(36)
+          .substring(7)}.` +
+        `${fileExt}`;
+
+
+      const {
+        error: uploadError
+      } =
+        await supabase.storage
+          .from(
+            BUCKET_MATERIALS
+          )
+          .upload(
+            filePath,
+            newFile.buffer,
+            {
+              contentType:
+                newFile.mimetype
+            }
+          );
+
+
+      if (uploadError) {
+        throw new AppError(
+          500,
+          'UPLOAD_FAILED',
+          'Failed to upload new material file.'
+        );
+      }
+
+
+      const {
+        data: publicUrlData
+      } =
+        supabase.storage
+          .from(
+            BUCKET_MATERIALS
+          )
+          .getPublicUrl(
+            filePath
+          );
+
+
+      updateData.resourceUrl =
+        publicUrlData.publicUrl;
+
+      updateData.fileType =
+        newFile.mimetype;
+
+      updateData.sizeBytes =
+        newFile.size;
+
+
+      /*
+      * Delete old uploaded file
+      * if the previous resource was a file.
+      */
+      if (
+        oldMaterial.resourceType ===
+          ResourceType.FILE &&
+        oldMaterial.resourceUrl &&
+        oldMaterial.resourceUrl.includes(
+          BUCKET_MATERIALS
+        )
+      ) {
+        const oldFilePath =
+          oldMaterial.resourceUrl
+            .split(
+              `${BUCKET_MATERIALS}/`
+            )[1];
+
+
+        if (oldFilePath) {
+          await supabase.storage
+            .from(
+              BUCKET_MATERIALS
+            )
+            .remove([
+              oldFilePath
+            ]);
+        }
+      }
+    }
+
+
+    /*
+    * ==============================
+    * UPDATE / REPLACE WITH LINK
+    * ==============================
+    */
+    else if (
+      updates.resourceType ===
+      ResourceType.LINK
+    ) {
+      const linkUrl =
+        String(
+          updates.linkUrl || ''
+        ).trim();
+
+
+      if (!linkUrl) {
+        throw new AppError(
+          400,
+          'LINK_URL_REQUIRED',
+          'A link URL is required.'
+        );
+      }
+
+
+      updateData.resourceUrl =
+        linkUrl;
+
+      updateData.fileType =
+        null;
+
+      updateData.sizeBytes =
+        0;
+
+
+      /*
+      * If old material was a FILE
+      * and is now changed to LINK,
+      * remove the old file.
+      */
+      if (
+        oldMaterial.resourceType ===
+          ResourceType.FILE &&
+        oldMaterial.resourceUrl &&
+        oldMaterial.resourceUrl.includes(
+          BUCKET_MATERIALS
+        )
+      ) {
+        const oldFilePath =
+          oldMaterial.resourceUrl
+            .split(
+              `${BUCKET_MATERIALS}/`
+            )[1];
+
+
+        if (oldFilePath) {
+          await supabase.storage
+            .from(
+              BUCKET_MATERIALS
+            )
+            .remove([
+              oldFilePath
+            ]);
+        }
+      }
+    }
+
+
+    const {
+      data,
+      error
+    } =
+      await supabase
+        .from(
+          'CourseMaterial'
+        )
+        .update(
+          updateData
+        )
+        .eq(
+          'materialId',
+          materialId
+        )
+        .select()
+        .single();
+
+
+    if (error) {
+      console.error(
+        'Supabase CourseMaterial update error:',
+        error
+      );
+
+      throw new AppError(
+        500,
+        'UPDATE_FAILED',
+        'Failed to update material.'
+      );
+    }
+
+
     await NotificationService
       .notifyCourseMaterialChanged({
-        courseId: data.courseId,
-        material: data,
-        action: 'UPDATED'
+        courseId:
+          data.courseId,
+
+        material:
+          data,
+
+        action:
+          'UPDATED'
       });
+
+
     return data;
   }
-
   // Basic Flow & Alt Flow 2 (UC-05): Confirm before delete
   static async deleteMaterial(educatorId, materialId) {
     const material = await this._getMaterialAndVerifyOwnership(materialId, educatorId);
@@ -125,6 +344,38 @@ class CourseContentService {
         action: 'DELETED'
       });
     return true;
+  }
+
+  static async getMaterialsForEducator(
+    educatorId,
+    courseId
+  ) {
+    await this._verifyCourseOwnership(
+      courseId,
+      educatorId
+    );
+
+    const { data, error } =
+      await supabase
+        .from('CourseMaterial')
+        .select('*')
+        .eq('courseId', courseId)
+        .order(
+          'uploadedAt',
+          {
+            ascending: false
+          }
+        );
+
+    if (error) {
+      throw new AppError(
+        500,
+        'DB_ERROR',
+        'Failed to fetch course materials.'
+      );
+    }
+
+    return data || [];
   }
 
   // Basic Flow (UC-16): Learner views materials
@@ -197,6 +448,41 @@ class CourseContentService {
       announcement,
       emailFailed
     };
+  }
+
+  static async getAnnouncementsForEducator(
+    educatorId,
+    courseId
+  ) {
+    await this._verifyCourseOwnership(
+      courseId,
+      educatorId
+    );
+
+    const { data, error } =
+      await supabase
+        .from('Announcement')
+        .select('*')
+        .eq(
+          'courseId',
+          courseId
+        )
+        .order(
+          'publishedAt',
+          {
+            ascending: false
+          }
+        );
+
+    if (error) {
+      throw new AppError(
+        500,
+        'DB_ERROR',
+        'Failed to fetch announcements.'
+      );
+    }
+
+    return data || [];
   }
 
   // Basic Flow (UC-16): View Announcements

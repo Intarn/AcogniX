@@ -5,14 +5,19 @@ const EmailService = require('./EmailService');
 const TwoFactorService = require('./TwoFactorService');
 
 class UserManagementService {
-
   // Basic Flow #2 (UC-12): Admin searches for accounts by name or email.
   static async searchAccounts(query) {
-    const { data, error } = await supabase
+    let dbQuery = supabase
       .from('User')
       .select('userId, email, displayName, role, status, createdAt')
-      .or(`email.ilike.%${query}%,displayName.ilike.%${query}%`)
+      .order('createdAt', { ascending: false }) 
       .limit(50);
+
+    if (query && query.trim() !== '') {
+      dbQuery = dbQuery.or(`email.ilike.%${query}%,displayName.ilike.%${query}%`);
+    }
+
+    const { data, error } = await dbQuery;
 
     if (error) {
       const err = new Error('SEARCH_FAILED');
@@ -166,6 +171,19 @@ class UserManagementService {
     }
 
     await EmailService.sendAccountDeleted(targetEmail);
+  }
+
+  static async getTotalUsers() {
+    const { data, error } = await supabase
+      .from('User')
+      .select('userId');
+
+    if (error) {
+      const err = new Error('COUNT_FAILED');
+      err.status = 500;
+      throw err;
+    }
+    return data ? data.length : 0;
   }
 }
 

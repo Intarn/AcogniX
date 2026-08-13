@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import { getReportedPosts, resolveReport } from '../../features/community/communityApi';
+import { useConfirm } from '../../contexts/ConfirmContext';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function CommunityManagementPage() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
+  const { confirm } = useConfirm();
+  const { showToast } = useToast();
 
   useEffect(() => {
     fetchReports();
@@ -23,12 +27,23 @@ export default function CommunityManagementPage() {
   };
 
   const handleResolve = async (reportId, action) => {
-    if (!confirm(`Are you sure you want to ${action === 'DELETE' ? 'delete this post' : 'ignore this report'}?`)) return;
+    const deleting = action === 'DELETE';
+    const confirmed = await confirm({
+      title: deleting ? 'Delete reported post?' : 'Ignore this report?',
+      message: deleting
+        ? 'This will remove the reported post from the community. This action cannot be undone from this screen.'
+        : 'The report will be marked as handled without deleting the reported post.',
+      confirmLabel: deleting ? 'Delete Post' : 'Ignore',
+      cancelLabel: 'Cancel',
+      tone: deleting ? 'danger' : 'primary'
+    });
+    if (!confirmed) return;
     try {
       await resolveReport(reportId, action);
-      fetchReports(); // Reload list after resolving
+      await fetchReports();
+      showToast(deleting ? 'Post deleted successfully.' : 'Report ignored successfully.', 'success');
     } catch (error) {
-      alert(error.message);
+      showToast(error.message, 'error');
     }
   };
 

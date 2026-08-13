@@ -11,7 +11,7 @@ export function getCourseMaterials(
   courseId
 ) {
   return apiRequest(
-    `/course-content/${courseId}/materials`
+    `/courses/${courseId}/materials`
   );
 }
 
@@ -21,7 +21,7 @@ export function addCourseMaterial(
   formData
 ) {
   return apiRequest(
-    `/course-content/${courseId}/materials`,
+    `/courses/${courseId}/materials`,
     {
       method: 'POST',
       body: formData
@@ -35,7 +35,7 @@ export function updateCourseMaterial(
   formData
 ) {
   return apiRequest(
-    `/course-content/materials/${materialId}`,
+    `/courses/materials/${materialId}`,
     {
       method: 'PUT',
       body: formData
@@ -48,7 +48,7 @@ export function deleteCourseMaterial(
   materialId
 ) {
   return apiRequest(
-    `/course-content/materials/${materialId}`,
+    `/courses/materials/${materialId}`,
     {
       method: 'DELETE'
     }
@@ -64,7 +64,7 @@ export function getCourseAnnouncements(
   courseId
 ) {
   return apiRequest(
-    `/course-content/${courseId}/announcements`
+    `/courses/${courseId}/announcements`
   );
 }
 
@@ -74,7 +74,7 @@ export function publishAnnouncement(
   formData
 ) {
   return apiRequest(
-    `/course-content/${courseId}/announcements`,
+    `/courses/${courseId}/announcements`,
     {
       method: 'POST',
       body: formData
@@ -82,12 +82,13 @@ export function publishAnnouncement(
   );
 }
 
+
 export function reorderCourseMaterials(
   courseId,
   materialOrders
 ) {
   return apiRequest(
-    `/course-content/${courseId}/materials/reorder`,
+    `/courses/${courseId}/materials/reorder`,
     {
       method: 'PATCH',
 

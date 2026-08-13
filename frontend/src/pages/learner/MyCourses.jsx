@@ -1,7 +1,7 @@
 // frontend/src/pages/learner/MyCourses.jsx
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getEnrolledCourses, joinClass } from '../../services/courseService';
+import { getCourses, enrollInClass } from '../../services/courseService';
 
 export default function MyCourses() {
   const [courses, setCourses] = useState([]);
@@ -30,7 +30,7 @@ export default function MyCourses() {
             id: course.courseId,
 
             name:
-              course.subjectName 
+              course.subjectName ||
               `Untitled Course`,
 
             teacher:
@@ -90,25 +90,50 @@ export default function MyCourses() {
   }, []);
 
   // Xử lý gửi mã lớp học lên Backend
-  const handleEnrollClass = async (e) => {
-    e.preventDefault();
-    if (!courseCode.trim()) return;
+  const handleEnrollClass =
+    async (e) => {
+      e.preventDefault();
 
-    try {
-      setSubmitting(true);
-      await enrollInClass(courseCode.trim());
 
-      setIsModalOpen(false);
-      setCourseCode('');
-      alert("Enrolled successfully!");
-      fetchCourses();
-    } catch (err) {
-      console.error("Lỗi khi tham gia lớp học:", err);
-      alert(err.message || "Invalid code or you are already enrolled in this class.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+      if (!courseCode.trim()) {
+        return;
+      }
+
+
+      try {
+        setSubmitting(true);
+
+
+        await enrollInClass(
+          courseCode.trim()
+        );
+
+
+        setIsModalOpen(false);
+
+        setCourseCode('');
+
+
+        alert(
+          'Your enrollment request has been submitted and is awaiting approval.'
+        );
+
+      } catch (err) {
+        console.error(
+          'Unable to join class:',
+          err
+        );
+
+
+        alert(
+          err.message ||
+          'Unable to submit enrollment request.'
+        );
+
+      } finally {
+        setSubmitting(false);
+      }
+    };
 
   // Lọc khóa học theo trạng thái
   const filteredCourses =
@@ -210,7 +235,7 @@ export default function MyCourses() {
                       <div className={`${course.isCompleted ? 'bg-gray-400' : progressColor} h-full`} style={{ width: `${course.isCompleted ? 100 : course.progress}%` }}></div>
                     </div>
                     <Link 
-                      to={`/course-detail?id=${course.id}`}
+                      to={`/learner/course-detail?id=${course.id}`}
                       className={`block w-full text-center ${course.isCompleted ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-blue-50 hover:bg-blue-100 text-blue-600'} font-bold text-xs py-2 rounded-lg transition-colors`}
                     >
                       {course.isCompleted ? 'Review Course' : 'Continue Learning'}
@@ -256,7 +281,7 @@ export default function MyCourses() {
                   disabled={submitting}
                   className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition disabled:opacity-50"
                 >
-                  {submitting ? 'Enrolling...' : 'Join / Enroll'}
+                  {submitting ? 'Submitting...' : 'Request to Join'}
                 </button>
               </div>
             </form>

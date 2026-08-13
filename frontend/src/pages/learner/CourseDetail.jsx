@@ -1,236 +1,1755 @@
 // frontend/src/pages/learner/CourseDetail.jsx
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { apiRequest } from '../../services/apiClient';
+import {
+  useEffect,
+  useState
+} from 'react';
+
+import {
+  Link,
+  useSearchParams
+} from 'react-router-dom';
+
+import {
+  getCourses
+} from '../../services/courseService';
+
+import {
+  getCourseAnnouncements,
+  getCourseMaterials
+} from '../../features/classroom/courseContentApi';
+
+import {
+  getLearnerAssessments
+} from '../../services/assessmentService';
+
+function getFileTypeLabel(
+  fileType
+) {
+  if (!fileType) {
+    return 'File';
+  }
+
+  if (
+    fileType ===
+    'application/pdf'
+  ) {
+    return 'PDF';
+  }
+
+  if (
+    fileType ===
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ) {
+    return 'DOCX';
+  }
+
+  return fileType;
+}
+
+
+function formatDateTime(
+  value
+) {
+  if (!value) {
+    return '';
+  }
+
+
+  const date =
+    new Date(value);
+
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return '';
+  }
+
+
+  return date.toLocaleString(
+    'en-US',
+    {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+
+      hour: 'numeric',
+      minute: '2-digit'
+    }
+  );
+}
+
+function formatFileSize(
+  bytes
+) {
+  const value =
+    Number(bytes);
+
+
+  if (
+    !Number.isFinite(value) ||
+    value <= 0
+  ) {
+    return '';
+  }
+
+
+  if (
+    value < 1024
+  ) {
+    return `${value} B`;
+  }
+
+
+  if (
+    value <
+    1024 * 1024
+  ) {
+    return `${Math.ceil(
+      value / 1024
+    )} KB`;
+  }
+
+
+  return `${(
+    value /
+    (1024 * 1024)
+  ).toFixed(1)} MB`;
+}
 
 export default function CourseDetail() {
   const [searchParams] = useSearchParams();
   const courseId = searchParams.get('id');
 
-  const [course, setCourse] = useState(null);
-  const [lessons, setLessons] = useState([]);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [
+    course,
+    setCourse
+  ] = useState(null);
 
-  // Tabs state trong trang chi tiết
-  const [activeTab, setActiveTab] = useState('Transcript');
-  // Trạng thái mở/đóng floating notes panel
-  const [isNotesOpen, setIsNotesOpen] = useState(false);
-  const [quickNote, setQuickNote] = useState('');
+
+  const [
+    announcements,
+    setAnnouncements
+  ] = useState([]);
+
+
+  const [
+    materials,
+    setMaterials
+  ] = useState([]);
+
+  const [
+    assessments,
+    setAssessments
+  ] = useState([]);
+
+  const [
+    activeTab,
+    setActiveTab
+  ] = useState(
+    'Announcements'
+  );
+
+
+  const [
+    loading,
+    setLoading
+  ] = useState(true);
+
+
+  const [
+    loadError,
+    setLoadError
+  ] = useState('');
 
   useEffect(() => {
-    if (!courseId) return;
+    if (!courseId) {
+      setCourse(null);
+      setAnnouncements([]);
+      setMaterials([]);
+      setAssessments([]);
 
-    const fetchCourseDetails = async () => {
+      setLoadError(
+        'Course ID is missing.'
+      );
+
+      setLoading(false);
+
+      return;
+    }
+
+
+    let cancelled = false;
+
+
+    async function loadCourseDetail() {
       try {
         setLoading(true);
-        // 1. Lấy thông tin chi tiết khóa học từ Backend (/api/courses/:id)
-        const courseData = await apiRequest(`/courses/${courseId}`, { method: 'GET' });
-        setCourse(courseData);
 
-        // 2. Lấy danh sách bài học của khóa học từ Backend (hoặc fallback dữ liệu chuẩn)
-        let lessonsData = [];
-        try {
-          lessonsData = await apiRequest(`/courses/${courseId}/lessons`, { method: 'GET' });
-        } catch (e) {
-          console.warn("API lessons chưa có trên backend, sử dụng dữ liệu mặc định");
+        setLoadError('');
+
+
+        const [
+          courseResult,
+          announcementResult,
+          materialResult,
+          assessmentResult
+        ] =
+          await Promise.all([
+            getCourses(),
+
+            getCourseAnnouncements(
+              courseId
+            ),
+
+            getCourseMaterials(
+              courseId
+            ),
+
+            getLearnerAssessments()
+          ]);
+
+
+        /*
+        * GET /api/enrollment
+        * returns:
+        *
+        * {
+        *   count: ...,
+        *   courses: [...]
+        * }
+        */
+        const courseList =
+          Array.isArray(
+            courseResult?.courses
+          )
+            ? courseResult.courses
+            : [];
+
+
+        const foundCourse =
+          courseList.find(
+            (item) =>
+              String(
+                item.courseId
+              ) ===
+              String(
+                courseId
+              )
+          ) || null;
+
+
+        if (!foundCourse) {
+          throw new Error(
+            'Course not found or you do not have access to this course.'
+          );
         }
 
-        if (!Array.isArray(lessonsData) || lessonsData.length === 0) {
-          lessonsData = [
-            {
-              id: 1,
-              courseId: courseId,
-              title: `Introduction to ${courseData.name || courseData.title || 'Course'}`,
-              duration: '10:15',
-              thumbnail: 'https://images.unsplash.com/photo-1532012197267-da84d127e765?w=800&auto=format&fit=crop',
-              content: `<p>Welcome to this foundational lesson. In this module, we will cover core objectives and setting up your environment.</p>`
-            },
-            {
-              id: 2,
-              courseId: courseId,
-              title: 'Core Principles & Fundamentals',
-              duration: '15:30',
-              thumbnail: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop',
-              content: `<p>In this second lesson, we dive deep into core theories and mechanics essential for solving complex problems.</p>`
-            }
-          ];
+
+        /*
+        * GET
+        * /api/courses/:courseId/announcements
+        *
+        * returns:
+        *
+        * {
+        *   announcements: [...]
+        * }
+        */
+        const loadedAnnouncements =
+          Array.isArray(
+            announcementResult
+              ?.announcements
+          )
+            ? announcementResult
+                .announcements
+            : [];
+
+
+        /*
+        * GET
+        * /api/courses/:courseId/materials
+        *
+        * returns:
+        *
+        * {
+        *   materials: [...]
+        * }
+        */
+        const loadedMaterials =
+          Array.isArray(
+            materialResult
+              ?.materials
+          )
+            ? materialResult
+                .materials
+            : [];
+          
+        
+        const allAssessments =
+          Array.isArray(
+            assessmentResult
+          )
+            ? assessmentResult
+            : (
+                Array.isArray(
+                  assessmentResult
+                    ?.assessments
+                )
+                  ? assessmentResult
+                      .assessments
+                  : []
+              );
+
+
+        const loadedAssessments =
+          allAssessments.filter(
+            (assessment) =>
+              String(
+                assessment.courseId
+              ) ===
+              String(
+                courseId
+              )
+          );
+
+
+        if (cancelled) {
+          return;
         }
 
-        setLessons(lessonsData);
-      } catch (err) {
-        console.error("Lỗi khi tải chi tiết khóa học từ backend:", err);
+
+        setCourse(
+          foundCourse
+        );
+
+
+        setAnnouncements(
+          loadedAnnouncements
+        );
+
+
+        setMaterials(
+          loadedMaterials
+        );
+
+        setAssessments(
+          loadedAssessments
+        );
+
+    } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+
+        console.error(
+          'Unable to load learner course:',
+          error
+        );
+
+
+        setCourse(null);
+
+        setAnnouncements([]);
+
+        setMaterials([]);
+        setAssessments([]);
+
+
+        setLoadError(
+          error.message ||
+          'Unable to load course content.'
+        );
+
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
+    }
+
+
+    loadCourseDetail();
+
+
+    return () => {
+      cancelled = true;
     };
 
-    fetchCourseDetails();
   }, [courseId]);
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6 bg-gray-50">
-        <p className="text-sm text-gray-500">Đang tải chi tiết khóa học từ Backend...</p>
+      <div
+        className="
+          flex-1
+          flex
+          items-center
+          justify-center
+          p-8
+          bg-gray-50
+        "
+      >
+        <p
+          className="
+            text-sm
+            text-gray-500
+          "
+        >
+          Loading course content...
+        </p>
       </div>
     );
   }
 
-  if (!courseId || !course) {
+  if (loadError) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6 bg-gray-50">
-        <h1 className="text-xl font-bold text-red-500">Error: Course not found or ID is missing.</h1>
+      <div
+        className="
+          flex-1
+          flex
+          flex-col
+          items-center
+          justify-center
+          p-8
+          bg-gray-50
+        "
+      >
+        <p
+          className="
+            text-sm
+            text-red-500
+          "
+        >
+          {loadError}
+        </p>
+
+
+        <Link
+          to="/learner/my-courses"
+          className="
+            mt-3
+            text-sm
+            text-blue-600
+            hover:underline
+          "
+        >
+          Back to My Courses
+        </Link>
       </div>
     );
   }
 
-  const currentLesson = lessons[activeIndex] || null;
+  if (!course) {
+    return (
+      <div
+        className="
+          flex-1
+          flex
+          flex-col
+          items-center
+          justify-center
+          p-8
+          bg-gray-50
+        "
+      >
+        <p
+          className="
+            text-sm
+            text-gray-500
+          "
+        >
+          Course not found.
+        </p>
+
+
+        <Link
+          to="/learner/my-courses"
+          className="
+            mt-3
+            text-sm
+            text-blue-600
+            hover:underline
+          "
+        >
+          Back to My Courses
+        </Link>
+      </div>
+    );
+  }
 
   return (
-    <main className="flex-1 flex overflow-hidden bg-white relative">
-
-      {/* LEFT: LESSONS LIST */}
-      <div className="w-80 h-full bg-white border-r border-gray-100 flex flex-col flex-shrink-0">
-        <div className="p-4 border-b border-gray-100">
-          <h2 className="text-base font-bold text-gray-800">{course.name || course.title}</h2>
-          <p className="text-xs text-gray-500 mt-1">By {course.teacher || course.instructor || 'Instructor'}</p>
-          <div className="flex justify-between items-center mt-3">
-            <span className="text-[10px] text-gray-500">Progress</span>
-            <span className="text-[10px] font-semibold text-emerald-600">75%</span>
-          </div>
-          <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden mt-1">
-            <div className="bg-emerald-500 h-full w-[75%]"></div>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {lessons.length === 0 ? (
-            <p className="text-center text-gray-500 py-4 text-xs">No lessons available for this course.</p>
-          ) : (
-            lessons.map((lesson, index) => {
-              const isActive = index === activeIndex;
-              const isCompleted = index < activeIndex;
-
-              return (
-                <div 
-                  key={lesson.id || index}
-                  onClick={() => setActiveIndex(index)}
-                  className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                    isActive ? 'bg-blue-50 border border-blue-200 text-blue-700' :
-                    isCompleted ? 'bg-gray-50/80 text-gray-400' : 'hover:bg-gray-50 text-gray-600'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold">{index + 1}.</span>
-                    <span className="text-xs font-bold truncate max-w-[150px]">{lesson.title}</span>
-                  </div>
-                  <span className="text-[10px]">{lesson.duration || '10:00'}</span>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* RIGHT: LESSON VIEWER */}
-      <div className="flex-1 h-full p-6 overflow-y-auto">
-        
-        {/* Video Player */}
-        <div className="aspect-video bg-gray-900 rounded-xl mb-4 relative flex items-center justify-center overflow-hidden">
-          <img 
-            src={currentLesson?.thumbnail || "https://images.unsplash.com/photo-1532012197267-da84d127e765?w=800&auto=format&fit=crop"} 
-            alt="Thumbnail" 
-            className="absolute inset-0 w-full h-full object-cover opacity-30 rounded-xl" 
-          />
-          <button className="relative w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors">
-            <svg className="w-10 h-10 ml-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
-          </button>
-        </div>
-
-        {/* Lesson Title & Navigation */}
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-xl font-bold text-gray-800">
-            {currentLesson ? `Lesson ${activeIndex + 1}: ${currentLesson.title}` : 'Select a lesson'}
-          </h1>
-          <div className="flex items-center gap-2">
-            <button 
-              disabled={activeIndex === 0}
-              onClick={() => setActiveIndex(prev => prev - 1)}
-              className="px-3 py-1.5 text-xs font-semibold text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            <button 
-              disabled={activeIndex === lessons.length - 1}
-              onClick={() => setActiveIndex(prev => prev + 1)}
-              className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next Lesson
-            </button>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex gap-6" aria-label="Tabs">
-            {['Transcript', 'My Notes', 'Resources'].map((tab) => (
-              <button 
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`shrink-0 border-b-2 px-1 pb-2 text-sm font-medium transition-colors ${
-                  activeTab === tab ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Tab Content */}
-        <div className="py-5 text-sm text-gray-600 leading-relaxed space-y-4">
-          {activeTab === 'Transcript' && (
-            <div dangerouslySetInnerHTML={{ __html: currentLesson?.content || '<p>No transcript available.</p>' }} />
-          )}
-          {activeTab === 'My Notes' && (
-            <p className="text-gray-500 italic">Your personal notes for this lesson will appear here. You can also use the quick notes bubble on the bottom right.</p>
-          )}
-          {activeTab === 'Resources' && (
-            <ul className="list-disc pl-5 space-y-2 text-blue-600 text-xs font-semibold">
-              <li><a href="#" className="hover:underline">Download Lecture Slides (PDF)</a></li>
-              <li><a href="#" className="hover:underline">Supplementary Code Repository (GitHub)</a></li>
-            </ul>
-          )}
-        </div>
-
-      </div>
-
-      {/* Floating Notes Bubble */}
-      <button 
-        onClick={() => setIsNotesOpen(!isNotesOpen)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700 transition-transform hover:scale-110 z-50"
+    <main
+      className="
+        flex-1
+        min-h-full
+        bg-gray-50
+        p-6
+        overflow-y-auto
+      "
+    >
+      <div
+        className="
+          max-w-6xl
+          mx-auto
+          space-y-5
+        "
       >
-        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-      </button>
 
-      {/* Floating Notes Panel */}
-      {isNotesOpen && (
-        <div className="fixed bottom-24 right-6 w-80 h-96 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col z-50">
-          <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-gray-50 rounded-t-2xl flex-shrink-0">
-            <h3 className="text-sm font-bold text-gray-800">Quick Notes</h3>
-            <button onClick={() => setIsNotesOpen(false)} className="text-gray-400 hover:text-gray-700">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        {/* =========================
+            BREADCRUMB
+        ========================= */}
+        <div
+          className="
+            flex
+            items-center
+            gap-2
+            text-xs
+            text-gray-500
+          "
+        >
+          <Link
+            to="/learner/my-courses"
+            className="
+              hover:text-blue-600
+              transition-colors
+            "
+          >
+            My Courses
+          </Link>
+
+
+          <span>
+            /
+          </span>
+
+
+          <span
+            className="
+              text-gray-700
+            "
+          >
+            {
+              course.subjectName ||
+              'Course'
+            }
+          </span>
+        </div>
+
+
+        {/* =========================
+            COURSE INFORMATION
+        ========================= */}
+        <section
+          className="
+            bg-white
+            border
+            border-gray-100
+            rounded-2xl
+            shadow-sm
+            p-6
+          "
+        >
+          <div
+            className="
+              flex
+              items-start
+              justify-between
+              gap-5
+            "
+          >
+            <div
+              className="
+                min-w-0
+              "
+            >
+              <div
+                className="
+                  flex
+                  flex-wrap
+                  items-center
+                  gap-2
+                  mb-3
+                "
+              >
+                <span
+                  className="
+                    inline-flex
+                    px-2.5
+                    py-1
+                    rounded-full
+                    bg-blue-50
+                    text-blue-600
+                    text-xs
+                    font-semibold
+                  "
+                >
+                  {
+                    course.courseCode ||
+                    'Course'
+                  }
+                </span>
+
+
+                {course.status && (
+                  <span
+                    className="
+                      inline-flex
+                      px-2.5
+                      py-1
+                      rounded-full
+                      bg-gray-100
+                      text-gray-600
+                      text-xs
+                      font-semibold
+                    "
+                  >
+                    {
+                      course.status
+                    }
+                  </span>
+                )}
+              </div>
+
+
+              <h1
+                className="
+                  text-2xl
+                  font-bold
+                  text-gray-900
+                "
+              >
+                {
+                  course.subjectName ||
+                  'Untitled Course'
+                }
+              </h1>
+
+
+              <p
+                className="
+                  text-sm
+                  text-gray-500
+                  mt-2
+                "
+              >
+                By{' '}
+                {
+                  course.educator
+                    ?.displayName ||
+                  course.educator
+                    ?.email ||
+                  'Unknown Educator'
+                }
+              </p>
+
+
+              {course.description && (
+                <p
+                  className="
+                    text-sm
+                    text-gray-600
+                    mt-4
+                    max-w-3xl
+                    leading-relaxed
+                  "
+                >
+                  {
+                    course.description
+                  }
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+
+
+        {/* =========================
+            CLASS CONTENT
+        ========================= */}
+        <section
+          className="
+            bg-white
+            border
+            border-gray-100
+            rounded-2xl
+            shadow-sm
+            overflow-hidden
+          "
+        >
+
+          {/* =====================
+              TABS
+          ===================== */}
+          <div
+            className="
+              flex
+              border-b
+              border-gray-100
+            "
+          >
+            <button
+              type="button"
+              onClick={() =>
+                setActiveTab(
+                  'Announcements'
+                )
+              }
+              className={`
+                px-6
+                py-4
+                text-sm
+                font-semibold
+                border-b-2
+                transition
+
+                ${
+                  activeTab ===
+                  'Announcements'
+                    ? `
+                      border-blue-600
+                      text-blue-600
+                    `
+                    : `
+                      border-transparent
+                      text-gray-500
+                      hover:text-gray-700
+                    `
+                }
+              `}
+            >
+              Announcements
+
+              <span
+                className="
+                  ml-2
+                  px-2
+                  py-0.5
+                  rounded-full
+                  bg-gray-100
+                  text-[10px]
+                  text-gray-500
+                "
+              >
+                {
+                  announcements.length
+                }
+              </span>
+            </button>
+
+
+            <button
+              type="button"
+              onClick={() =>
+                setActiveTab(
+                  'Materials'
+                )
+              }
+              className={`
+                px-6
+                py-4
+                text-sm
+                font-semibold
+                border-b-2
+                transition
+
+                ${
+                  activeTab ===
+                  'Materials'
+                    ? `
+                      border-blue-600
+                      text-blue-600
+                    `
+                    : `
+                      border-transparent
+                      text-gray-500
+                      hover:text-gray-700
+                    `
+                    
+                }
+              `}
+            >
+              Course Materials
+
+              <span
+                className="
+                  ml-2
+                  px-2
+                  py-0.5
+                  rounded-full
+                  bg-gray-100
+                  text-[10px]
+                  text-gray-500
+                "
+              >
+                {
+                  materials.length
+                }
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setActiveTab(
+                  'Assessments'
+                )
+              }
+              className={`
+                px-6
+                py-4
+                text-sm
+                font-semibold
+                border-b-2
+                transition
+
+                ${
+                  activeTab ===
+                  'Assessments'
+                    ? `
+                      border-blue-600
+                      text-blue-600
+                    `
+                    : `
+                      border-transparent
+                      text-gray-500
+                      hover:text-gray-700
+                    `
+                }
+              `}
+            >
+              Assessments
+
+              <span
+                className="
+                  ml-2
+                  px-2
+                  py-0.5
+                  rounded-full
+                  bg-gray-100
+                  text-[10px]
+                  text-gray-500
+                "
+              >
+                {assessments.length}
+              </span>
             </button>
           </div>
-          <textarea 
-            value={quickNote}
-            onChange={(e) => setQuickNote(e.target.value)}
-            className="w-full h-full p-3 text-sm outline-none resize-none rounded-b-2xl" 
-            placeholder="Take notes for this lesson..." 
-          />
-        </div>
-      )}
 
+
+          {/* =====================
+              ANNOUNCEMENTS TAB
+          ===================== */}
+          {activeTab ===
+            'Announcements' && (
+            <div
+              className="
+                p-6
+              "
+            >
+              <div
+                className="
+                  mb-5
+                "
+              >
+                <h2
+                  className="
+                    text-lg
+                    font-bold
+                    text-gray-800
+                  "
+                >
+                  Announcements
+                </h2>
+
+
+                <p
+                  className="
+                    text-xs
+                    text-gray-500
+                    mt-1
+                  "
+                >
+                  Updates from your educator
+                </p>
+              </div>
+
+
+              {announcements.length ===
+              0 ? (
+                /*
+                 * UC-16 Alternative Flow:
+                 * no announcement yet.
+                 */
+                <div
+                  className="
+                    py-16
+                    text-center
+                  "
+                >
+                  <div
+                    className="
+                      w-12
+                      h-12
+                      mx-auto
+                      rounded-full
+                      bg-blue-50
+                      flex
+                      items-center
+                      justify-center
+                      mb-3
+                    "
+                  >
+                    <span
+                      className="
+                        text-xl
+                      "
+                    >
+                      📢
+                    </span>
+                  </div>
+
+
+                  <p
+                    className="
+                      text-sm
+                      font-semibold
+                      text-gray-600
+                    "
+                  >
+                    No announcements yet.
+                  </p>
+
+
+                  <p
+                    className="
+                      text-xs
+                      text-gray-400
+                      mt-1
+                    "
+                  >
+                    Updates from your educator
+                    will appear here.
+                  </p>
+                </div>
+
+              ) : (
+                <div
+                  className="
+                    space-y-3
+                  "
+                >
+                  {announcements.map(
+                    (
+                      announcement
+                    ) => (
+                      <article
+                        key={
+                          announcement
+                            .announcementId
+                        }
+                        className="
+                          border
+                          border-gray-100
+                          rounded-xl
+                          p-4
+                          bg-gray-50/50
+                        "
+                      >
+                        <div
+                          className="
+                            flex
+                            items-start
+                            gap-3
+                          "
+                        >
+                          <div
+                            className="
+                              w-10
+                              h-10
+                              rounded-lg
+                              bg-blue-100
+                              text-blue-600
+                              flex
+                              items-center
+                              justify-center
+                              flex-shrink-0
+                            "
+                          >
+                            📢
+                          </div>
+
+
+                          <div
+                            className="
+                              flex-1
+                              min-w-0
+                            "
+                          >
+                            <div
+                              className="
+                                flex
+                                flex-wrap
+                                items-start
+                                justify-between
+                                gap-2
+                              "
+                            >
+                              <h3
+                                className="
+                                  text-sm
+                                  font-bold
+                                  text-gray-800
+                                "
+                              >
+                                {
+                                  announcement
+                                    .title
+                                }
+                              </h3>
+
+
+                              <span
+                                className="
+                                  text-[11px]
+                                  text-gray-400
+                                "
+                              >
+                                {
+                                  formatDateTime(
+                                    announcement
+                                      .publishedAt
+                                  )
+                                }
+                              </span>
+                            </div>
+
+
+                            <p
+                              className="
+                                text-sm
+                                text-gray-600
+                                mt-3
+                                leading-relaxed
+                                whitespace-pre-wrap
+                              "
+                            >
+                              {
+                                announcement
+                                  .body
+                              }
+                            </p>
+
+
+                            {Array.isArray(
+                              announcement
+                                .attachmentUrls
+                            ) &&
+                              announcement
+                                .attachmentUrls
+                                .length >
+                                0 && (
+                              <div
+                                className="
+                                  mt-4
+                                  pt-3
+                                  border-t
+                                  border-gray-100
+                                "
+                              >
+                                <p
+                                  className="
+                                    text-[11px]
+                                    font-semibold
+                                    text-gray-500
+                                    mb-2
+                                  "
+                                >
+                                  Attachments
+                                </p>
+
+
+                                <div
+                                  className="
+                                    flex
+                                    flex-wrap
+                                    gap-2
+                                  "
+                                >
+                                  {
+                                    announcement
+                                      .attachmentUrls
+                                      .map(
+                                        (
+                                          url,
+                                          index
+                                        ) => (
+                                          <a
+                                            key={
+                                              `${announcement.announcementId}-${index}`
+                                            }
+                                            href={
+                                              url
+                                            }
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="
+                                              px-3
+                                              py-1.5
+                                              rounded-lg
+                                              bg-white
+                                              border
+                                              border-gray-200
+                                              text-xs
+                                              font-semibold
+                                              text-blue-600
+                                              hover:bg-blue-50
+                                              transition
+                                            "
+                                          >
+                                            Attachment{' '}
+                                            {
+                                              index +
+                                              1
+                                            }
+                                          </a>
+                                        )
+                                      )
+                                  }
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+
+          {/* =====================
+              MATERIALS TAB
+          ===================== */}
+          {activeTab ===
+            'Materials' && (
+            <div
+              className="
+                p-6
+              "
+            >
+              <div
+                className="
+                  mb-5
+                "
+              >
+                <h2
+                  className="
+                    text-lg
+                    font-bold
+                    text-gray-800
+                  "
+                >
+                  Course Materials
+                </h2>
+
+
+                <p
+                  className="
+                    text-xs
+                    text-gray-500
+                    mt-1
+                  "
+                >
+                  Materials shared by your educator
+                </p>
+              </div>
+
+
+              {materials.length ===
+              0 ? (
+                /*
+                 * UC-16 Alternative Flow:
+                 * no material yet.
+                 */
+                <div
+                  className="
+                    py-16
+                    text-center
+                  "
+                >
+                  <div
+                    className="
+                      w-12
+                      h-12
+                      mx-auto
+                      rounded-full
+                      bg-blue-50
+                      flex
+                      items-center
+                      justify-center
+                      mb-3
+                    "
+                  >
+                    <span
+                      className="
+                        text-xl
+                      "
+                    >
+                      📄
+                    </span>
+                  </div>
+
+
+                  <p
+                    className="
+                      text-sm
+                      font-semibold
+                      text-gray-600
+                    "
+                  >
+                    No materials have been uploaded for this class.
+                  </p>
+
+
+                  <p
+                    className="
+                      text-xs
+                      text-gray-400
+                      mt-1
+                    "
+                  >
+                    Materials shared by your educator
+                    will appear here.
+                  </p>
+                </div>
+
+              ) : (
+                <div
+                  className="
+                    space-y-3
+                  "
+                >
+                  {materials.map(
+                    (
+                      material
+                    ) => {
+                      const fileSize =
+                        formatFileSize(
+                          material
+                            .sizeBytes
+                        );
+
+
+                      const typeLabel =
+                        material
+                          .resourceType ===
+                        'LINK'
+                          ? 'External Link'
+                          : getFileTypeLabel(
+                              material
+                                .fileType
+                            );
+
+
+                      return (
+                        <div
+                          key={
+                            material
+                              .materialId
+                          }
+                          className="
+                            border
+                            border-gray-100
+                            rounded-xl
+                            p-4
+                            flex
+                            items-center
+                            justify-between
+                            gap-4
+                            bg-white
+                            hover:border-blue-200
+                            hover:shadow-sm
+                            transition
+                          "
+                        >
+                          <div
+                            className="
+                              flex
+                              items-center
+                              gap-3
+                              min-w-0
+                            "
+                          >
+                            <div
+                              className="
+                                w-11
+                                h-11
+                                rounded-xl
+                                bg-blue-50
+                                text-blue-600
+                                flex
+                                items-center
+                                justify-center
+                                flex-shrink-0
+                              "
+                            >
+                              <span
+                                className="
+                                  text-lg
+                                "
+                              >
+                                {
+                                  material
+                                    .resourceType ===
+                                  'LINK'
+                                    ? '🔗'
+                                    : '📄'
+                                }
+                              </span>
+                            </div>
+
+
+                            <div
+                              className="
+                                min-w-0
+                              "
+                            >
+                              <h3
+                                className="
+                                  text-sm
+                                  font-semibold
+                                  text-gray-800
+                                  truncate
+                                "
+                              >
+                                {
+                                  material
+                                    .title ||
+                                  'Untitled Material'
+                                }
+                              </h3>
+
+
+                              {material
+                                .description && (
+                                <p
+                                  className="
+                                    text-xs
+                                    text-gray-500
+                                    mt-1
+                                    line-clamp-2
+                                  "
+                                >
+                                  {
+                                    material
+                                      .description
+                                  }
+                                </p>
+                              )}
+
+
+                              <div
+                                className="
+                                  flex
+                                  flex-wrap
+                                  items-center
+                                  gap-2
+                                  mt-2
+                                  text-[11px]
+                                  text-gray-400
+                                "
+                              >
+                                <span>
+                                  {
+                                    typeLabel
+                                  }
+                                </span>
+
+
+                                {fileSize && (
+                                  <>
+                                    <span>
+                                      •
+                                    </span>
+
+
+                                    <span>
+                                      {
+                                        fileSize
+                                      }
+                                    </span>
+                                  </>
+                                )}
+
+
+                                {material
+                                  .uploadedAt && (
+                                  <>
+                                    <span>
+                                      •
+                                    </span>
+
+
+                                    <span>
+                                      {
+                                        formatDateTime(
+                                          material
+                                            .uploadedAt
+                                        )
+                                      }
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+
+                          {material
+                            .resourceUrl ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleOpenMaterial(
+                                  material
+                                )
+                              }
+                              className="
+                                flex-shrink-0
+                                px-4
+                                py-2
+                                rounded-lg
+                                bg-blue-50
+                                text-blue-600
+                                text-xs
+                                font-semibold
+                                hover:bg-blue-100
+                                transition
+                              "
+                            >
+                              {
+                                material
+                                  .resourceType ===
+                                'LINK'
+                                  ? 'Open Link'
+                                  : 'Open'
+                              }
+                            </button>
+
+                          ) : (
+                            <span
+                              className="
+                                flex-shrink-0
+                                text-xs
+                                font-medium
+                                text-red-400
+                              "
+                            >
+                              Unavailable
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab ===
+            'Assessments' && (
+            <div className="p-6">
+
+              <div className="mb-5">
+                <h2
+                  className="
+                    text-lg
+                    font-bold
+                    text-gray-800
+                  "
+                >
+                  Assessments
+                </h2>
+
+                <p
+                  className="
+                    text-xs
+                    text-gray-500
+                    mt-1
+                  "
+                >
+                  Official quizzes and assignments
+                  for this course.
+                </p>
+              </div>
+
+
+              {assessments.length ===
+              0 ? (
+                <div
+                  className="
+                    py-16
+                    text-center
+                  "
+                >
+                  <div
+                    className="
+                      w-12
+                      h-12
+                      mx-auto
+                      rounded-full
+                      bg-emerald-50
+                      flex
+                      items-center
+                      justify-center
+                      mb-3
+                    "
+                  >
+                    <span className="text-xl">
+                      📝
+                    </span>
+                  </div>
+
+                  <p
+                    className="
+                      text-sm
+                      font-semibold
+                      text-gray-600
+                    "
+                  >
+                    No assessments are available
+                    for this course.
+                  </p>
+                </div>
+
+              ) : (
+                <div className="space-y-3">
+                  {assessments.map(
+                    (assessment) => {
+                      const isOpen =
+                        assessment.status ===
+                        'IN_PROGRESS';
+
+
+                      return (
+                        <div
+                          key={
+                            assessment
+                              .assessmentId
+                          }
+                          className="
+                            border
+                            border-gray-100
+                            rounded-xl
+                            p-4
+                            bg-white
+                            flex
+                            items-center
+                            justify-between
+                            gap-4
+                            hover:border-blue-200
+                            hover:shadow-sm
+                            transition
+                          "
+                        >
+                          <div
+                            className="
+                              flex
+                              items-start
+                              gap-3
+                              min-w-0
+                            "
+                          >
+                            <div
+                              className="
+                                w-11
+                                h-11
+                                rounded-xl
+                                bg-emerald-50
+                                flex
+                                items-center
+                                justify-center
+                                flex-shrink-0
+                              "
+                            >
+                              📝
+                            </div>
+
+
+                            <div className="min-w-0">
+                              <div
+                                className="
+                                  flex
+                                  items-center
+                                  flex-wrap
+                                  gap-2
+                                "
+                              >
+                                <h3
+                                  className="
+                                    text-sm
+                                    font-bold
+                                    text-gray-800
+                                  "
+                                >
+                                  {
+                                    assessment.title
+                                  }
+                                </h3>
+
+
+                                <span
+                                  className="
+                                    px-2
+                                    py-0.5
+                                    rounded-full
+                                    bg-gray-100
+                                    text-[10px]
+                                    font-semibold
+                                    text-gray-600
+                                  "
+                                >
+                                  {
+                                    assessment.type
+                                  }
+                                </span>
+
+
+                                <span
+                                  className="
+                                    px-2
+                                    py-0.5
+                                    rounded-full
+                                    bg-blue-50
+                                    text-[10px]
+                                    font-semibold
+                                    text-blue-600
+                                  "
+                                >
+                                  {
+                                    assessment.status
+                                  }
+                                </span>
+                              </div>
+
+
+                              {assessment.description && (
+                                <p
+                                  className="
+                                    text-xs
+                                    text-gray-500
+                                    mt-1
+                                  "
+                                >
+                                  {
+                                    assessment
+                                      .description
+                                  }
+                                </p>
+                              )}
+
+
+                              <div
+                                className="
+                                  flex
+                                  flex-wrap
+                                  gap-3
+                                  mt-2
+                                  text-[11px]
+                                  text-gray-400
+                                "
+                              >
+                                <span>
+                                  {
+                                    assessment
+                                      .totalPoints
+                                  }{' '}
+                                  points
+                                </span>
+
+
+                                {assessment.startTime && (
+                                  <span>
+                                    Starts:{' '}
+                                    {
+                                      formatDateTime(
+                                        assessment
+                                          .startTime
+                                      )
+                                    }
+                                  </span>
+                                )}
+
+
+                                {assessment.deadline && (
+                                  <span>
+                                    Due:{' '}
+                                    {
+                                      formatDateTime(
+                                        assessment
+                                          .deadline
+                                      )
+                                    }
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+
+                          {isOpen ? (
+                            <Link
+                              to={
+                                `/learner/quizzes?id=${assessment.assessmentId}`
+                              }
+                              className="
+                                flex-shrink-0
+                                bg-blue-600
+                                hover:bg-blue-700
+                                text-white
+                                text-xs
+                                font-semibold
+                                px-4
+                                py-2
+                                rounded-lg
+                              "
+                            >
+                              Open
+                            </Link>
+                          ) : (
+                            <span
+                              className="
+                                flex-shrink-0
+                                text-xs
+                                font-semibold
+                                text-gray-400
+                              "
+                            >
+                              {
+                                assessment.status ===
+                                'SCHEDULED'
+                                  ? 'Not Open Yet'
+                                  : 'Closed'
+                              }
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
     </main>
   );
 }

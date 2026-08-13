@@ -1193,21 +1193,18 @@ export default function AssessmentBuilderPage() {
         options:
           previous.options.map(
             (option) => {
-              if (
+              const isTarget =
                 String(
                   option.optionId
-                ) !==
+                ) ===
                 String(
                   optionId
-                )
-              ) {
-                return option;
-              }
-
+                );
 
               /*
-               * Exactly one correct answer.
-               */
+              * Change correct answer.
+              * Exactly one option is correct.
+              */
               if (
                 field ===
                 'isCorrect'
@@ -1215,40 +1212,33 @@ export default function AssessmentBuilderPage() {
                 return {
                   ...option,
 
-                  isCorrect: true
+                  isCorrect:
+                    isTarget
                 };
               }
 
-
-              return {
-                ...option,
-
-                [field]: value
-              };
-            }
-          ).map(
-            (option) => {
-              if (
-                field ===
-                  'isCorrect' &&
-                Number(
-                  option.optionId
-                ) !==
-                Number(
-                  optionId
-                )
-              ) {
+              /*
+              * Change option content.
+              */
+              if (isTarget) {
                 return {
                   ...option,
 
-                  isCorrect: false
+                  [field]:
+                    value
                 };
               }
-
 
               return option;
             }
           )
+      })
+    );
+
+    setQuestionErrors(
+      (previous) => ({
+        ...previous,
+        options: null
       })
     );
   }

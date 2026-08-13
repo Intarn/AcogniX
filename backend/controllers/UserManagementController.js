@@ -1,13 +1,10 @@
 const UserManagementService = require('../service/UserManagementService');
 
 class UserManagementController {
-
   // Basic Flow #1-2 (UC-12)
   static async search(req, res) {
-    const { query } = req.query;
-    if (!query) {
-      return res.status(400).json({ message: "Please provide a search term (name or email)." });
-    }
+    const query = req.query.query || '';
+
     try {
       const users = await UserManagementService.searchAccounts(query);
       return res.status(200).json({ users });
@@ -114,6 +111,15 @@ class UserManagementController {
         return res.status(404).json({ message: "User not found." });
       }
       return res.status(500).json({ message: "Unable to delete account. Please try again." });
+    }
+  }
+
+  static async getTotalUsers(req, res) {
+    try {
+      const total = await UserManagementService.getTotalUsers();
+      return res.status(200).json({ totalUsers: total });
+    } catch (error) {
+      return res.status(500).json({ message: "Unable to count users. Please try again." });
     }
   }
 }

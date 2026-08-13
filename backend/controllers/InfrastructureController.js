@@ -18,6 +18,15 @@ class InfrastructureController {
     }
   }
 
+  static async getPlatformAnalytics(req, res) {
+    try {
+      const analytics = await InfrastructureService.getPlatformAnalytics();
+      return res.status(200).json(analytics);
+    } catch (error) {
+      handleControllerError(error, res);
+    }
+  }
+
   static async getApiUsage(req, res) {
     try {
       const usage = await InfrastructureService.getLLMUsage();

@@ -1,15 +1,79 @@
-const express = require('express');
-const CourseController = require('../controllers/CourseController');
-const { requireAuth, authorize } = require('../middleware/authMiddleware');
+const express =
+  require('express');
 
-const router = express.Router();
+const CourseController =
+  require(
+    '../controllers/CourseController'
+  );
 
-router.use(requireAuth);
-router.use(authorize('EDUCATOR'));
+const {
+  requireAuth,
+  authorize
+} =
+  require(
+    '../middleware/authMiddleware'
+  );
 
-router.get('/', CourseController.list);
-router.post('/', CourseController.create);
-router.put('/:courseId', CourseController.update);
-router.post('/:courseId/archive', CourseController.archive);
+const {
+  UserRole
+} =
+  require(
+    '../enums/AuthEnums'
+  );
 
-module.exports = router;
+
+const router =
+  express.Router();
+
+
+/*
+ * UC-05 / Manage Course
+ *
+ * Only Educator can manage Courses.
+ *
+ * Authentication and authorization
+ * are applied to each route instead
+ * of the whole router.
+ */
+router.get(
+  '/',
+  requireAuth,
+  authorize(
+    UserRole.EDUCATOR
+  ),
+  CourseController.list
+);
+
+
+router.post(
+  '/',
+  requireAuth,
+  authorize(
+    UserRole.EDUCATOR
+  ),
+  CourseController.create
+);
+
+
+router.put(
+  '/:courseId',
+  requireAuth,
+  authorize(
+    UserRole.EDUCATOR
+  ),
+  CourseController.update
+);
+
+
+router.post(
+  '/:courseId/archive',
+  requireAuth,
+  authorize(
+    UserRole.EDUCATOR
+  ),
+  CourseController.archive
+);
+
+
+module.exports =
+  router;

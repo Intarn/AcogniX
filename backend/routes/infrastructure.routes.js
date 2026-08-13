@@ -9,6 +9,7 @@ router.use(authorize('SYSTEM_ADMINISTRATOR'));
 // UC-20: Monitor System Infrastructure
 router.get('/health', InfrastructureController.getHealth);
 router.get('/api-usage', InfrastructureController.getApiUsage);
+router.get('/analytics', InfrastructureController.getPlatformAnalytics);
 
 // SECURITY NOTE: This endpoint modifies critical system settings (LLM API keys).
 // It is strictly protected by the `authorize('SYSTEM_ADMINISTRATOR')` middleware 

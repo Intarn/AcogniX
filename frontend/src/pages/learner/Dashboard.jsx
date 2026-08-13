@@ -261,7 +261,7 @@ export default function Dashboard() {
                 note.noteId,
 
               title:
-                note.title 
+                note.title ||
                 `Untitled Note`,
 
               date:
@@ -273,10 +273,6 @@ export default function Dashboard() {
                 null
             })
           )
-      );
-
-      setRecentNotes(
-        allNotes.slice(0, 3)
       );
 
     } catch (error) {

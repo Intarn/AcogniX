@@ -1,6 +1,8 @@
 // frontend/src/pages/learner/Quiz.jsx
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useConfirm } from '../../contexts/ConfirmContext';
+import { useToast } from '../../contexts/ToastContext';
 import { 
   getOpenAssessment, 
   startSubmission, 
@@ -27,6 +29,8 @@ export default function Quiz() {
   const [isCompleted, setIsCompleted] = useState(false);
   const [finalScore, setFinalScore] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  const { confirm } = useConfirm();
+  const { showToast } = useToast();
 
   // 1. Khởi tạo bài thi & Tạo phiên làm bài
   useEffect(() => {
@@ -69,7 +73,7 @@ export default function Quiz() {
       setSavingAnswer(true);
       await saveAnswer(submission.submissionId, questionId, optionContent);
     } catch (err) {
-      alert("Lỗi mạng khi lưu đáp án. Vui lòng chọn lại!");
+      showToast("Lỗi mạng khi lưu đáp án. Vui lòng chọn lại!", 'error');
       // Hoàn tác UI nếu lưu xịt
       setUserAnswers(prev => {
         const newState = { ...prev };
@@ -92,7 +96,7 @@ export default function Quiz() {
       setFinalScore(res.submission.score);
       setIsCompleted(true);
     } catch (err) {
-      alert("Lỗi khi nộp bài: " + err.message);
+      showToast("Lỗi khi nộp bài: " + err.message, 'error');
     } finally {
       setSubmitting(false);
     }
@@ -177,14 +181,22 @@ export default function Quiz() {
                 </button>
                 <button 
                   disabled={savingAnswer || submitting}
-                  onClick={() => {
+                  onClick={async () => {
                     if (currentIndex < totalQuestions - 1) {
                       setCurrentIndex(prev => prev + 1);
                     } else {
                       const unanswered = totalQuestions - answeredCount;
-                      let msg = "Bạn chắc chắn muốn nộp bài?";
-                      if (unanswered > 0) msg = `Bạn còn ${unanswered} câu chưa làm. Vẫn nộp bài?`;
-                      if (confirm(msg)) handleFinishQuiz();
+                      const msg = unanswered > 0
+                        ? `Bạn còn ${unanswered} câu chưa làm. Vẫn nộp bài?`
+                        : 'Bạn chắc chắn muốn nộp bài?';
+                      const confirmed = await confirm({
+                        title: 'Nộp bài kiểm tra?',
+                        message: msg,
+                        confirmLabel: 'Nộp bài',
+                        cancelLabel: 'Tiếp tục làm',
+                        tone: 'success'
+                      });
+                      if (confirmed) await handleFinishQuiz();
                     }
                   }}
                   className={`px-5 py-2.5 text-sm font-bold text-white rounded-lg ${currentIndex === totalQuestions - 1 ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}
