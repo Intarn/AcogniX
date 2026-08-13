@@ -471,6 +471,30 @@ class AssessmentController {
             return handleControllerError(error, res);
         }
     }
+
+    static async getLearnerAssessmentReview(
+        req,
+        res
+    ) {
+        try {
+            const result =
+                await AssessmentService
+                    .getLearnerAssessmentReview(
+                        req.params.assessmentId,
+                        req.user.userId
+                    );
+
+            return res
+                .status(200)
+                .json(result);
+
+        } catch (error) {
+            return handleControllerError(
+                error,
+                res
+            );
+        }
+    }
 }
 
 module.exports = AssessmentController;

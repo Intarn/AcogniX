@@ -120,6 +120,13 @@ router.get(
   AssessmentController.getOpenAssessment
 );
 
+router.get(
+  '/:assessmentId/review',
+  requireAuth,
+  authorize(UserRole.LEARNER),
+  AssessmentController.getLearnerAssessmentReview
+);
+
 router.post(
   '/:assessmentId/submissions',
   requireAuth,

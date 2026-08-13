@@ -1388,6 +1388,170 @@ class AssessmentService {
         return uploadedFiles;
     }
 
+    static async getLearnerAssessmentReview(
+        assessmentId,
+        learnerId
+    ) {
+        /*
+        * 1. Find Assessment
+        */
+        const assessmentRow =
+            await this._findAssessmentById(
+                assessmentId
+            );
+
+
+        /*
+        * 2. Learner must belong
+        * to this Course.
+        */
+        await this._assertLearnerEnrolled(
+            assessmentRow.courseId,
+            learnerId
+        );
+
+
+        /*
+        * 3. Synchronize current status.
+        */
+        const synchronized =
+            await this
+                ._synchronizeAssessmentStatus(
+                    assessmentRow
+                );
+
+
+        const assessment =
+            this._toAssessment(
+                synchronized
+            );
+
+
+        /*
+        * 4. Review is for CLOSED
+        * Assessments only.
+        */
+        if (
+            assessment.status !==
+            AssessmentStatus.CLOSED
+        ) {
+            throw new AppError(
+                409,
+                'ASSESSMENT_NOT_CLOSED',
+                'This Assessment is not closed yet.'
+            );
+        }
+
+
+        /*
+        * 5. Load questions.
+        *
+        * false:
+        * do NOT expose correctAnswer.
+        */
+        const questions =
+            await this
+                ._loadQuestionsWithOptions(
+                    assessmentId,
+                    false
+                );
+
+
+        /*
+        * 6. Find this Learner's
+        * Submission.
+        */
+        const {
+            data: submissionRow,
+            error: submissionError
+        } =
+            await supabase
+                .from('Submission')
+                .select('*')
+                .eq(
+                    'assessmentId',
+                    assessmentId
+                )
+                .eq(
+                    'learnerId',
+                    learnerId
+                )
+                .maybeSingle();
+
+
+        if (submissionError) {
+            throw submissionError;
+        }
+
+
+        /*
+        * Learner may not have submitted
+        * anything before the Assessment
+        * was closed.
+        */
+        if (!submissionRow) {
+            return {
+                assessment,
+                questions,
+                submission: null,
+                answers: [],
+                files: []
+            };
+        }
+
+
+        /*
+        * 7. Load Learner's answers.
+        */
+        const {
+            data: answerRows,
+            error: answerError
+        } =
+            await supabase
+                .from('SubmissionAnswer')
+                .select('*')
+                .eq(
+                    'submissionId',
+                    submissionRow
+                        .submissionId
+                );
+
+
+        if (answerError) {
+            throw answerError;
+        }
+
+
+        const submission =
+            this._toSubmission(
+                submissionRow
+            );
+
+
+        return {
+            assessment,
+
+            questions,
+
+            submission,
+
+            answers:
+                (answerRows || []).map(
+                    row =>
+                        new SubmissionAnswer(
+                            row
+                        )
+                ),
+
+            files:
+                Array.isArray(
+                    submission.uploadedFileUrls
+                )
+                    ? submission.uploadedFileUrls
+                    : []
+        };
+    }
+
     // UC-10 Basic Flow steps 3-5 and Alternative Flow 1
     static async submitSubmission(submissionId, learnerId) {
         // 1. Kiểm tra Submission thuộc Learner hiện tại

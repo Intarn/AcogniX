@@ -23,3 +23,15 @@ export const saveAnswer = async (submissionId, questionId, response) => {
 export const submitSubmissionAPI = async (submissionId) => {
   return await apiRequest(`/assessments/submissions/${submissionId}/submit`, { method: 'POST' });
 };
+
+export const getAssessmentReview =
+  async (
+    assessmentId
+  ) => {
+    return apiRequest(
+      `/assessments/${assessmentId}/review`,
+      {
+        method: 'GET'
+      }
+    );
+  };
