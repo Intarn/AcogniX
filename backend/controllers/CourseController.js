@@ -1,7 +1,6 @@
 const CourseService = require('../service/CourseService');
 
 class CourseController {
-
   static async list(req, res) {
     const educatorId = req.user.userId;
     try {
@@ -64,6 +63,51 @@ class CourseController {
         return res.status(400).json({ message: "This course is already archived." });
       }
       return res.status(500).json({ message: "Unable to archive course. Please try again." });
+    }
+  }
+
+  static async countActive(req, res) {
+    try {
+      const count = await CourseService.countActiveCourses();
+      return res.status(200).json({ activeCourses: count });
+    } catch (error) {
+      return res.status(500).json({ message: "Unable to count active courses." });
+    }
+  }
+
+  // Admin API: Get the entire list of courses
+  static async getAllForAdmin(req, res) {
+    try {
+      const query = req.query.query || '';
+      const courses = await CourseService.getAllCoursesForAdmin(query);
+      return res.status(200).json({ courses });
+    } catch (error) {
+      console.error("Error fetching course list for Admin:", error);
+      return res.status(500).json({ message: "Unable to load courses. Please try again." });
+    }
+  }
+
+  // Admin API: Archive any course
+  static async adminArchiveCourse(req, res) {
+    try {
+      const { courseId } = req.params;
+      const course = await CourseService.adminArchiveCourse(courseId);
+      return res.status(200).json({ message: "Course has been archived.", course });
+    } catch (error) {
+      console.error("Error archiving course as Admin:", error);
+      return res.status(500).json({ message: "Unable to archive course. Please try again." });
+    }
+  }
+
+  static async getAdminCourseDetail(req, res) {
+    try {
+      const { courseId } = req.params;
+      const courseDetail = await CourseService.getCourseDetailForAdmin(courseId);
+      return res.status(200).json(courseDetail);
+    } catch (error) {
+      console.error("Lỗi lấy chi tiết khóa học cho Admin:", error);
+      if (error.message === 'COURSE_NOT_FOUND') return res.status(404).json({ message: "Course not found." });
+      return res.status(500).json({ message: "Unable to load course details." });
     }
   }
 }

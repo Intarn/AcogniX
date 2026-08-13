@@ -7,7 +7,7 @@ import {
 import {
   Link,
   useSearchParams
-} from 'react-router';
+} from 'react-router-dom';
 
 import {
   ArcElement,
@@ -16,7 +16,8 @@ import {
   Legend,
   LinearScale,
   BarElement,
-  Tooltip
+  Tooltip,
+  Title
 } from 'chart.js';
 
 import {
@@ -31,7 +32,8 @@ ChartJS.register(
   LinearScale,
   BarElement,
   Tooltip,
-  Legend
+  Legend,
+  Title
 );
 
 import {
@@ -46,6 +48,8 @@ import {
   getClassAnalytics
 } from '../../features/analytics/analyticsApi';
 
+// Import API mới của bạn
+import { getClassPerformance } from '../../services/analyticsService';
 
 function calculatePercentage(
   score,
@@ -190,6 +194,12 @@ export default function StudentAnalyticsPage() {
     createEmptyAnalytics
   );
 
+  // State mới để lưu dữ liệu Performance từ API
+  const [
+    performance,
+    setPerformance
+  ] = useState(null);
+
 
   const [
     loadingCourses,
@@ -259,6 +269,7 @@ export default function StudentAnalyticsPage() {
       setLearners([]);
       setAssessments([]);
       setSubmissions([]);
+      setPerformance(null);
 
       setAnalytics(
         createEmptyAnalytics()
@@ -276,17 +287,21 @@ export default function StudentAnalyticsPage() {
         setLoadingAnalytics(true);
         setLoadError('');
 
+        // Thêm getClassPerformance vào Promise.all
         const [
           gradebookResult,
-          analyticsResult
+          analyticsResult,
+          performanceResult
         ] = await Promise.all([
           getCourseGradebook(
             selectedCourseId
           ),
-
           getClassAnalytics(
             selectedCourseId
-          )
+          ),
+          getClassPerformance(
+            selectedCourseId
+          ).catch(() => null) // Tránh sập toàn trang nếu API này lỗi
         ]);
 
         const loadedLearners =
@@ -344,6 +359,12 @@ export default function StudentAnalyticsPage() {
           ...createEmptyAnalytics(),
           ...loadedAnalytics
         });
+
+        // Cập nhật state performance
+        if (performanceResult) {
+            setPerformance(performanceResult);
+        }
+
       } catch (error) {
         if (!cancelled) {
           console.error(
@@ -354,6 +375,7 @@ export default function StudentAnalyticsPage() {
           setLearners([]);
           setAssessments([]);
           setSubmissions([]);
+          setPerformance(null);
 
           setAnalytics(
             createEmptyAnalytics()
@@ -639,8 +661,29 @@ export default function StudentAnalyticsPage() {
       courseAssessments
     ]);
 
+  // Đổ dữ liệu atRiskStudents từ API mới vào danh sách
   const attentionLearners =
     useMemo(() => {
+      if (performance?.atRiskStudents) {
+          return performance.atRiskStudents.map((student) => {
+             // Thử tìm avatar/email từ enrolledLearners nếu có
+             const foundLearner = enrolledLearners.find(
+                 (user) => String(user.userId ?? user.id) === String(student.learnerId)
+             );
+             return {
+                 learnerId: student.learnerId,
+                 metric: `Score: ${student.averageScore}%`,
+                 reason: `Study time: ${student.studyTimeMinutes} mins`,
+                 learner: foundLearner || {
+                     displayName: student.name || 'Unknown Learner',
+                     email: 'N/A',
+                     avatarUrl: null
+                 }
+             };
+          });
+      }
+
+      // Fallback về dữ liệu cũ nếu API chưa trả về
       return analytics
         .attentionLearners
         .map(
@@ -676,6 +719,7 @@ export default function StudentAnalyticsPage() {
           }
         );
     }, [
+      performance,
       analytics,
       enrolledLearners
     ]);
@@ -732,6 +776,31 @@ export default function StudentAnalyticsPage() {
             )
       }
     ]
+  };
+
+  // Dữ liệu cho biểu đồ Tỷ lệ rủi ro (đổ từ API Performance)
+  const atRiskCount = performance?.atRiskStudents?.length || 0;
+  const totalStudentsPerf = performance?.totalGradedSubmissions > 0 
+      ? Math.max(performance.totalGradedSubmissions, atRiskCount) 
+      : enrolledLearners.length;
+  const safeCount = totalStudentsPerf - atRiskCount > 0 ? totalStudentsPerf - atRiskCount : 0;
+
+  const performanceRatioData = {
+      labels: ['Student Performance Status'],
+      datasets: [
+        {
+          label: 'Safe',
+          data: [safeCount],
+          backgroundColor: '#10B981',
+          borderRadius: 4,
+        },
+        {
+          label: 'At Risk',
+          data: [atRiskCount],
+          backgroundColor: '#EF4444',
+          borderRadius: 4,
+        }
+      ]
   };
 
 
@@ -1069,15 +1138,13 @@ export default function StudentAnalyticsPage() {
               />
 
 
+              {/* Sử dụng data từ API mới nếu có */}
               <MetricCard
                 label="Avg Assessment Score"
                 value={
-                  averageAssessmentScore ===
-                  null
-                    ? '—'
-                    : `${averageAssessmentScore.toFixed(
-                        1
-                      )}%`
+                    performance?.classAverageScore !== undefined 
+                    ? `${performance.classAverageScore}%`
+                    : (averageAssessmentScore === null ? '—' : `${averageAssessmentScore.toFixed(1)}%`)
                 }
                 helper="Official graded assessments"
               />
@@ -1092,12 +1159,15 @@ export default function StudentAnalyticsPage() {
               />
 
 
+              {/* Sử dụng totalGradedSubmissions từ API mới */}
               <MetricCard
-                label="Common Knowledge Gap"
+                label="Total Graded Submissions"
                 value={
-                  analytics.commonKnowledgeGap
+                  performance?.totalGradedSubmissions !== undefined
+                  ? performance.totalGradedSubmissions
+                  : gradedSubmissions.length
                 }
-                helper="Class-wide topic"
+                helper="Across all assessments"
                 compact
               />
             </div>
@@ -1112,6 +1182,67 @@ export default function StudentAnalyticsPage() {
                 gap-5
               "
             >
+              {/* PERFORMANCE RATIO (Tích hợp biểu đồ mới từ API) */}
+              <section
+                className="
+                  bg-white
+                  border
+                  border-gray-100
+                  rounded-xl
+                  shadow-sm
+                  p-5
+                "
+              >
+                <h2
+                  className="
+                    text-base
+                    font-bold
+                    text-gray-800
+                  "
+                >
+                  Performance Ratio
+                </h2>
+
+
+                <p
+                  className="
+                    text-xs
+                    text-gray-400
+                    mt-1
+                  "
+                >
+                  Safe vs At-Risk students based on recent data.
+                </p>
+
+
+                <div
+                  className="
+                    h-[320px]
+                    mt-5
+                    flex
+                    items-center
+                    justify-center
+                  "
+                >
+                    <Bar
+                      data={
+                        performanceRatioData
+                      }
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: { position: 'bottom' }
+                        },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                        }
+                      }}
+                    />
+                </div>
+              </section>
+
+
               {/* SCORE DISTRIBUTION */}
               <section
                 className="
@@ -1181,86 +1312,6 @@ export default function StudentAnalyticsPage() {
                   ) : (
                     <ChartEmptyState
                       message="No graded assessment data available."
-                    />
-                  )}
-                </div>
-              </section>
-
-
-              {/* STUDY TIME */}
-              <section
-                className="
-                  bg-white
-                  border
-                  border-gray-100
-                  rounded-xl
-                  shadow-sm
-                  p-5
-                "
-              >
-                <h2
-                  className="
-                    text-base
-                    font-bold
-                    text-gray-800
-                  "
-                >
-                  Active Study Time
-                </h2>
-
-
-                <p
-                  className="
-                    text-xs
-                    text-gray-400
-                    mt-1
-                  "
-                >
-                  Aggregated active
-                  study hours for the
-                  class.
-                </p>
-
-
-                <div
-                  className="
-                    h-[320px]
-                    mt-5
-                  "
-                >
-                  {analytics
-                    .studyHoursByWeek
-                    .length >
-                  0 ? (
-                    <Bar
-                      data={
-                        studyTimeData
-                      }
-                      options={{
-                        responsive:
-                          true,
-
-                        maintainAspectRatio:
-                          false,
-
-                        plugins: {
-                          legend: {
-                            display:
-                              false
-                          }
-                        },
-
-                        scales: {
-                          y: {
-                            beginAtZero:
-                              true
-                          }
-                        }
-                      }}
-                    />
-                  ) : (
-                    <ChartEmptyState
-                      message="No active study-time data available."
                     />
                   )}
                 </div>
@@ -1344,10 +1395,10 @@ export default function StudentAnalyticsPage() {
                     "
                   >
                     {attentionLearners.map(
-                      (item) => (
+                      (item, index) => (
                         <div
                           key={
-                            item.learnerId
+                            item.learnerId || index
                           }
                           className="
                             p-4

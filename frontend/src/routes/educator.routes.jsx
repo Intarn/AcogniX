@@ -55,6 +55,9 @@ import StudentAnalyticsPage
 import Settings
   from '../pages/auth/Settings';  
 
+import MyTicketsPage 
+  from '../pages/shared/MyTicketsPage';
+
 export const educatorRoutes = [
   {
     path:
@@ -184,6 +187,10 @@ export const educatorRoutes = [
         path: 'community',
         Component:
             CommunityPage
+      },
+      { path: 'support', 
+        Component: 
+        MyTicketsPage 
       }
     ]
   }

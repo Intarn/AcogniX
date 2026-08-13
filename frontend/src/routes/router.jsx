@@ -50,6 +50,7 @@ import DeckManagement from "../pages/learner/DeckManagement";
 import Flashcards from "../pages/learner/Flashcards";
 import AIPracticeQuizzes from "../pages/learner/AIPracticeQuizzes";
 import PracticeQuizViewer from "../pages/learner/PracticeQuizViewer";
+import MyTicketsPage from "../pages/shared/MyTicketsPage";
 
 /**
  * Component này điều hướng người dùng từ trang chủ ('/') đến dashboard
@@ -236,6 +237,9 @@ export const router = createBrowserRouter([
       {
         path: "settings",
         element: <Settings />
+      },
+      { path: "support", 
+        element: <MyTicketsPage /> 
       }
     ]
   },
