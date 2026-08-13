@@ -1,7 +1,7 @@
 // frontend/src/pages/learner/MyCourses.jsx
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getEnrolledCourses, joinClass } from '../../services/courseService';
+import { getCourses, enrollInClass } from '../../services/courseService';
 
 export default function MyCourses() {
   const [courses, setCourses] = useState([]);

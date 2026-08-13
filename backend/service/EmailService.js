@@ -124,6 +124,61 @@ class EmailService {
   }
 
 
+
+  static async sendSupportTicketStatusChanged(to, displayName, ticket) {
+    const safeName = EmailService.escapeHtml(displayName || 'there');
+    const safeTicketId = EmailService.escapeHtml(ticket.ticketId || 'N/A');
+    const safeSubject = EmailService.escapeHtml(ticket.subject || 'Support ticket');
+    const safeDescription = EmailService.escapeHtml(ticket.description || '').replace(/\r?\n/g, '<br>');
+    const newStatus = EmailService.escapeHtml(ticket.newStatus || 'UPDATED');
+    const previousStatus = EmailService.escapeHtml(ticket.previousStatus || '');
+
+    let title = 'Your Support Ticket Has Been Updated';
+    let message = 'The status of your support ticket has been updated by our support team.';
+
+    if (ticket.newStatus === 'RESOLVED') {
+      title = 'Your Support Ticket Has Been Resolved';
+      message = 'Our support team has marked your support ticket as resolved.';
+    } else if (ticket.newStatus === 'CLOSED') {
+      title = 'Your Support Ticket Has Been Closed';
+      message = 'Our support team has closed your support ticket.';
+    } else if (ticket.newStatus === 'OPEN') {
+      title = 'Your Support Ticket Has Been Reopened';
+      message = 'Your support ticket has been reopened and is available for further support.';
+    }
+
+    await EmailService.send(
+      to,
+      `AcogniX - ${title}`,
+      `
+        <p>Hello ${safeName},</p>
+        <p>${message}</p>
+
+        <p>
+          <b>Ticket:</b> #${safeTicketId}<br>
+          <b>Subject:</b> ${safeSubject}<br>
+          <b>Status:</b> ${previousStatus} &rarr; <b>${newStatus}</b>
+        </p>
+
+        <p>
+          <b>Your request:</b><br>
+          ${safeDescription}
+        </p>
+
+        <p>You can log in to AcogniX to review your support tickets.</p>
+      `
+    );
+  }
+
+  static escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   static async sendAccountDeleted(to) {
     await this.send(
       to,

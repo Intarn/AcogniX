@@ -19,6 +19,7 @@ const learningRoutes = require('./backend/routes/learning.routes');
 const analyticsRoutes = require('./backend/routes/analytics.routes');
 const infrastructureRoutes = require('./backend/routes/infrastructure.routes');
 const scheduleWeeklyReports = require('./backend/cron/weeklyReport');
+const supportTicket = require('./backend/routes/support.routes');
 
 function createApp(io) {
   const app = express();
@@ -44,6 +45,7 @@ function createApp(io) {
   app.use('/api/learning', learningRoutes);
   app.use('/api/analytics', analyticsRoutes);
   app.use('/api/admin/infrastructure', infrastructureRoutes);
+  app.use('/api/support', supportTicket);
 
   // Serve Frontend (SPA)
   const frontendPath = path.join(__dirname, 'dist', 'frontend');

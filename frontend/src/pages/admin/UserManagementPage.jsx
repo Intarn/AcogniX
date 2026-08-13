@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router'; // 1. Import useNavigate
 import { searchUsers, banUser, unbanUser, changeUserRole } from '../../features/admin/adminApi';
+import { useConfirm } from '../../contexts/ConfirmContext';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function UserManagementPage() {
   const navigate = useNavigate(); // 2. Khởi tạo navigate
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
+  const { confirm } = useConfirm();
+  const { showToast } = useToast();
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -28,23 +32,33 @@ export default function UserManagementPage() {
   }, [search]);
 
   const handleToggleBan = async (user) => {
-    if (!confirm(`Are you sure you want to ${user.status === 'BANNED' ? 'unban' : 'ban'} ${user.email}?`)) return;
+    const banned = user.status !== 'BANNED';
+    const confirmed = await confirm({
+      title: banned ? 'Ban this user?' : 'Unban this user?',
+      message: `Are you sure you want to ${banned ? 'ban' : 'unban'} ${user.email}?`,
+      confirmLabel: banned ? 'Ban User' : 'Unban User',
+      cancelLabel: 'Cancel',
+      tone: banned ? 'danger' : 'success'
+    });
+    if (!confirmed) return;
+
     try {
       if (user.status === 'BANNED') await unbanUser(user.userId);
       else await banUser(user.userId);
-      fetchUsers(); 
+      await fetchUsers();
+      showToast(banned ? 'User banned successfully.' : 'User unbanned successfully.', 'success');
     } catch (error) {
-      alert(error.message);
+      showToast(error.message, 'error');
     }
   };
 
   const handleRoleChange = async (userId, newRole) => {
     try {
       await changeUserRole(userId, newRole);
-      alert('Role updated successfully');
-      fetchUsers();
+      showToast('Role updated successfully.', 'success');
+      await fetchUsers();
     } catch (error) {
-      alert(error.message);
+      showToast(error.message, 'error');
     }
   };
 
@@ -104,8 +118,7 @@ export default function UserManagementPage() {
                       {user.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 flex gap-3">
-                    <button className="text-xs font-bold text-blue-600 hover:underline">Edit</button>
+                  <td className="px-6 py-4 whitespace-nowrap text-left">
                     <button 
                       onClick={() => handleToggleBan(user)}
                       className={`text-xs font-bold hover:underline ${user.status === 'BANNED' ? 'text-green-600' : 'text-red-600'}`}

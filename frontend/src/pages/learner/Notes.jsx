@@ -1,5 +1,6 @@
 // frontend/src/pages/learner/Notes.jsx
 
+import { useConfirm } from '../../contexts/ConfirmContext';
 import {
   useState,
   useEffect,
@@ -30,6 +31,8 @@ export default function Notes() {
    */
 
   // Danh sách AI Project của Learner
+  const { confirm } = useConfirm();
+
   const [
     projects,
     setProjects
@@ -630,10 +633,13 @@ export default function Notes() {
        * UC-25 Alternative Flow 2:
        * Confirm Before Delete.
        */
-      const confirmed =
-        window.confirm(
-          'Delete this note permanently?'
-        );
+      const confirmed = await confirm({
+        title: 'Delete this note permanently?',
+        message: 'This action will permanently remove the selected note.',
+        confirmLabel: 'Delete Note',
+        cancelLabel: 'Cancel',
+        tone: 'danger'
+      });
 
 
       if (!confirmed) {
