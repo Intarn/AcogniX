@@ -18,14 +18,12 @@ const uploadAndExtract = async (req, res) => {
         if (!materialId) {
             return res.status(400).json({ code: 'MISSING_MATERIAL_ID', message: 'Missing materialId.' });
         }
-
         const result = await AIServiceClient.extractDocument(
             materialId,
             req.file.buffer,
             req.file.originalname,
             req.file.mimetype
         );
-
         return res.status(200).json({ message: 'Text extracted successfully!', data: result });
     } catch (error) {
         return handleControllerError(error, res);
@@ -34,12 +32,12 @@ const uploadAndExtract = async (req, res) => {
 
 const generateQuiz = async (req, res) => {
     try {
-        const { projectId, questionCount, difficulty } = req.body;
+        const { projectId, materialIds, questionCount, difficulty } = req.body;
         if (!projectId) {
             return res.status(400).json({ code: 'MISSING_PROJECT_ID', message: 'Missing projectId.' });
         }
-
-        const result = await AIServiceClient.generateQuiz(projectId, questionCount || 5, difficulty || 'medium');
+        // Gửi danh sách materialIds qua Service client
+        const result = await AIServiceClient.generateQuiz(projectId, materialIds, questionCount || 5, difficulty || 'medium');
         return res.status(200).json({ message: 'Quizzes generated!', data: result.questions, quizId: result.quizId });
     } catch (error) {
         return handleControllerError(error, res);
@@ -48,12 +46,12 @@ const generateQuiz = async (req, res) => {
 
 const generateFlashcards = async (req, res) => {
     try {
-        const { projectId, flashcardCount, length } = req.body;
+        const { projectId, materialIds, flashcardCount, length } = req.body;
         if (!projectId) {
             return res.status(400).json({ code: 'MISSING_PROJECT_ID', message: 'Missing projectId.' });
         }
-
-        const result = await AIServiceClient.generateFlashcards(projectId, flashcardCount || 10, length || 'short');
+        // Gửi danh sách materialIds qua Service client
+        const result = await AIServiceClient.generateFlashcards(projectId, materialIds, flashcardCount || 10, length || 'short');
         return res.status(200).json({ message: 'Flashcards generated!', data: result.flashcards, flashcardSetId: result.flashcardSetId });
     } catch (error) {
         return handleControllerError(error, res);
@@ -69,7 +67,6 @@ const chat = async (req, res) => {
         if (!userMessage) {
             return res.status(400).json({ code: 'MISSING_MESSAGE', message: 'Missing user message.' });
         }
-
         const result = await AIServiceClient.chat(projectId, conversationId || null, userMessage);
         return res.status(200).json({ data: { reply: result.reply, conversationId: result.conversationId } });
     } catch (error) {
@@ -108,6 +105,16 @@ const getConversationHistory = async (req, res) => {
     }
 };
 
+const deleteSavedFlashcardSet = async (req, res) => {
+    try {
+        const { projectId, setId } = req.params;
+        await AIHistoryService.deleteFlashcardSet(projectId, setId, req.user.userId);
+        return res.status(200).json({ message: 'Deleted flashcard set successfully' });
+    } catch (error) {
+        return handleControllerError(error, res);
+    }
+};
+
 module.exports = {
     generateQuiz,
     generateFlashcards,
@@ -115,5 +122,6 @@ module.exports = {
     uploadAndExtract,
     getSavedQuizzes,
     getSavedFlashcards,
-    getConversationHistory
+    getConversationHistory,
+    deleteSavedFlashcardSet
 };
