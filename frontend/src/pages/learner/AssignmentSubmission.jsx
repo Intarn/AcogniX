@@ -19,6 +19,14 @@ import {
   submitSubmissionAPI
 } from '../../services/quizService';
 
+import {
+  useConfirm
+} from '../../contexts/ConfirmContext';
+
+import {
+  useToast
+} from '../../contexts/ToastContext';
+
 
 function formatDateTime(value) {
   if (!value) {
@@ -122,6 +130,14 @@ function getOriginalFileName(
 }
 
 export default function AssignmentSubmission() {
+
+  const {
+    confirm
+  } = useConfirm();
+
+  const {
+    showToast
+  } = useToast();
   const {
     courseId,
     assessmentId
@@ -217,6 +233,14 @@ export default function AssignmentSubmission() {
     setCompleted
   ] =
     useState(false);
+
+  const isResubmission =
+    [
+      'SUBMITTED',
+      'PENDING_REVIEW'
+    ].includes(
+      submission?.status
+    );
 
 
   /* =====================================================
@@ -497,9 +521,10 @@ export default function AssignmentSubmission() {
         );
 
 
-        alert(
-        error.message ||
-        'Unable to save your answer.'
+        showToast(
+          error.message ||
+            'Unable to save your answer.',
+          'error'
         );
 
     } finally {
@@ -546,8 +571,9 @@ export default function AssignmentSubmission() {
       selectedFiles.length ===
       0
     ) {
-      alert(
-        'Please select at least one file.'
+      showToast(
+        'Please select at least one file.',
+        'warning'
       );
 
       return;
@@ -574,7 +600,7 @@ export default function AssignmentSubmission() {
 
 
       setUploadedFiles(
-        (previous) => [
+        previous => [
           ...previous,
           ...newlyUploaded
         ]
@@ -584,8 +610,11 @@ export default function AssignmentSubmission() {
       setSelectedFiles([]);
 
 
-      alert(
-        'Files uploaded successfully.'
+      showToast(
+        newlyUploaded.length > 1
+          ? 'Files uploaded successfully.'
+          : 'File uploaded successfully.',
+        'success'
       );
 
     } catch (error) {
@@ -595,9 +624,10 @@ export default function AssignmentSubmission() {
       );
 
 
-      alert(
+      showToast(
         error.message ||
-        'Unable to upload files.'
+          'Unable to upload files.',
+        'error'
       );
 
     } finally {
@@ -607,71 +637,92 @@ export default function AssignmentSubmission() {
 
   async function handleDeleteUploadedFile(
     file
-    ) {
+  ) {
     if (!submission) {
-        return;
+      return;
     }
 
 
     if (!file?.fileUrl) {
-        return;
+      return;
     }
 
 
+    const fileName =
+      file.fileName ||
+      'this file';
+
+
     const confirmed =
-        window.confirm(
-        `Remove "${file.fileName || 'this file'}" from your submission?`
-        );
+      await confirm({
+        title:
+          'Remove Uploaded File?',
+
+        message:
+          `Are you sure you want to remove "${fileName}" from your submission?`,
+
+        confirmLabel:
+          'Remove',
+
+        cancelLabel:
+          'Cancel',
+
+        tone:
+          'danger'
+      });
 
 
     if (!confirmed) {
-        return;
+      return;
     }
 
 
     try {
-        setDeletingFileUrl(
+      setDeletingFileUrl(
         file.fileUrl
-        );
+      );
 
 
-        await deleteSubmissionFile(
+      await deleteSubmissionFile(
         submission.submissionId,
         file.fileUrl
-        );
+      );
 
 
-        /*
-        * Remove deleted file
-        * from frontend state.
-        */
-        setUploadedFiles(
+      setUploadedFiles(
         previous =>
-            previous.filter(
+          previous.filter(
             item =>
-                item.fileUrl !==
-                file.fileUrl
-            )
-        );
+              item.fileUrl !==
+              file.fileUrl
+          )
+      );
+
+
+      showToast(
+        `"${fileName}" was removed successfully.`,
+        'success'
+      );
 
     } catch (error) {
-        console.error(
+      console.error(
         'Unable to delete submission file:',
         error
-        );
+      );
 
 
-        alert(
+      showToast(
         error.message ||
-        'Unable to delete the file.'
-        );
+          'Unable to remove the file.',
+        'error'
+      );
 
     } finally {
-        setDeletingFileUrl(
+      setDeletingFileUrl(
         null
-        );
+      );
     }
-    }
+  }
 
 
   /* =====================================================
@@ -680,120 +731,172 @@ export default function AssignmentSubmission() {
 
   async function handleSubmitAssignment() {
     if (!submission) {
-        return;
+      return;
     }
 
 
     const hasUploadedFiles =
-    uploadedFiles.length > 0;
+      uploadedFiles.length > 0;
 
 
     const hasSelectedFiles =
-    selectedFiles.length > 0;
+      selectedFiles.length > 0;
 
 
     const hasAnswers =
-        Object.values(
-            userAnswers
-        ).some(
-            answer =>
-            String(
-                answer ?? ''
-            ).trim() !== ''
-        );
+      Object.values(
+        userAnswers
+      ).some(
+        answer =>
+          String(
+            answer ?? ''
+          ).trim() !== ''
+      );
 
 
-        if (
-        !hasUploadedFiles &&
-        !hasSelectedFiles &&
-        !hasAnswers
-        ) {
-        alert(
-            'Please answer at least one question or attach at least one file before submitting.'
-        );
+    /*
+    * Learner phải có ít nhất:
+    *
+    * - answer
+    * hoặc
+    * - uploaded file
+    * hoặc
+    * - selected file sắp upload
+    */
+    if (
+      !hasUploadedFiles &&
+      !hasSelectedFiles &&
+      !hasAnswers
+    ) {
+      showToast(
+        'Please answer at least one question or attach at least one file before submitting.',
+        'warning'
+      );
 
-        return;
+      return;
     }
-    
 
 
+    /*
+    * Confirm Submit / Resubmit.
+    */
     const confirmed =
-        window.confirm(
-        'Submit this assignment? You will not be able to change it after submission.'
-        );
+      await confirm({
+        title:
+          isResubmission
+            ? 'Resubmit Assignment?'
+            : 'Submit Assignment?',
+
+        message:
+          isResubmission
+            ? 'Are you sure you want to resubmit this Assignment? Your latest answers and uploaded files will be used for the updated submission.'
+            : 'Are you sure you want to submit this Assignment? You can still edit and resubmit it while the Assessment remains open.',
+
+        confirmLabel:
+          isResubmission
+            ? 'Resubmit'
+            : 'Submit',
+
+        cancelLabel:
+          'Cancel',
+
+        tone:
+          'success'
+      });
 
 
     if (!confirmed) {
-        return;
+      return;
     }
 
 
     try {
-        setSubmitting(true);
+      setSubmitting(true);
 
 
-        for (
-            const question of
-            questions
-        ) {
+      /*
+      * Save all entered answers
+      * before final submission.
+      */
+      for (
+        const question of
+        questions
+      ) {
         const response =
-            userAnswers[
+          userAnswers[
             question.questionId
-            ];
+          ];
 
 
         if (
-            response !==
+          response !==
             undefined &&
-            String(
+          String(
             response
-            ).trim() !== ''
+          ).trim() !== ''
         ) {
-            await saveAnswer(
+          await saveAnswer(
             submission.submissionId,
             question.questionId,
             response
-            );
+          );
         }
-        }
-
-        if (
-            selectedFiles.length > 0
-        ) {
-            await uploadSubmissionFiles(
-                submission.submissionId,
-                selectedFiles
-            );
-        }
+      }
 
 
-        /*
-        * Sau khi upload thành công
-        * mới finalize Submission.
-        */
-        await submitSubmissionAPI(
-        submission.submissionId
+      /*
+      * Upload newly selected files.
+      */
+      if (
+        selectedFiles.length > 0
+      ) {
+        await uploadSubmissionFiles(
+          submission.submissionId,
+          selectedFiles
         );
+      }
 
 
-        setCompleted(true);
+      /*
+      * Finalize / resubmit
+      * the Assignment.
+      */
+      await submitSubmissionAPI(
+        submission.submissionId
+      );
+
+
+      showToast(
+        isResubmission
+          ? 'Assignment resubmitted successfully.'
+          : 'Assignment submitted successfully.',
+        'success'
+      );
+
+
+      setCompleted(true);
 
     } catch (error) {
-        console.error(
+      console.error(
         'Unable to submit assignment:',
         error
-        );
+      );
 
 
-        alert(
+      showToast(
         error.message ||
-        'Unable to submit assignment.'
-        );
+          (
+            isResubmission
+              ? 'Unable to resubmit assignment.'
+              : 'Unable to submit assignment.'
+          ),
+        'error'
+      );
 
     } finally {
-        setSubmitting(false);
+      setSubmitting(false);
     }
-    }
+  }
 
 
   /* =====================================================
@@ -916,7 +1019,11 @@ export default function AssignmentSubmission() {
                 font-bold
               "
             >
-              Assignment Submitted
+              {
+                isResubmission
+                  ? 'Assignment Resubmitted'
+                  : 'Assignment Submitted'
+              }
             </h2>
 
 
@@ -927,8 +1034,11 @@ export default function AssignmentSubmission() {
                 mt-2
               "
             >
-              Your assignment has been
-              submitted successfully.
+              {
+                isResubmission
+                  ? 'Your updated assignment has been resubmitted successfully.'
+                  : 'Your assignment has been submitted successfully.'
+              }
             </p>
           </div>
 
@@ -1072,7 +1182,11 @@ export default function AssignmentSubmission() {
               text-gray-800
             "
           >
-            Submit Assignment
+            {
+              isResubmission
+                ? 'Edit Assignment'
+                : 'Submit Assignment'
+            }
           </h1>
         </div>
       </header>
@@ -2103,8 +2217,16 @@ export default function AssignmentSubmission() {
                 >
                   {
                     submitting
-                      ? 'Submitting...'
-                      : 'Submit Assignment'
+                    ? (
+                        isResubmission
+                          ? 'Resubmitting...'
+                          : 'Submitting...'
+                      )
+                    : (
+                        isResubmission
+                          ? 'Resubmit Assignment'
+                          : 'Submit Assignment'
+                      )
                   }
                 </button>
               </div>

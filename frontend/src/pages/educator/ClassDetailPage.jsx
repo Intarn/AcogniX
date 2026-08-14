@@ -464,6 +464,9 @@ export default function ClassDetailPage() {
       {/* MAIN */}
       <main
         className="
+          flex-1
+          min-h-0
+          overflow-y-auto
           p-6
           space-y-6
         "
