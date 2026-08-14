@@ -256,7 +256,14 @@ export default function CourseMaterials() {
   function handleOpenMaterial(
     material
   ) {
-    if (!material?.resourceUrl) {
+    const resourceUrl =
+      String(
+        material?.resourceUrl ||
+        ''
+      ).trim();
+
+
+    if (!resourceUrl) {
       alert(
         'This material is unavailable.'
       );
@@ -264,8 +271,51 @@ export default function CourseMaterials() {
       return;
     }
 
+
+    /*
+    * resourceUrl của FILE phải là
+    * URL hoàn chỉnh do backend trả về.
+    *
+    * Ví dụ:
+    * https://xxxx.supabase.co/storage/...
+    */
+    if (
+      material.resourceType ===
+        'FILE' &&
+      !/^https?:\/\//i.test(
+        resourceUrl
+      )
+    ) {
+      console.error(
+        'Invalid material file URL:',
+        resourceUrl
+      );
+
+      alert(
+        'The material file URL is invalid.'
+      );
+
+      return;
+    }
+
+
+    /*
+    * Với external link, nếu Educator
+    * nhập thiếu http:// hoặc https://
+    * thì thêm https://.
+    */
+    const openUrl =
+      material.resourceType ===
+        'LINK' &&
+      !/^https?:\/\//i.test(
+        resourceUrl
+      )
+        ? `https://${resourceUrl}`
+        : resourceUrl;
+
+
     window.open(
-      material.resourceUrl,
+      openUrl,
       '_blank',
       'noopener,noreferrer'
     );

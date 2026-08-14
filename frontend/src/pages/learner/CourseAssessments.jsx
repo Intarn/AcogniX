@@ -526,6 +526,21 @@ export default function CourseAssessments() {
                     const isClosed =
                       assessment.status ===
                       'CLOSED';
+                    
+                    const allowsLateSubmission =
+                        Boolean(
+                            assessment
+                                .allowLateSubmission
+                        );
+
+
+                    const isLateSubmissionPeriod =
+                        isClosed &&
+                        allowsLateSubmission;
+
+                    const canAttempt =
+                        isOpen ||
+                        isLateSubmissionPeriod;
                       
                     const submissionStatus =
                       assessment.submission
@@ -579,11 +594,27 @@ export default function CourseAssessments() {
                     * - Quiz đã finalize
                     * - Submission đã GRADED
                     */
+                    const assignmentFinalizedAfterDeadline =
+                        isAssignment &&
+                        isClosed &&
+                        [
+                            'SUBMITTED',
+                            'PENDING_REVIEW',
+                            'GRADED'
+                        ].includes(
+                            submissionStatus
+                        );
+
+
                     const canReview =
-                      isClosed ||
-                      quizFinalized ||
-                      submissionStatus ===
-                        'GRADED';
+                        quizFinalized ||
+                        submissionStatus ===
+                            'GRADED' ||
+                        (
+                            isClosed &&
+                            !allowsLateSubmission
+                        ) ||
+                        assignmentFinalizedAfterDeadline;
 
 
                     return (
@@ -818,7 +849,7 @@ export default function CourseAssessments() {
 
                           {/* Open Quiz */}
                           {!canReview &&
-                            isOpen &&
+                            canAttempt &&
                             isQuiz && (
                             <Link
                               to={
@@ -848,7 +879,7 @@ export default function CourseAssessments() {
 
                           {/* Assignment */}
                           {!canReview &&
-                            isOpen &&
+                            canAttempt &&
                             isAssignment && (
                             <Link
                               to={
