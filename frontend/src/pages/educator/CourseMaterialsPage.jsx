@@ -1131,11 +1131,7 @@ export default function CourseMaterialsPage() {
                     </div>
 
 
-                    <div
-                      className="
-                        min-w-0
-                      "
-                    >
+                    <div className="min-w-0">
                       <h3
                         className="
                           text-sm
@@ -1144,9 +1140,32 @@ export default function CourseMaterialsPage() {
                         "
                       >
                         {
-                          material.title
+                          material.title ||
+                          'Untitled Material'
                         }
                       </h3>
+
+
+                      {/* ORIGINAL FILE NAME */}
+                      {material.resourceType ===
+                        'FILE' &&
+                        material.fileName && (
+                          <p
+                            className="
+                              text-xs
+                              text-gray-400
+                              mt-1
+                              truncate
+                            "
+                            title={
+                              material.fileName
+                            }
+                          >
+                            {
+                              material.fileName
+                            }
+                          </p>
+                        )}
 
 
                       {material.description && (
@@ -1155,6 +1174,7 @@ export default function CourseMaterialsPage() {
                             text-xs
                             text-gray-500
                             mt-1
+                            line-clamp-2
                           "
                         >
                           {
@@ -1162,23 +1182,6 @@ export default function CourseMaterialsPage() {
                           }
                         </p>
                       )}
-
-
-                      <p
-                        className="
-                          text-xs
-                          text-gray-400
-                          mt-2
-                          truncate
-                        "
-                      >
-                        {
-                          material.resourceType ===
-                          'FILE'
-                            ? material.fileName
-                            : material.resourceUrl
-                        }
-                      </p>
                     </div>
                   </div>
 
