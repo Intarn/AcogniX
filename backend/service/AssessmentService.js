@@ -314,7 +314,15 @@ class AssessmentService {
                 Array.isArray(
                     submission.uploadedFileUrls
                 )
-                    ? submission.uploadedFileUrls
+                    ? submission
+                        .uploadedFileUrls
+                        .map(
+                            filePath =>
+                                this
+                                    ._getSubmissionFilePublicUrl(
+                                        filePath
+                                    )
+                        )
                     : []
         };
     }
@@ -1071,13 +1079,31 @@ class AssessmentService {
     }
 
     // Optional implementation support for Assessment.instructionFileUrl.
-    static async uploadInstructionFile(assessmentId, educatorId, file) {
-        const assessmentRow = await this._findAssessmentById(assessmentId);
-        await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+    static async uploadInstructionFile(
+        assessmentId,
+        educatorId,
+        file
+    ) {
+        const assessmentRow =
+            await this._findAssessmentById(
+                assessmentId
+            );
 
-        const assessment = this._toAssessment(
-            await this._synchronizeAssessmentStatus(assessmentRow)
+
+        await this._assertCourseManagedBy(
+            assessmentRow.courseId,
+            educatorId
         );
+
+
+        const assessment =
+            this._toAssessment(
+                await this
+                    ._synchronizeAssessmentStatus(
+                        assessmentRow
+                    )
+            );
+
 
         if (!assessment.isEditable()) {
             throw new AppError(
@@ -1087,6 +1113,7 @@ class AssessmentService {
             );
         }
 
+
         if (!file) {
             throw new AppError(
                 400,
@@ -1095,7 +1122,12 @@ class AssessmentService {
             );
         }
 
-        const bucket = process.env.ASSESSMENT_STORAGE_BUCKET;
+
+        const bucket =
+            process.env
+                .ASSESSMENT_STORAGE_BUCKET;
+
+
         if (!bucket) {
             throw new AppError(
                 500,
@@ -1104,33 +1136,120 @@ class AssessmentService {
             );
         }
 
-        const safeFileName = this._generateSafeFileName(file.originalname);
-        const filePath = `instructions/${assessmentId}/${safeFileName}`;
-        const { error: storageError } = await supabase.storage
-            .from(bucket)
-            .upload(filePath, file.buffer, {
-                contentType: file.mimetype,
-                upsert: false
+
+        /*
+        * Generate a safe storage filename.
+        */
+        const safeFileName =
+            this._generateSafeFileName(
+                file.originalname
+            );
+
+
+        const filePath =
+            `instructions/${assessmentId}/${safeFileName}`;
+
+
+        /*
+        * Upload file to Supabase Storage.
+        */
+        const {
+            data: uploadedFile,
+            error: storageError
+        } =
+            await supabase.storage
+                .from(bucket)
+                .upload(
+                    filePath,
+                    file.buffer,
+                    {
+                        contentType:
+                            file.mimetype,
+
+                        upsert: false
+                    }
+                );
+
+
+        if (storageError) {
+            throw storageError;
+        }
+
+
+        /*
+        * IMPORTANT:
+        * Use the exact object path
+        * returned by Supabase.
+        */
+        const storedFilePath =
+            uploadedFile?.path ||
+            filePath;
+
+
+        /*
+        * Generate a public URL from
+        * the exact uploaded object.
+        */
+        const {
+            data: publicUrlData
+        } =
+            supabase.storage
+                .from(bucket)
+                .getPublicUrl(
+                    storedFilePath
+                );
+
+
+        const publicUrl =
+            publicUrlData?.publicUrl;
+
+
+        if (!publicUrl) {
+            throw new AppError(
+                500,
+                'ASSESSMENT_FILE_URL_FAILED',
+                'Unable to generate the Assessment instruction file URL.'
+            );
+        }
+
+        const {
+            data,
+            error
+        } =
+            await supabase
+                .from('Assessment')
+                .update({
+                    instructionFileUrl:
+                        publicUrl
+                })
+                .eq(
+                    'assessmentId',
+                    assessmentId
+                )
+                .select()
+                .single();
+
+
+        if (error) {
+            throw error;
+        }
+
+
+        await this
+            ._notifyCourseLearners({
+                courseId:
+                    data.courseId,
+
+                assessmentId,
+
+                action:
+                    'UPDATED'
             });
 
-        if (storageError) throw storageError;
 
-        const { data, error } = await supabase
-            .from('Assessment')
-            .update({ instructionFileUrl: filePath })
-            .eq('assessmentId', assessmentId)
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        await this._notifyCourseLearners({
-            courseId: data.courseId,
-            assessmentId,
-            action: 'UPDATED'
-        });
-
-        return this._toAssessment(data);
+        return this._toAssessment(
+            data
+        );
     }
 
     // UC-10 Basic Flow Step 1: Learner opens an Assessment that is currently available 
@@ -1141,11 +1260,14 @@ class AssessmentService {
         const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
         const assessment = this._toAssessment(synchronized);
 
-        if (!assessment.isOpen()) {
+        if (
+            !assessment
+                .canAcceptSubmission()
+        ) {
             throw new AppError(
                 409,
                 'ASSESSMENT_NOT_OPEN',
-                'This Assessment is not currently open.'
+                'This Assessment is not currently available for submission.'
             );
         }
 
@@ -1168,11 +1290,14 @@ class AssessmentService {
         const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
         const assessment = this._toAssessment(synchronized);
 
-        if (!assessment.isOpen()) {
+        if (
+            !assessment
+                .canAcceptSubmission()
+        ) {
             throw new AppError(
                 409,
                 'ASSESSMENT_NOT_OPEN',
-                'This Assessment is not currently open.'
+                'This Assessment is not currently available for submission.'
             );
         }
 
@@ -1211,6 +1336,7 @@ class AssessmentService {
             const editableSubmittedAssignment =
                 assessment.type ===
                     AssessmentType.ASSIGNMENT &&
+                assessment.isOpen() &&
                 [
                     SubmissionStatus.SUBMITTED,
                     SubmissionStatus.PENDING_REVIEW
@@ -1285,32 +1411,36 @@ class AssessmentService {
             );
 
 
-        /*
-        * Quiz:
-        * editable only before submit.
-        */
+
+        const canAcceptSubmission =
+            assessment
+                .canAcceptSubmission();
+
         const editableQuiz =
             assessment.type ===
                 AssessmentType.QUIZ &&
+            canAcceptSubmission &&
             submission.status ===
                 SubmissionStatus.IN_PROGRESS;
 
-
-        /*
-        * Assignment:
-        * editable until Assessment
-        * reaches its deadline.
-        */
         const editableAssignment =
             assessment.type ===
                 AssessmentType.ASSIGNMENT &&
-            assessment.isOpen() &&
-            [
-                SubmissionStatus.IN_PROGRESS,
-                SubmissionStatus.SUBMITTED,
-                SubmissionStatus.PENDING_REVIEW
-            ].includes(
-                submission.status
+            (
+                (
+                    submission.status ===
+                        SubmissionStatus.IN_PROGRESS &&
+                    canAcceptSubmission
+                ) ||
+                (
+                    assessment.isOpen() &&
+                    [
+                        SubmissionStatus.SUBMITTED,
+                        SubmissionStatus.PENDING_REVIEW
+                    ].includes(
+                        submission.status
+                    )
+                )
             );
 
 
@@ -1466,38 +1596,37 @@ class AssessmentService {
             );
 
 
-        /*
-        * 3. Assessment must still
-        * be open.
-        */
-        if (!assessment.isOpen()) {
-            throw new AppError(
-                409,
-                'ASSESSMENT_NOT_OPEN',
-                'This Assessment is no longer open for editing.'
-            );
-        }
+
+        const canAcceptSubmission =
+            assessment
+                .canAcceptSubmission();
 
 
-        /*
-        * 4. Determine whether this
-        * Submission is editable.
-        */
         const editableAssignment =
             assessment.type ===
                 AssessmentType.ASSIGNMENT &&
-            [
-                SubmissionStatus.IN_PROGRESS,
-                SubmissionStatus.SUBMITTED,
-                SubmissionStatus.PENDING_REVIEW
-            ].includes(
-                submission.status
+            (
+                (
+                    submission.status ===
+                        SubmissionStatus.IN_PROGRESS &&
+                    canAcceptSubmission
+                ) ||
+                (
+                    assessment.isOpen() &&
+                    [
+                        SubmissionStatus.SUBMITTED,
+                        SubmissionStatus.PENDING_REVIEW
+                    ].includes(
+                        submission.status
+                    )
+                )
             );
 
 
         const editableQuiz =
             assessment.type ===
                 AssessmentType.QUIZ &&
+            canAcceptSubmission &&
             submission.status ===
                 SubmissionStatus.IN_PROGRESS;
 
@@ -1686,28 +1815,35 @@ class AssessmentService {
         }
 
 
-        /*
-        * 5. Assignment must still
-        * be open.
-        */
-        if (!assessment.isOpen()) {
+        const canAcceptSubmission =
+            assessment
+                .canAcceptSubmission();
+
+
+        const canEditSubmission =
+            (
+                submission.status ===
+                    SubmissionStatus.IN_PROGRESS &&
+                canAcceptSubmission
+            ) ||
+            (
+                assessment.isOpen() &&
+                [
+                    SubmissionStatus.SUBMITTED,
+                    SubmissionStatus.PENDING_REVIEW
+                ].includes(
+                    submission.status
+                )
+            );
+
+
+        if (!canEditSubmission) {
             throw new AppError(
                 409,
-                'ASSESSMENT_NOT_OPEN',
-                'This Assignment is no longer open for editing.'
+                'SUBMISSION_NOT_EDITABLE',
+                'This Submission can no longer be changed.'
             );
         }
-
-
-        /*
-        * 6. Submission must still
-        * be editable.
-        */
-        const editableStatuses = [
-            SubmissionStatus.IN_PROGRESS,
-            SubmissionStatus.SUBMITTED,
-            SubmissionStatus.PENDING_REVIEW
-        ];
 
 
         if (
@@ -2034,7 +2170,15 @@ class AssessmentService {
                 Array.isArray(
                     submission.uploadedFileUrls
                 )
-                    ? submission.uploadedFileUrls
+                    ? submission
+                        .uploadedFileUrls
+                        .map(
+                            filePath =>
+                                this
+                                    ._getSubmissionFilePublicUrl(
+                                        filePath
+                                    )
+                        )
                     : []
         };
     }
@@ -2107,22 +2251,42 @@ class AssessmentService {
         const now =
             new Date();
 
+        const canAcceptSubmission =
+            assessment
+                .canAcceptSubmission(
+                    now
+                );
+
+
         const quizCanSubmit =
             assessment.type ===
                 AssessmentType.QUIZ &&
+            canAcceptSubmission &&
             submissionRow.status ===
                 SubmissionStatus.IN_PROGRESS;
+
 
         const assignmentCanSubmit =
             assessment.type ===
                 AssessmentType.ASSIGNMENT &&
-            assessment.isOpen(now) &&
-            [
-                SubmissionStatus.IN_PROGRESS,
-                SubmissionStatus.SUBMITTED,
-                SubmissionStatus.PENDING_REVIEW
-            ].includes(
-                submissionRow.status
+            (
+                (
+                    submissionRow.status ===
+                        SubmissionStatus.IN_PROGRESS &&
+                    canAcceptSubmission
+                ) ||
+
+                (
+                    assessment.isOpen(
+                        now
+                    ) &&
+                    [
+                        SubmissionStatus.SUBMITTED,
+                        SubmissionStatus.PENDING_REVIEW
+                    ].includes(
+                        submissionRow.status
+                    )
+                )
             );
 
 
@@ -2598,23 +2762,44 @@ class AssessmentService {
         return numericTotalPoints;
     }
 
-    static _generateSafeFileName(originalName) {
+    static _generateSafeFileName(
+        originalName
+        ) {
         const normalizedName =
-            String(originalName || '').replace(/\\/g, '/');
+            String(
+            originalName ||
+            'instruction-file'
+            )
+            .replace(
+                /\\/g,
+                '/'
+            );
+
 
         const baseName =
-            path.posix.basename(normalizedName);
+            path.posix.basename(
+            normalizedName
+            );
 
-        const extension =
-            path.posix.extname(baseName).toLowerCase();
 
-        const safeExtension =
-            /^\.[a-z0-9]{1,10}$/.test(extension)
-                ? extension
-                : '';
+        const safeBaseName =
+            baseName
+            .replace(
+                /[<>:"/\\|?*\x00-\x1F]/g,
+                '_'
+            )
+            .replace(
+                /\s+/g,
+                ' '
+            )
+            .trim();
 
-        return `${crypto.randomUUID()}${safeExtension}`;
-    }
+
+        return (
+            `${crypto.randomUUID()}__` +
+            `${safeBaseName}`
+        );
+        }
 
     static async _insertQuestion(assessmentId, questionInput) {
         const {
@@ -2864,18 +3049,47 @@ class AssessmentService {
 
     static _toAssessment(row) {
         return new Assessment({
-            assessmentId: row.assessmentId,
-            courseId: row.courseId,
-            title: row.title,
-            description: row.description,
-            type: row.type,
-            instructionFileUrl: row.instructionFileUrl || null,
-            startTime: row.startTime,
-            deadline: row.deadline,
-            totalPoints: row.totalPoints,
-            allowLateSubmission: row.allowLateSubmission,
-            status: row.status,
-            createdAt: row.createdAt
+            assessmentId:
+                row.assessmentId,
+
+            courseId:
+                row.courseId,
+
+            title:
+                row.title,
+
+            description:
+                row.description,
+
+            type:
+                row.type,
+
+            instructionFileUrl:
+                this._getInstructionFilePublicUrl(
+                    row.instructionFileUrl
+                ),
+            instructionFileName:
+                this._getInstructionFileName(
+                    row.instructionFileUrl
+                ),
+
+            startTime:
+                row.startTime,
+
+            deadline:
+                row.deadline,
+
+            totalPoints:
+                row.totalPoints,
+
+            allowLateSubmission:
+                row.allowLateSubmission,
+
+            status:
+                row.status,
+
+            createdAt:
+                row.createdAt
         });
     }
 
@@ -2896,6 +3110,147 @@ class AssessmentService {
                 ? row.uploadedFileUrls
                 : []
         });
+    }
+
+    static _getInstructionFilePublicUrl(
+        instructionFilePath
+    ) {
+        if (!instructionFilePath) {
+            return null;
+        }
+
+        /*
+        * Trường hợp dữ liệu đã là URL hoàn chỉnh.
+        */
+        if (
+            /^https?:\/\//i.test(
+                instructionFilePath
+            )
+        ) {
+            return instructionFilePath;
+        }
+
+        const bucket =
+            process.env
+                .ASSESSMENT_STORAGE_BUCKET;
+
+        if (!bucket) {
+            return instructionFilePath;
+        }
+
+        const { data } =
+            supabase.storage
+                .from(bucket)
+                .getPublicUrl(
+                    instructionFilePath
+                );
+
+        return (
+            data?.publicUrl ||
+            instructionFilePath
+        );
+    }
+    static _getInstructionFileName(
+    instructionFilePath
+    ) {
+        if (!instructionFilePath) {
+            return null;
+        }
+
+
+        try {
+            const cleanValue =
+            decodeURIComponent(
+                String(
+                instructionFilePath
+                ).split('?')[0]
+            );
+
+
+            const storedName =
+            cleanValue
+                .split('/')
+                .pop();
+
+
+            if (!storedName) {
+            return null;
+            }
+
+
+            const separatorIndex =
+            storedName.indexOf(
+                '__'
+            );
+
+
+            if (
+            separatorIndex !== -1
+            ) {
+            return storedName.slice(
+                separatorIndex + 2
+            );
+            }
+
+
+            /*
+            * Old instruction files used
+            * UUID.ext and have lost their
+            * original filename.
+            */
+            return 'Assessment instruction file';
+
+        } catch {
+            return (
+            'Assessment instruction file'
+            );
+        }
+    }
+
+    static _getSubmissionFilePublicUrl(
+        filePath
+    ) {
+        if (!filePath) {
+            return null;
+        }
+
+
+        /*
+        * Already a complete URL.
+        */
+        if (
+            /^https?:\/\//i.test(
+                filePath
+            )
+        ) {
+            return filePath;
+        }
+
+
+        const bucket =
+            process.env
+                .ASSESSMENT_STORAGE_BUCKET;
+
+
+        if (!bucket) {
+            return filePath;
+        }
+
+
+        const {
+            data
+        } =
+            supabase.storage
+                .from(bucket)
+                .getPublicUrl(
+                    filePath
+                );
+
+
+        return (
+            data?.publicUrl ||
+            filePath
+        );
     }
 }
 

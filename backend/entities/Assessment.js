@@ -8,6 +8,7 @@ class Assessment {
         description = null,
         type, 
         instructionFileUrl = null, 
+        instructionFileName = null,
         startTime = null, 
         deadline = null, 
         totalPoints = 0, 
@@ -21,7 +22,7 @@ class Assessment {
         this.description = description;
         this.type = type;
         this.instructionFileUrl = instructionFileUrl; 
-        
+        this.instructionFileName = instructionFileName;
         this.startTime = startTime ? new Date(startTime) : null; 
         this.deadline = deadline ? new Date(deadline) : null;
         this.totalPoints = Number(totalPoints || 0);
@@ -69,6 +70,39 @@ class Assessment {
             currentTime >= this.startTime &&
             currentTime <= this.deadline
         );
+    }
+    canAcceptSubmission(
+        currentTime = new Date()
+    ) {
+        if (
+            !this.startTime ||
+            !this.deadline
+        ) {
+            return false;
+        }
+
+        if (
+            this.status ===
+            AssessmentStatus.DRAFT
+        ) {
+            return false;
+        }
+
+        if (
+            currentTime <
+            this.startTime
+        ) {
+            return false;
+        }
+
+        if (
+            currentTime <=
+            this.deadline
+        ) {
+            return true;
+        }
+
+        return this.allowLateSubmission;
     }
 
     isEditable(currentTime = new Date()) {
