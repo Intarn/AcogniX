@@ -41,11 +41,12 @@ export default function Progress() {
     fetchProgressData();
   }, [userEmail, timeRange]);
 
+  // Bảo vệ an toàn dữ liệu mảng cho biểu đồ
   const chartConfig = {
-    labels: overview.chartData?.labels || [],
+    labels: overview?.chartData?.labels || [],
     datasets: [{
       label: 'Study Hours',
-      data: overview.chartData?.data || [],
+      data: overview?.chartData?.data || [],
       backgroundColor: '#DBEAFE',
       hoverBackgroundColor: '#3B82F6',
       borderRadius: 6,
@@ -73,6 +74,10 @@ export default function Progress() {
     );
   }
 
+  // Khai báo an toàn các mảng tránh lỗi undefined.length
+  const activitiesList = overview?.activities || [];
+  const courseList = overview?.courseProgressList || [];
+
   return (
     <main className="flex-1 p-6 space-y-6 overflow-y-auto bg-gray-50">
       
@@ -96,19 +101,19 @@ export default function Progress() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm transition-transform hover:-translate-y-1">
           <p className="text-sm font-medium text-gray-500">Est. Time Studied</p>
-          <p className="text-3xl font-bold text-blue-600 mt-1">{overview.timeStudied}</p>
+          <p className="text-3xl font-bold text-blue-600 mt-1">{overview?.timeStudied || '0h 0m'}</p>
         </div>
         <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm transition-transform hover:-translate-y-1">
           <p className="text-sm font-medium text-gray-500">Courses Mastered</p>
-          <p className="text-3xl font-bold text-gray-800 mt-1">{overview.coursesCompleted}</p>
+          <p className="text-3xl font-bold text-gray-800 mt-1">{overview?.coursesCompleted || 0}</p>
         </div>
         <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm transition-transform hover:-translate-y-1">
           <p className="text-sm font-medium text-gray-500">Flashcards Reviewed</p>
-          <p className="text-3xl font-bold text-gray-800 mt-1">{overview.flashcardsReviewed}</p>
+          <p className="text-3xl font-bold text-gray-800 mt-1">{overview?.flashcardsReviewed || 0}</p>
         </div>
         <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm transition-transform hover:-translate-y-1">
           <p className="text-sm font-medium text-gray-500">Quizzes Passed</p>
-          <p className="text-3xl font-bold text-gray-800 mt-1">{overview.quizzesPassed}</p>
+          <p className="text-3xl font-bold text-gray-800 mt-1">{overview?.quizzesPassed || 0}</p>
         </div>
       </div>
 
@@ -127,10 +132,10 @@ export default function Progress() {
         <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col">
           <h3 className="text-sm font-bold text-gray-800 mb-4 flex-shrink-0">Recent Activity</h3>
           <div className="space-y-4 overflow-y-auto flex-1 pr-2">
-            {overview.activities.length === 0 ? (
+            {activitiesList.length === 0 ? (
               <p className="text-xs text-gray-500 text-center py-4">No recent activity found.</p>
             ) : (
-              overview.activities.map((act, index) => {
+              activitiesList.map((act, index) => {
                 const dateObj = new Date(act.dateObj || act.date);
                 const timeDiff = Math.floor((new Date() - dateObj) / 60000);
                 const timeStr = timeDiff < 60 ? `${timeDiff}m ago` : (timeDiff < 1440 ? `${Math.floor(timeDiff / 60)}h ago` : `${Math.floor(timeDiff / 1440)}d ago`);
@@ -154,10 +159,10 @@ export default function Progress() {
       <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
         <h3 className="text-sm font-bold text-gray-800 mb-4">Progress by Enrolled Course</h3>
         <div className="space-y-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {overview.courseProgressList.length === 0 ? (
+          {courseList.length === 0 ? (
             <p className="text-center text-gray-500 text-sm md:col-span-2">No courses enrolled.</p>
           ) : (
-            overview.courseProgressList.map(course => (
+            courseList.map(course => (
               <div key={course.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                 <div className="flex justify-between items-center mb-2">
                   <p className="text-sm font-bold text-gray-800 truncate pr-2" title={course.name}>{course.name}</p>
