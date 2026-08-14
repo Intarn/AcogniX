@@ -1,3 +1,4 @@
+// frontend/src/layouts/LearnerLayout.jsx
 import { useState, useEffect } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -23,8 +24,7 @@ export default function LearnerLayout() {
       }
 
       try {
-        // Query cả displayName VÀ avatarUrl từ bảng 'User'
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('User')
           .select('displayName, avatarUrl')
           .eq('email', user.email)
@@ -59,10 +59,10 @@ export default function LearnerLayout() {
   useEffect(() => {
     if (!user) return;
 
-    pingStudySession().catch(err => console.error("Ping error:", err));
+    pingStudySession().catch((err) => console.error('Ping error:', err));
 
     const interval = setInterval(() => {
-      pingStudySession().catch(err => console.error("Ping error:", err));
+      pingStudySession().catch((err) => console.error('Ping error:', err));
     }, 60000);
 
     return () => clearInterval(interval);
@@ -80,19 +80,27 @@ export default function LearnerLayout() {
     );
   }
 
-  // Ưu tiên thông tin mới từ AuthContext (user) trước, nếu chưa có thì lấy từ DB (profile)
   const userInfo = {
-    fullname: user.displayName || profile.displayName || user.user_metadata?.fullname || user.email.split('@')[0],
-    avatarUrl: user.avatarUrl || profile.avatarUrl || user.user_metadata?.avatar_url || null,
-    role: user.role || user.user_metadata?.role || 'learner',
+    fullname:
+      user.displayName ||
+      profile.displayName ||
+      user.user_metadata?.fullname ||
+      user.email.split('@')[0],
+    avatarUrl:
+      user.avatarUrl ||
+      profile.avatarUrl ||
+      user.user_metadata?.avatar_url ||
+      null,
+    role: user.role || user.user_metadata?.role || 'learner'
   };
 
   return (
     <div className="flex h-screen w-full bg-gray-50 font-sans overflow-hidden text-gray-800">
       <Sidebar user={userInfo} />
       <div className="flex-1 flex flex-col h-full overflow-hidden">
+        {/* Topbar đã được nhúng NotificationPopover bên trong */}
         <Topbar user={userInfo} />
-        <Outlet context={{ user }} /> 
+        <Outlet context={{ user }} />
       </div>
     </div>
   );

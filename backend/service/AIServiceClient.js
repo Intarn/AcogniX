@@ -35,18 +35,18 @@ async function extractDocument(materialId, fileBuffer, fileName, mimeType) {
     }
 }
 
-async function generateQuiz(projectId, questionCount, difficulty) {
+async function generateQuiz(projectId, materialIds, questionCount, difficulty) {
     try {
-        const response = await client.post('/api/generate-quiz', { projectId, questionCount, difficulty });
+        const response = await client.post('/api/generate-quiz', { projectId, materialIds, questionCount, difficulty });
         return response.data;
     } catch (error) {
         handleServiceError(error);
     }
 }
 
-async function generateFlashcards(projectId, flashcardCount, length) {
+async function generateFlashcards(projectId, materialIds, flashcardCount, length) {
     try {
-        const response = await client.post('/api/generate-flashcards', { projectId, flashcardCount, length });
+        const response = await client.post('/api/generate-flashcards', { projectId, materialIds, flashcardCount, length });
         return response.data;
     } catch (error) {
         handleServiceError(error);

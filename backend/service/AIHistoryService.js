@@ -28,6 +28,19 @@ class AIHistoryService {
         }
     }
 
+    static async deleteFlashcardSet(projectId, setId, learnerId) {
+    // Xác thực quyền sở hữu Project
+        await this._assertProjectOwnedBy(projectId, learnerId);
+        
+        const { error } = await supabase
+            .from('Flashcard_Set')
+            .delete()
+            .eq('flashcardSetId', setId)
+            .eq('projectId', projectId);
+            
+        if (error) throw error;
+        return true;
+    }
     static async getQuizzes(projectId, learnerId) {
         await this._assertProjectOwnedBy(projectId, learnerId);
 

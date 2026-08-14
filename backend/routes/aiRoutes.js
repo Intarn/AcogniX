@@ -34,9 +34,12 @@ router.post('/generate-quiz', aiController.generateQuiz);
 router.post('/generate-flashcards', aiController.generateFlashcards);
 router.post('/chat', aiController.chat);
 
-// Register 3 new GET routes for data retrieval
+// Data retrieval routes
 router.get('/projects/:projectId/quizzes', aiController.getSavedQuizzes);
 router.get('/projects/:projectId/flashcards', aiController.getSavedFlashcards);
 router.get('/projects/:projectId/conversation', aiController.getConversationHistory);
+
+// Delete route
+router.delete('/projects/:projectId/flashcards/:setId', aiController.deleteSavedFlashcardSet);
 
 module.exports = router;
