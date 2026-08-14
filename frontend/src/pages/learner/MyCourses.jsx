@@ -2,8 +2,9 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getCourses, enrollInClass } from '../../services/courseService';
-
+import { useToast } from '../../contexts/ToastContext';
 export default function MyCourses() {
+  const { showToast } = useToast();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -94,29 +95,49 @@ export default function MyCourses() {
     async (e) => {
       e.preventDefault();
 
+      const normalizedCode =
+        courseCode
+          .trim()
+          .toUpperCase();
 
-      if (!courseCode.trim()) {
+      /*
+      * UC15 - Alternative Flow:
+      * Empty Class Code.
+      */
+      if (!normalizedCode) {
+        showToast(
+          'Please enter a class code.',
+          'warning'
+        );
+
         return;
       }
-
 
       try {
         setSubmitting(true);
 
+        const result =
+          await enrollInClass(
+            normalizedCode
+          );
 
-        await enrollInClass(
-          courseCode.trim()
+        /*
+        * Success:
+        * Enrollment request is PENDING.
+        */
+        showToast(
+          result?.message ||
+          'Your enrollment request has been submitted and is awaiting approval.',
+          'success'
         );
 
-
+        /*
+        * Chỉ đóng modal khi request
+        * được submit thành công.
+        */
         setIsModalOpen(false);
 
         setCourseCode('');
-
-
-        alert(
-          'Your enrollment request has been submitted and is awaiting approval.'
-        );
 
       } catch (err) {
         console.error(
@@ -124,11 +145,49 @@ export default function MyCourses() {
           err
         );
 
-
-        alert(
+        /*
+        * UC15 error cases.
+        */
+        let message =
           err.message ||
-          'Unable to submit enrollment request.'
+          'Unable to submit enrollment request.';
+
+        switch (err.code) {
+          case 'INVALID_OR_EXPIRED_CLASS_CODE':
+            message =
+              'Invalid or expired class code. Please check the code with your Educator and try again.';
+            break;
+
+          case 'ALREADY_ENROLLED':
+            message =
+              'You are already enrolled in this Class.';
+            break;
+
+          case 'ENROLLMENT_REQUEST_PENDING':
+            message =
+              'Your enrollment request is already awaiting approval.';
+            break;
+
+          case 'CLASS_CODE_REQUIRED':
+            message =
+              'Please enter a class code.';
+            break;
+
+          default:
+            break;
+        }
+
+        showToast(
+          message,
+          'error'
         );
+
+        /*
+        * KHÔNG đóng modal khi lỗi.
+        *
+        * Learner có thể sửa code
+        * và submit lại ngay.
+        */
 
       } finally {
         setSubmitting(false);
@@ -257,7 +316,7 @@ export default function MyCourses() {
             <h2 className="text-lg font-bold text-gray-800 mb-1">Enroll in Class</h2>
             <p className="text-xs text-gray-400 mb-4">Enter your class code provided by your instructor to join.</p>
             
-            <form onSubmit={handleEnrollClass} className="space-y-4">
+            <form onSubmit={handleEnrollClass} className="space-y-4" noValidate>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Class / Course Code</label>
                 <input 
