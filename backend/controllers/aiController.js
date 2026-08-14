@@ -60,15 +60,40 @@ const generateFlashcards = async (req, res) => {
 
 const chat = async (req, res) => {
     try {
-        const { projectId, conversationId, userMessage } = req.body;
+        const {
+            projectId,
+            materialIds,
+            conversationId,
+            userMessage
+        } = req.body;
+
         if (!projectId) {
-            return res.status(400).json({ code: 'MISSING_PROJECT_ID', message: 'Missing projectId.' });
+            return res.status(400).json({
+                code: 'MISSING_PROJECT_ID',
+                message: 'Missing projectId.'
+            });
         }
+
         if (!userMessage) {
-            return res.status(400).json({ code: 'MISSING_MESSAGE', message: 'Missing user message.' });
+            return res.status(400).json({
+                code: 'MISSING_MESSAGE',
+                message: 'Missing user message.'
+            });
         }
-        const result = await AIServiceClient.chat(projectId, conversationId || null, userMessage);
-        return res.status(200).json({ data: { reply: result.reply, conversationId: result.conversationId } });
+
+        const result = await AIServiceClient.chat(
+            projectId,
+            materialIds,
+            conversationId || null,
+            userMessage
+        );
+
+        return res.status(200).json({
+            data: {
+                reply: result.reply,
+                conversationId: result.conversationId
+            }
+        });
     } catch (error) {
         return handleControllerError(error, res);
     }

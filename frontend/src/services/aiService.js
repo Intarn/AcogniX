@@ -16,11 +16,17 @@ export const extractDocumentText = async (materialId, file) => {
 /**
  * Gọi tin nhắn gửi AI Assistant
  */
-export const sendAIChatMessage = async (projectId, conversationId, userMessage) => {
+export const sendAIChatMessage = async (
+  projectId,
+  materialIds,
+  conversationId,
+  userMessage
+) => {
   return await apiRequest('/ai/chat', {
     method: 'POST',
     body: JSON.stringify({
       projectId,
+      materialIds,
       conversationId: conversationId || null,
       userMessage
     })

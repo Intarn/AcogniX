@@ -23,12 +23,24 @@ async def generate_quiz(req: QuizRequest):
     safe_count = min(max(int(req.questionCount), MIN_QUESTIONS), MAX_QUESTIONS)
     safe_difficulty = req.difficulty.strip().lower() if req.difficulty.strip().lower() in VALID_DIFFICULTIES else "medium"
 
-    context_chunks = retrieve_relevant_chunks(req.projectId, "key concepts overview", top_k=8)
-    if not context_chunks:
+    if not req.materialIds:
         raise HTTPException(
             status_code=422,
-            detail="Please select at least one Learning Material as active context before generating a quiz.",
-        )
+            detail="Please select at least one Learning Material before generating a quiz."
+    )
+
+    context_chunks = retrieve_relevant_chunks(
+        req.projectId,
+        req.materialIds,
+        "key concepts overview",
+        top_k=4
+    )
+
+    if not context_chunks:
+        raise HTTPException(
+        status_code=422,
+        detail="No readable content found in the selected Learning Materials."
+    )
 
     total_context_chars = sum(len(c) for c in context_chunks)
     if total_context_chars > MAX_CONTEXT_CHARS:

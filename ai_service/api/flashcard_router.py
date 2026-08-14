@@ -18,12 +18,24 @@ async def generate_flashcards(req: FlashcardRequest):
     safe_count = min(max(int(req.flashcardCount), MIN_FLASHCARDS), MAX_FLASHCARDS)
     safe_length = req.length if req.length in {"short", "detailed"} else "short"
 
-    context_chunks = retrieve_relevant_chunks(req.projectId, "key terms and definitions", top_k=8)
+    if not req.materialIds:
+        raise HTTPException(
+            status_code=422,
+            detail="Please select at least one Learning Material before generating flashcards."
+    )
+
+    context_chunks = retrieve_relevant_chunks(
+        req.projectId,
+        req.materialIds,
+        "key terms and definitions",
+        top_k=4
+    )
+
     if not context_chunks:
         raise HTTPException(
             status_code=422,
-            detail="Please select at least one Learning Material as active context before generating flashcards.",
-        )
+            detail="No readable content found in the selected Learning Materials."
+    )
 
     prompt = build_flashcard_prompt(context_chunks, safe_count, safe_length)
 

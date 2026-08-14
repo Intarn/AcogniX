@@ -15,11 +15,27 @@ router = APIRouter()
 async def chat(req: ChatRequest):
     # UC-02 precondition: at least one active-context material is required —
     # the AI Tutor must be grounded in something, not a bare, ungrounded chat.
-    context_chunks = retrieve_relevant_chunks(req.projectId, req.userMessage)
+    if not req.materialIds:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Please select at least one Learning Material "
+                "as active context before using the AI Tutor."
+            )
+        )
+
+    context_chunks = retrieve_relevant_chunks(
+        req.projectId,
+        req.materialIds,
+        req.userMessage
+    )
     if not context_chunks:
         raise HTTPException(
             status_code=422,
-            detail="Please select at least one Learning Material as active context before using the AI Tutor.",
+            detail=(
+                "No readable content found in the selected "
+                "Learning Materials."
+            )
         )
 
     # Resolve or create the Conversation
