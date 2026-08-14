@@ -2,6 +2,7 @@ import asyncio
 import json
 
 from google import genai
+from google.genai import errors
 
 from config import GEMINI_API_KEY, GENERATION_MODEL, CHAT_TIMEOUT_SECONDS
 
@@ -24,16 +25,23 @@ def generate_text(prompt: str) -> str:
 
 
 async def generate_text_with_timeout(prompt: str) -> str:
-    """Chat specifically needs a hard timeout per UC-02's alt flow —
-    quiz/flashcard generation can reasonably take longer without a
-    fixed limit since they aren't a live back-and-forth conversation."""
     try:
         return await asyncio.wait_for(
             asyncio.to_thread(generate_text, prompt),
             timeout=CHAT_TIMEOUT_SECONDS,
         )
+
     except asyncio.TimeoutError:
-        raise AITimeoutError("Connection to AI Tutor interrupted. Please try again.")
+        raise AITimeoutError(
+            "Connection to AI Tutor interrupted. Please try again."
+        )
+
+    except errors.ServerError as e:
+        if e.code == 503:
+            raise AITimeoutError(
+                "AI Tutor is temporarily busy. Please try again in a moment."
+            )
+        raise
 
 
 def generate_json_array(prompt: str, context_label: str) -> list[dict]:
