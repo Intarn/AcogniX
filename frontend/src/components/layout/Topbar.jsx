@@ -1,4 +1,9 @@
+// frontend/src/components/layout/Topbar.jsx
 export default function Topbar({ user }) {
+  // Link avatar hiển thị: Ưu tiên user.avatarUrl -> Fallback về ui-avatars
+  const avatarSrc = user?.avatarUrl || 
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullname || 'Guest')}&color=fff&size=32`;
+
   return (
     <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 flex-shrink-0">
       <div className="relative w-[480px]">
@@ -20,9 +25,9 @@ export default function Topbar({ user }) {
         </button>
         <div className="flex items-center gap-3 cursor-pointer">
           <img 
-            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullname || 'Guest')}&color=fff&size=32`} 
+            src={avatarSrc} 
             alt="Avatar" 
-            className="w-8 h-8 rounded-full object-cover bg-gray-200" 
+            className="w-8 h-8 rounded-full object-cover bg-gray-200 border border-gray-100 shadow-sm" 
           />
           <div className="text-left">
             <p className="text-xs font-bold text-gray-800 leading-tight">Hi, {user?.fullname}</p>

@@ -69,7 +69,8 @@ export default function Register() {
         })
       });
 
-      showToast('Đăng ký tài khoản thành công! Vui lòng đăng nhập.', 'success');
+      // THAY ĐỔI: Thông báo nhắc người dùng vào email xác thực
+      showToast('Đăng ký thành công! Vui lòng kiểm tra email của bạn (kể cả thư rác) để xác thực tài khoản trước khi đăng nhập.', 'success');
       navigate('/auth/login');
 
     } catch (err) {

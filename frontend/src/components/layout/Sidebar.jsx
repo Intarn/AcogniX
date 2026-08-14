@@ -5,6 +5,10 @@ export default function Sidebar({ user }) {
   const location = useLocation();
   const isActive = (path) => location.pathname.includes(path);
 
+  // Link avatar hiển thị: Ưu tiên user.avatarUrl -> Fallback về ui-avatars
+  const avatarSrc = user?.avatarUrl || 
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullname || 'Guest')}&color=fff&size=36`;
+
   return (
     <aside className="w-60 h-full bg-white border-r border-gray-100 flex flex-col justify-between flex-shrink-0">
       <div>
@@ -56,7 +60,7 @@ export default function Sidebar({ user }) {
             Flashcards
           </Link>
 
-          {/* AI Practice Quizzes (MỚI BỔ SUNG) */}
+          {/* AI Practice Quizzes */}
           <Link to="/learner/ai-quizzes" className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${isActive('/learner/ai-quizzes') ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-500 hover:bg-gray-50'}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             AI Practice Quizzes
@@ -99,9 +103,9 @@ export default function Sidebar({ user }) {
       <div className="p-4 border-t border-gray-100">
         <div className="flex items-center gap-3">
           <img 
-            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullname || 'Guest')}&color=fff&size=36`} 
+            src={avatarSrc} 
             alt="Avatar" 
-            className="w-9 h-9 rounded-full object-cover bg-gray-200" 
+            className="w-9 h-9 rounded-full object-cover bg-gray-200 border border-gray-100 shadow-sm" 
           />
           <div className="text-left flex-1 overflow-hidden">
             <p className="text-xs font-bold text-gray-800 leading-tight truncate">{user?.fullname || 'Guest'}</p>

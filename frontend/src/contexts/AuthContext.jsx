@@ -28,37 +28,17 @@ export function AuthProvider({ children }) {
       // Ưu tiên gọi API lấy profile thực tế nếu có token
       if (token && typeof getProfile === 'function') {
         const result = await getProfile();
-        /*
-         * Tương thích linh hoạt các kiểu response profile:
-         * trực tiếp, dưới dạng 'profile', hoặc 'user'
-         */
         const profile = result?.profile || result?.user || result;
         if (profile) {
           const normalizedProfile = {
             ...profile,
-
-            role:
-              String(
-                profile.role ||
-                'LEARNER'
-              ).toLowerCase()
+            fullname: profile.displayName || profile.fullname || '',
+            role: String(profile.role || 'LEARNER').toLowerCase()
           };
 
-
-          localStorage.setItem(
-            'currentUser',
-            JSON.stringify(
-              normalizedProfile
-            )
-          );
-
-
-          setUser(
-            normalizedProfile
-          );
-
+          localStorage.setItem('currentUser', JSON.stringify(normalizedProfile));
+          setUser(normalizedProfile);
           setLoading(false);
-
           return normalizedProfile;
         }
       }
@@ -70,40 +50,18 @@ export function AuthProvider({ children }) {
     // Dự phòng: Khôi phục từ localStorage nếu không gọi được API profile
     if (storedUser) {
       try {
-        const parsedUser =
-          JSON.parse(
-            storedUser
-          );
-
-
+        const parsedUser = JSON.parse(storedUser);
         const normalizedUser = {
           ...parsedUser,
-
-          role:
-            String(
-              parsedUser.role ||
-              'LEARNER'
-            ).toLowerCase()
+          role: String(parsedUser.role || 'LEARNER').toLowerCase()
         };
 
-
-        setUser(
-          normalizedUser
-        );
-
+        setUser(normalizedUser);
         setLoading(false);
-
-
         return normalizedUser;
       } catch (e) {
-        console.error(
-          'Failed to parse user session',
-          e
-        );
-
-        localStorage.removeItem(
-          'currentUser'
-        );
+        console.error('Failed to parse user session', e);
+        localStorage.removeItem('currentUser');
       }
     }
 
@@ -112,17 +70,12 @@ export function AuthProvider({ children }) {
     return null;
   }
 
-  // 2. Xử lý Đăng nhập (Hợp nhất hỗ trợ đa định dạng Token & API)
+  // 2. Xử lý Đăng nhập
   const login = async (email, password) => {
     try {
       let data;
-      // Ưu tiên sử dụng authApi nếu có, nếu không fallback sang apiRequest
       if (typeof loginRequest === 'function') {
         data = await loginRequest(email, password);
-        console.log(
-          'LOGIN RESPONSE:',
-          data
-        );
       } else {
         data = await apiRequest('/auth/login', {
           method: 'POST',
@@ -130,59 +83,32 @@ export function AuthProvider({ children }) {
         });
       }
 
-      // Đọc Token tương thích với tất cả các dạng trả về từ Backend
-      const token =
-        data?.token ||
-        data?.accessToken ||
-        data?.session?.access_token;
+      const token = data?.token || data?.accessToken || data?.session?.access_token;
 
       if (token) {
         localStorage.setItem('accessToken', token);
       }
 
-      // Chuẩn hóa role về chữ thường (learner, educator, admin)
-      const userRole =
-      String(
-        data?.userRole ||
-        data?.user?.role ||
-        'LEARNER'
+      const userRole = String(
+        data?.userRole || data?.user?.role || 'LEARNER'
       ).toLowerCase();
-
-      console.log(
-        'NORMALIZED LOGIN ROLE:',
-        userRole
-      );
 
       const userData = {
         ...(data?.user || {}),
-
-        email:
-          data?.user?.email ||
-          email,
-
-        role:
-          userRole,
-
+        email: data?.user?.email || email,
+        role: userRole,
         fullname:
           data?.user?.displayName ||
           data?.user?.fullname ||
           email?.split('@')[0] ||
           '',
-
-        redirectTo:
-          data?.redirectTo ||
-          '/'
+        avatarUrl: data?.user?.avatarUrl || '',
+        redirectTo: data?.redirectTo || '/'
       };
 
       localStorage.setItem('currentUser', JSON.stringify(userData));
 
-      // Cập nhật trạng thái người dùng
       const profile = await refreshUser();
-
-      console.log(
-        'NORMALIZED LOGIN ROLE:',
-        userRole
-      );
       if (!profile) {
         setUser(userData);
       }
@@ -200,7 +126,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // 3. Xử lý Đăng ký (POST /api/auth/signup)
+  // 3. Xử lý Đăng ký
   const register = async (email, password, displayName, role) => {
     try {
       const formattedRole = role ? role.toUpperCase() : 'LEARNER';
@@ -245,6 +171,20 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // 5. Cập nhật thông tin user trong State & localStorage (Chỉ khai báo 1 lần)
+  const updateUser = (newFields) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = {
+        ...prev,
+        ...newFields,
+        fullname: newFields.displayName || newFields.fullname || prev.fullname || prev.displayName
+      };
+      localStorage.setItem('currentUser', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   useEffect(() => {
     refreshUser();
   }, []);
@@ -254,6 +194,7 @@ export function AuthProvider({ children }) {
       value={{
         user,
         setUser,
+        updateUser, // Đã thêm vào Provider value
         loading,
         login,
         register,

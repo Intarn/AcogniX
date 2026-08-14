@@ -8,31 +8,45 @@ import Topbar from '../components/layout/Topbar';
 
 export default function LearnerLayout() {
   const { user } = useAuth();
-  const [displayName, setDisplayName] = useState('');
+  const [profile, setProfile] = useState({
+    displayName: '',
+    avatarUrl: ''
+  });
   const [loadingProfile, setLoadingProfile] = useState(true);
 
-  // EFFECT 1: FETCH PROFILE INFORMATION
+  // EFFECT 1: FETCH PROFILE & AVATAR FROM SUPABASE
   useEffect(() => {
     async function fetchUserProfile() {
-      if (!user?.email) return;
+      if (!user?.email) {
+        setLoadingProfile(false);
+        return;
+      }
 
       try {
-        // Query the 'User' table on Supabase matching the logged-in email
+        // Query cả displayName VÀ avatarUrl từ bảng 'User'
         const { data, error } = await supabase
           .from('User')
-          .select('displayName')
+          .select('displayName, avatarUrl')
           .eq('email', user.email)
           .single();
 
-        if (data && data.displayName) {
-          setDisplayName(data.displayName);
+        if (data) {
+          setProfile({
+            displayName: data.displayName || '',
+            avatarUrl: data.avatarUrl || ''
+          });
         } else {
-          // Fallback if not found in the User table
-          setDisplayName(user.user_metadata?.fullname || user.email.split('@')[0]);
+          setProfile({
+            displayName: user.user_metadata?.fullname || user.email.split('@')[0],
+            avatarUrl: user.avatarUrl || user.user_metadata?.avatar_url || ''
+          });
         }
       } catch (err) {
         console.error('Error loading profile info:', err);
-        setDisplayName(user.email.split('@')[0]);
+        setProfile({
+          displayName: user.email.split('@')[0],
+          avatarUrl: ''
+        });
       } finally {
         setLoadingProfile(false);
       }
@@ -43,18 +57,14 @@ export default function LearnerLayout() {
 
   // EFFECT 2: TRACK ACTIVE STUDY TIME (UC-03)
   useEffect(() => {
-    // Only start tracking if the user is logged in
     if (!user) return;
 
-    // Send the initial ping as soon as entering the system
     pingStudySession().catch(err => console.error("Ping error:", err));
 
-    // Set up a background ping interval every 60 seconds (60000ms)
     const interval = setInterval(() => {
       pingStudySession().catch(err => console.error("Ping error:", err));
     }, 60000);
 
-    // Cleanup (clear) this interval when the user logs out or leaves the layout
     return () => clearInterval(interval);
   }, [user]);
 
@@ -62,7 +72,6 @@ export default function LearnerLayout() {
     return <Navigate to="/auth/login" replace />;
   }
 
-  // Waiting to load name from the User table
   if (loadingProfile) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
@@ -71,8 +80,10 @@ export default function LearnerLayout() {
     );
   }
 
+  // Ưu tiên thông tin mới từ AuthContext (user) trước, nếu chưa có thì lấy từ DB (profile)
   const userInfo = {
-    fullname: displayName,
+    fullname: user.displayName || profile.displayName || user.user_metadata?.fullname || user.email.split('@')[0],
+    avatarUrl: user.avatarUrl || profile.avatarUrl || user.user_metadata?.avatar_url || null,
     role: user.role || user.user_metadata?.role || 'learner',
   };
 
