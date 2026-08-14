@@ -5,18 +5,18 @@ import { useToast } from '../../contexts/ToastContext';
 import { useConfirm } from '../../contexts/ConfirmContext';
 import { createNote } from '../../features/notes/noteApi';
 import ReactMarkdown from 'react-markdown';
-import { 
-  sendAIChatMessage, 
-  getAIConversationHistory, 
-  generateAIQuiz, 
-  generateAIFlashcards, 
+import {
+  sendAIChatMessage,
+  getAIConversationHistory,
+  generateAIQuiz,
+  generateAIFlashcards,
   getSavedFlashcards,
   extractDocumentText
 } from '../../services/aiService';
 import { Link, useNavigate } from 'react-router-dom';
-import { 
-  getWorkspaceData, 
-  uploadProjectMaterial, 
+import {
+  getWorkspaceData,
+  uploadProjectMaterial,
   createWorkspaceProject,
   deleteProjectMaterial
 } from '../../services/workspaceService';
@@ -32,7 +32,7 @@ export default function AIWorkspace() {
   // ========================================================
   const [showLeftPanel, setShowLeftPanel] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
-  
+
   // Tỷ lệ phần trăm chiều rộng (Mặc định: Trái 25%, Giữa 50%, Phải 25%)
   const [leftWidth, setLeftWidth] = useState(25);
   const [rightWidth, setRightWidth] = useState(25);
@@ -133,7 +133,7 @@ export default function AIWorkspace() {
       setLoading(true);
       setErrorMsg(null);
       setHasNoWorkspace(false);
-      
+
       const data = await getWorkspaceData();
       if (data?.notFound) {
         setHasNoWorkspace(true);
@@ -142,13 +142,13 @@ export default function AIWorkspace() {
       setWorkspace(data);
       const projectList = data?.AI_Project || data?.AI_Projects || [];
       setProjects(projectList);
-      
+
       if (projectList.length > 0) {
         const targetId = preservedProjectId || currentProject?.projectId || currentProject?.id;
         const activeProj = targetId
           ? projectList.find(p => (p.projectId === targetId || p.id === targetId)) || projectList[0]
           : projectList[0];
-          
+
         setCurrentProject(activeProj);
         setMaterials(activeProj.Learning_Material || activeProj.materials || []);
       } else {
@@ -174,8 +174,8 @@ export default function AIWorkspace() {
   }, [materials]);
 
   const toggleMaterialSelection = (materialId) => {
-    setSelectedMaterialIds(prev => 
-      prev.includes(materialId) ? prev.filter(id => id !== materialId) : [...prev, materialId] 
+    setSelectedMaterialIds(prev =>
+      prev.includes(materialId) ? prev.filter(id => id !== materialId) : [...prev, materialId]
     );
   };
 
@@ -198,7 +198,7 @@ export default function AIWorkspace() {
       try {
         setLoadingHistory(true);
         const res = await getAIConversationHistory(projId);
-        
+
         if (res?.data?.messages && Array.isArray(res.data.messages)) {
           setConversationId(res.data.conversationId);
           const formattedMsgs = res.data.messages.map(msg => ({
@@ -230,20 +230,68 @@ export default function AIWorkspace() {
 
   // HANDLERS
   const handleSendChat = async () => {
+    // Không gửi nếu ô chat trống hoặc AI đang xử lý request trước
     if (!chatInput.trim() || sendingChat) return;
+
     const projId = currentProject?.projectId || currentProject?.id;
-    if (!projId) return showToast("Vui lòng chọn hoặc tạo Project trước khi chat!", "warning");
-    
+
+    // Chưa có Project
+    if (!projId) {
+      return showToast(
+        "Vui lòng chọn hoặc tạo Project trước khi chat!",
+        "warning"
+      );
+    }
+
+    if (selectedMaterialIds.length === 0) {
+      return showToast(
+        "Vui lòng tick chọn ít nhất 1 tài liệu để AI đọc ngữ cảnh!",
+        "warning"
+      );
+    }
+
     const userMsg = chatInput.trim();
+
     setChatInput('');
-    setChatHistory(prev => [...prev, { from: 'user', text: userMsg }]);
+    setChatHistory(prev => [
+      ...prev,
+      {
+        from: 'user',
+        text: userMsg
+      }
+    ]);
+
     try {
       setSendingChat(true);
-      const response = await sendAIChatMessage(projId, conversationId, userMsg);
-      if (response?.data?.conversationId) setConversationId(response.data.conversationId);
-      setChatHistory(prev => [...prev, { from: 'ai', text: response?.data?.reply || "Không nhận được phản hồi." }]);
+
+      const response = await sendAIChatMessage(
+        projId,
+        selectedMaterialIds,
+        conversationId,
+        userMsg
+      );
+
+      if (response?.data?.conversationId) {
+        setConversationId(response.data.conversationId);
+      }
+
+      setChatHistory(prev => [
+        ...prev,
+        {
+          from: 'ai',
+          text: response?.data?.reply || "Không nhận được phản hồi."
+        }
+      ]);
+
     } catch (err) {
-      setChatHistory(prev => [...prev, { from: 'ai', text: `Lỗi AI: ${err.message || 'Không thể kết nối.'}` }]);
+      setChatHistory(prev => [
+        ...prev,
+        {
+          from: 'ai',
+          text: `Lỗi AI: ${err.message || 'Không thể kết nối.'}`
+        }
+      ]);
+
     } finally {
       setSendingChat(false);
     }
@@ -260,7 +308,7 @@ export default function AIWorkspace() {
       showToast("Tạo Personal Project thành công!", "success");
       setNewProjectName('');
       setIsCreatingProject(false);
-      await fetchWorkspace(); 
+      await fetchWorkspace();
     } catch (err) {
       showToast("Lỗi khi tạo Project: " + err.message, "error");
     } finally {
@@ -278,7 +326,7 @@ export default function AIWorkspace() {
         const file = files[i];
         const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '_');
         const safeFile = new File([file], safeName, { type: file.type });
-        
+
         showToast(`Đang tải lên: ${file.name}...`, "info");
         const uploadRes = await uploadProjectMaterial(projectId, safeFile);
         const materialId = uploadRes?.materialId || uploadRes?.data?.materialId || uploadRes?.id;
@@ -289,7 +337,7 @@ export default function AIWorkspace() {
         }
       }
       showToast(`Đã tải lên & phân tích xong!`, "success");
-      await fetchWorkspace(projectId); 
+      await fetchWorkspace(projectId);
     } catch (err) {
       showToast("Lỗi xử lý tài liệu: " + err.message, "error");
     } finally {
@@ -354,7 +402,7 @@ export default function AIWorkspace() {
       const res = await generateAIFlashcards(projectId, selectedMaterialIds, flashcardCount, 'short');
       showToast("AI tạo Flashcards thành công!", "success");
       setShowFCModal(false);
-      
+
       if (res?.flashcardSetId || res?.data?.flashcardSetId) {
           const setId = res.flashcardSetId || res.data.flashcardSetId;
           navigate(`/learner/flashcards/study?projectId=${projectId}&setId=${setId}&name=Generated+Flashcards`);
@@ -410,13 +458,13 @@ export default function AIWorkspace() {
 
   return (
     <main className="flex-1 flex overflow-hidden bg-white relative w-full h-full">
-      
+
       {/* ========================================================
           PANEL 1: DOCUMENT VIEWER & CONTEXT SELECTION (UC-01)
       ======================================================== */}
       {showLeftPanel && (
-        <div 
-          style={{ width: `${leftWidth}%` }} 
+        <div
+          style={{ width: `${leftWidth}%` }}
           className="h-full bg-white border-r border-gray-100 flex flex-col flex-shrink-0 min-w-[240px] max-w-[500px]"
         >
           <div className="p-4 border-b border-gray-100 flex flex-col gap-3 flex-shrink-0 bg-gray-50/50">
@@ -424,7 +472,7 @@ export default function AIWorkspace() {
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-gray-800">📄 Documents</h2>
                 {/* NÚT THU GỌN CỘT TRÁI */}
-                <button 
+                <button
                   onClick={() => setShowLeftPanel(false)}
                   className="text-gray-400 hover:text-gray-700 p-1 rounded-md hover:bg-gray-200 transition-colors text-xs"
                   title="Ẩn danh sách tài liệu"
@@ -432,14 +480,14 @@ export default function AIWorkspace() {
                   ◀
                 </button>
               </div>
-              <button 
+              <button
                 onClick={() => setIsCreatingProject(true)}
                 className="text-[10px] bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1.5 rounded font-bold transition-colors"
               >+ New Project</button>
             </div>
 
             <div className="flex items-center gap-2">
-              <select 
+              <select
                 value={currentProject?.projectId || currentProject?.id || ''}
                 onChange={(e) => {
                   const proj = projects.find(p => (p.projectId === e.target.value || p.id === e.target.value));
@@ -474,7 +522,7 @@ export default function AIWorkspace() {
 
             <div>
               <input type="file" multiple ref={fileInputRef} style={{ display: 'none' }} accept=".pdf,.docx" onChange={handleFileUpload} />
-              <button 
+              <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading || !currentProject}
                 className={`w-full text-xs py-2 rounded-lg font-bold transition-colors shadow-sm border ${currentProject ? 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700' : 'bg-gray-100 text-gray-400 border-transparent cursor-not-allowed'}`}
@@ -499,8 +547,8 @@ export default function AIWorkspace() {
                   const matId = mat.materialId || mat.id;
                   return (
                     <div key={idx} className={`p-2.5 rounded-xl border flex items-start gap-2.5 relative group transition-colors ${selectedMaterialIds.includes(matId) ? 'bg-blue-50/30 border-blue-200' : 'bg-white border-gray-100 opacity-60'}`}>
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         className="mt-1 cursor-pointer w-3.5 h-3.5 accent-blue-600 flex-shrink-0"
                         checked={selectedMaterialIds.includes(matId)}
                         onChange={() => toggleMaterialSelection(matId)}
@@ -528,7 +576,7 @@ export default function AIWorkspace() {
 
           {/* AI GENERATORS */}
           <div className="p-3 border-t border-gray-100 bg-gray-50/50 flex-shrink-0 grid grid-cols-2 gap-2">
-            <button 
+            <button
               onClick={() => setShowFCModal(true)}
               disabled={generatingFlashcards || !currentProject || materials.length === 0}
               className="flex items-center justify-center gap-1.5 p-2 bg-white border border-gray-200 rounded-lg hover:border-emerald-400 hover:shadow-sm transition-all disabled:opacity-50"
@@ -536,8 +584,8 @@ export default function AIWorkspace() {
               <span className="text-xs">🗂️</span>
               <span className="text-[10px] font-bold text-gray-700">Flashcards</span>
             </button>
-            
-            <button 
+
+            <button
               onClick={() => setShowQuizModal(true)}
               disabled={generatingQuiz || !currentProject || materials.length === 0}
               className="flex items-center justify-center gap-1.5 p-2 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:shadow-sm transition-all disabled:opacity-50"
@@ -551,7 +599,7 @@ export default function AIWorkspace() {
 
       {/* THANH KÉO (RESIZER 1: GIỮA TRÁI & GIỮA) */}
       {showLeftPanel && (
-        <div 
+        <div
           onMouseDown={startDraggingLeft}
           className="w-1.5 h-full hover:bg-blue-500 cursor-col-resize flex-shrink-0 bg-transparent transition-colors z-20 flex items-center justify-center group"
         >
@@ -567,7 +615,7 @@ export default function AIWorkspace() {
           <div className="flex items-center gap-2">
             {/* Nút mở lại cột Trái nếu đang bị ẩn */}
             {!showLeftPanel && (
-              <button 
+              <button
                 onClick={() => setShowLeftPanel(true)}
                 className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded-md font-semibold flex items-center gap-1 shadow-sm transition-colors"
                 title="Mở tài liệu"
@@ -586,7 +634,7 @@ export default function AIWorkspace() {
             )}
             {/* Nút mở lại cột Phải nếu đang bị ẩn */}
             {!showRightPanel && (
-              <button 
+              <button
                 onClick={() => setShowRightPanel(true)}
                 className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded-md font-semibold flex items-center gap-1 shadow-sm transition-colors"
                 title="Mở ghi chú"
@@ -622,7 +670,7 @@ export default function AIWorkspace() {
 
         <div className="p-4 border-t border-gray-100 bg-white flex-shrink-0">
           <div className="relative">
-            <textarea 
+            <textarea
               value={chatInput}
               onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendChat())}
@@ -631,9 +679,9 @@ export default function AIWorkspace() {
               rows="2"
               className="w-full bg-gray-50 text-xs rounded-xl p-4 pr-12 border border-gray-200 outline-none resize-none focus:border-blue-400 focus:bg-white transition-all disabled:bg-gray-100"
             />
-            <button 
-              disabled={!currentProject || !chatInput.trim() || sendingChat} 
-              onClick={handleSendChat} 
+            <button
+              disabled={!currentProject || !chatInput.trim() || sendingChat}
+              onClick={handleSendChat}
               className="absolute right-3 top-3 w-8 h-8 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg flex items-center justify-center text-sm transition-colors shadow-sm hover:bg-blue-700"
             >
               ➤
@@ -644,7 +692,7 @@ export default function AIWorkspace() {
 
       {/* THANH KÉO (RESIZER 2: GIỮA & PHẢI) */}
       {showRightPanel && (
-        <div 
+        <div
           onMouseDown={startDraggingRight}
           className="w-1.5 h-full hover:bg-blue-500 cursor-col-resize flex-shrink-0 bg-transparent transition-colors z-20 flex items-center justify-center group"
         >
@@ -656,14 +704,14 @@ export default function AIWorkspace() {
           PANEL 3: PERSONAL NOTES EDITOR (UC-01 & UC-25)
       ======================================================== */}
       {showRightPanel && (
-        <div 
+        <div
           style={{ width: `${rightWidth}%` }}
           className="h-full bg-white border-l border-gray-100 flex flex-col p-4 space-y-3 flex-shrink-0 min-w-[240px] max-w-[500px]"
         >
           <div className="flex justify-between items-center mb-1">
             <div className="flex items-center gap-2">
               {/* NÚT THU GỌN CỘT PHẢI */}
-              <button 
+              <button
                 onClick={() => setShowRightPanel(false)}
                 className="text-gray-400 hover:text-gray-700 p-1 rounded-md hover:bg-gray-200 transition-colors text-xs"
                 title="Ẩn ghi chú"
@@ -674,20 +722,20 @@ export default function AIWorkspace() {
             </div>
             <Link to="/learner/notes" className="text-[10px] font-bold text-blue-600 hover:underline">Quản lý &rarr;</Link>
           </div>
-          
-          <input 
-            type="text" value={noteTitle} onChange={e => setNoteTitle(e.target.value)} 
-            placeholder="Tiêu đề ghi chú..." className="w-full text-xs font-bold border border-gray-200 p-3 rounded-xl outline-none focus:border-amber-400 bg-gray-50 focus:bg-white transition-colors" 
+
+          <input
+            type="text" value={noteTitle} onChange={e => setNoteTitle(e.target.value)}
+            placeholder="Tiêu đề ghi chú..." className="w-full text-xs font-bold border border-gray-200 p-3 rounded-xl outline-none focus:border-amber-400 bg-gray-50 focus:bg-white transition-colors"
           />
-          <textarea 
-            value={noteContent} onChange={e => setNoteContent(e.target.value)} rows="15" 
-            placeholder="Ghi chú nhanh các kiến thức quan trọng..." className="w-full text-xs border border-gray-200 p-3 rounded-xl outline-none resize-none flex-1 focus:border-amber-400 bg-gray-50 focus:bg-white transition-colors leading-relaxed" 
+          <textarea
+            value={noteContent} onChange={e => setNoteContent(e.target.value)} rows="15"
+            placeholder="Ghi chú nhanh các kiến thức quan trọng..." className="w-full text-xs border border-gray-200 p-3 rounded-xl outline-none resize-none flex-1 focus:border-amber-400 bg-gray-50 focus:bg-white transition-colors leading-relaxed"
           />
-          
+
           <div className="flex items-center justify-between mt-2">
             <span className="text-[10px] text-gray-400 italic">{noteStatus}</span>
-            <button 
-              onClick={handleSaveNote} 
+            <button
+              onClick={handleSaveNote}
               className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-sm transition-colors"
             >
               Lưu Ghi Chú
@@ -705,9 +753,9 @@ export default function AIWorkspace() {
             <h3 className="text-lg font-bold text-gray-800 mb-1">Tạo Personal Project</h3>
             <p className="text-xs text-gray-500 mb-5">Gom nhóm tài liệu liên quan vào một không gian độc lập.</p>
             <form onSubmit={handleCreateProject}>
-              <input 
-                type="text" required value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} 
-                placeholder="VD: Luyện thi IELTS..." className="w-full text-sm text-gray-800 border border-gray-200 p-3 rounded-xl mb-6 outline-none focus:border-blue-500" 
+              <input
+                type="text" required value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="VD: Luyện thi IELTS..." className="w-full text-sm text-gray-800 border border-gray-200 p-3 rounded-xl mb-6 outline-none focus:border-blue-500"
               />
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={() => { setIsCreatingProject(false); setNewProjectName(''); }} className="px-5 py-2.5 text-xs font-semibold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200">Hủy</button>
@@ -727,7 +775,7 @@ export default function AIWorkspace() {
             </p>
             <div className="mb-6">
               <label className="block text-xs font-bold text-gray-700 mb-2">Số lượng thẻ mục tiêu:</label>
-              <input 
+              <input
                 type="number" min="1" max="50" value={flashcardCount} onChange={(e) => setFlashcardCount(Number(e.target.value))}
                 className="w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:border-emerald-500 bg-gray-50 focus:bg-white transition-colors"
               />
@@ -751,7 +799,7 @@ export default function AIWorkspace() {
             </p>
             <div className="mb-6">
               <label className="block text-xs font-bold text-gray-700 mb-2">Số lượng câu hỏi:</label>
-              <input 
+              <input
                 type="number" min="1" max="50" value={quizCount} onChange={(e) => setQuizCount(Number(e.target.value))}
                 className="w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:border-blue-500 bg-gray-50 focus:bg-white transition-colors"
               />

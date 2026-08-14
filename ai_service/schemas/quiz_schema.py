@@ -1,9 +1,10 @@
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, Field
+from typing import List
 
 
 class QuizRequest(BaseModel):
     projectId: str
+    materialIds: List[str] = Field(default_factory=list)
     questionCount: int = 5
     difficulty: str = "medium"
 

@@ -1,11 +1,12 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Optional, List
 
 
 class ChatRequest(BaseModel):
     projectId: str
-    conversationId: Optional[str] = None  # None = start a new conversation
+    conversationId: Optional[str] = None
     userMessage: str
+    materialIds: List[str] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
