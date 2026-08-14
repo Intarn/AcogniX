@@ -53,9 +53,15 @@ async function generateFlashcards(projectId, materialIds, flashcardCount, length
     }
 }
 
-async function chat(projectId, conversationId, userMessage) {
+async function chat(projectId, materialIds, conversationId, userMessage) {
     try {
-        const response = await client.post('/api/chat', { projectId, conversationId, userMessage });
+        const response = await client.post('/api/chat', {
+            projectId,
+            materialIds,
+            conversationId,
+            userMessage
+        });
+
         return response.data;
     } catch (error) {
         handleServiceError(error);

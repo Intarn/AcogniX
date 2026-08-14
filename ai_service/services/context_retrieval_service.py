@@ -15,24 +15,28 @@ def get_active_material_ids(project_id: str) -> list[str]:
     )
     return [row["materialId"] for row in result.data]
 
-
-def retrieve_relevant_chunks(project_id: str, query: str, top_k: int = DEFAULT_TOP_K) -> list[str]:
-    """Core RAG retrieval step: embeds the query, finds the top-k most
-    similar chunks among the project's active-context materials, and
-    returns their text — ready to drop into the LLM prompt."""
-    material_ids = get_active_material_ids(project_id)
+def retrieve_relevant_chunks(
+    project_id: str,
+    material_ids: list[str],
+    query: str,
+    top_k: int = DEFAULT_TOP_K
+) -> list[str]:
     if not material_ids:
         return []
 
     query_embedding = embed_query(query)
+    all_chunks = []
 
-    result = supabase.rpc(
-        "match_document_chunks",
-        {
-            "query_embedding": query_embedding,
-            "material_ids": material_ids,
-            "match_count": top_k,
-        },
-    ).execute()
+    for material_id in material_ids:
+        result = supabase.rpc(
+            "match_document_chunks",
+            {
+                "query_embedding": query_embedding,
+                "material_ids": [material_id],
+                "match_count": top_k,
+            },
+        ).execute()
 
-    return [row["content"] for row in result.data]
+        all_chunks.extend(row["content"] for row in result.data)
+
+    return all_chunks

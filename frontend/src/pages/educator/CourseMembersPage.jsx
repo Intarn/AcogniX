@@ -20,7 +20,9 @@ import {
   removeMember
 } from '../../features/classroom/enrollmentApi';
 
-
+import {
+  useConfirm
+} from '../../contexts/ConfirmContext';
 
 function formatDate(dateValue) {
   if (!dateValue) {
@@ -68,6 +70,10 @@ function getInitials(name) {
 
 
 export default function CourseMembersPage() {
+  const {
+    confirm
+  } = useConfirm();
+
   const {
     courseId:
       routeCourseId
@@ -391,47 +397,73 @@ export default function CourseMembersPage() {
 
 
   async function handleApprove(
-    enrollmentId
+    enrollment,
+    learner
   ) {
     if (isArchived) {
       return;
     }
 
+    const learnerName =
+      learner?.displayName ||
+      learner?.fullname ||
+      learner?.email ||
+      'this Learner';
+
+    const confirmed =
+      await confirm({
+        title:
+          'Approve Enrollment Request?',
+
+        message:
+          `Are you sure you want to approve ${learnerName}'s enrollment request? The Learner will gain access to this Course.`,
+
+        confirmLabel:
+          'Approve',
+
+        cancelLabel:
+          'Cancel',
+
+        tone:
+          'success'
+      });
+
+    if (!confirmed) {
+      return;
+    }
 
     try {
       const result =
         await approveEnrollment(
-          enrollmentId
+          enrollment.enrollmentId
         );
-
 
       const updatedEnrollment =
         result.enrollment;
 
-
       setEnrollments(
         (previousEnrollments) =>
           previousEnrollments.map(
-            (enrollment) =>
+            (item) =>
               String(
-                enrollment.enrollmentId
+                item.enrollmentId
               ) ===
               String(
                 updatedEnrollment.enrollmentId
               )
                 ? {
-                    ...enrollment,
+                    ...item,
                     ...updatedEnrollment
                   }
-                : enrollment
+                : item
           )
       );
+
     } catch (error) {
       console.error(
         'Unable to approve enrollment:',
         error
       );
-
 
       alert(
         error.message ||
@@ -988,8 +1020,8 @@ export default function CourseMembersPage() {
                               }
                               onClick={() =>
                                 handleApprove(
-                                  enrollment
-                                    .enrollmentId
+                                  enrollment,
+                                  learner
                                 )
                               }
                               className={`

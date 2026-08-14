@@ -17,12 +17,14 @@ MIN_TEXT_LENGTH_FOR_VALID_EXTRACTION = 20
 
 
 def clean_text(text: str) -> str:
-    """Basic normalization: consistent line endings, collapsed whitespace
-    and blank lines. Keeps the cached Processed_Document readable and
-    keeps prompt size down when this text is later sent to the LLM."""
+    """Normalize extracted text before storing/indexing."""
+
+    text = text.replace("\x00", "")
+
     text = re.sub(r"\r\n?", "\n", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
+
     return text.strip()
 
 
