@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../services/supabase';
-import { pingStudySession } from '../services/analyticsService';
 import Sidebar from '../components/layout/Sidebar';
 import Topbar from '../components/layout/Topbar';
 
@@ -18,34 +17,43 @@ export default function LearnerLayout() {
   // EFFECT 1: FETCH PROFILE & AVATAR FROM SUPABASE
   useEffect(() => {
     async function fetchUserProfile() {
-      if (!user?.email) {
+      if (!user) {
         setLoadingProfile(false);
         return;
       }
 
+      const uid = user.userId || user.id;
+      const email = user.email;
+
       try {
-        const { data } = await supabase
-          .from('User')
-          .select('displayName, avatarUrl')
-          .eq('email', user.email)
-          .single();
+        let query = supabase.from('User').select('displayName, avatarUrl, role');
+
+        if (uid) {
+          query = query.eq('userId', uid);
+        } else if (email) {
+          query = query.eq('email', email.trim().toLowerCase());
+        }
+
+        const { data, error } = await query.maybeSingle();
+
+        if (error) throw error;
 
         if (data) {
           setProfile({
-            displayName: data.displayName || '',
-            avatarUrl: data.avatarUrl || ''
+            displayName: data.displayName || user.displayName || user.email.split('@')[0],
+            avatarUrl: data.avatarUrl || user.avatarUrl || ''
           });
         } else {
           setProfile({
-            displayName: user.user_metadata?.fullname || user.email.split('@')[0],
+            displayName: user.displayName || user.user_metadata?.fullname || user.email.split('@')[0],
             avatarUrl: user.avatarUrl || user.user_metadata?.avatar_url || ''
           });
         }
       } catch (err) {
-        console.error('Error loading profile info:', err);
+        console.error('[LearnerLayout] Error loading profile info:', err);
         setProfile({
-          displayName: user.email.split('@')[0],
-          avatarUrl: ''
+          displayName: user.displayName || user.email?.split('@')[0] || 'Learner',
+          avatarUrl: user.avatarUrl || ''
         });
       } finally {
         setLoadingProfile(false);
@@ -53,20 +61,9 @@ export default function LearnerLayout() {
     }
 
     fetchUserProfile();
-  }, [user]);
+  }, [user?.userId, user?.id, user?.email, user?.avatarUrl, user?.displayName]);
 
-  // EFFECT 2: TRACK ACTIVE STUDY TIME (UC-03)
-  useEffect(() => {
-    if (!user) return;
-
-    pingStudySession().catch((err) => console.error('Ping error:', err));
-
-    const interval = setInterval(() => {
-      pingStudySession().catch((err) => console.error('Ping error:', err));
-    }, 60000);
-
-    return () => clearInterval(interval);
-  }, [user]);
+  // UC03 tracking is intentionally scoped to the active AI Project in AIWorkspace.
 
   if (!user) {
     return <Navigate to="/auth/login" replace />;
@@ -81,26 +78,22 @@ export default function LearnerLayout() {
   }
 
   const userInfo = {
-    fullname:
-      user.displayName ||
-      profile.displayName ||
-      user.user_metadata?.fullname ||
-      user.email.split('@')[0],
-    avatarUrl:
-      user.avatarUrl ||
-      profile.avatarUrl ||
-      user.user_metadata?.avatar_url ||
-      null,
-    role: user.role || user.user_metadata?.role || 'learner'
+    userId: user.userId || user.id,
+    email: user.email,
+    fullname: profile.displayName || user.displayName || user.email.split('@')[0],
+    displayName: profile.displayName || user.displayName || user.email.split('@')[0],
+    avatarUrl: profile.avatarUrl || user.avatarUrl || null,
+    role: user.role || 'LEARNER'
   };
 
   return (
     <div className="flex h-screen w-full bg-gray-50 font-sans overflow-hidden text-gray-800">
       <Sidebar user={userInfo} />
       <div className="flex-1 flex flex-col h-full overflow-hidden">
-        {/* Topbar đã được nhúng NotificationPopover bên trong */}
         <Topbar user={userInfo} />
-        <Outlet context={{ user }} />
+        <main className="flex-1 flex overflow-hidden">
+          <Outlet context={{ user: userInfo }} />
+        </main>
       </div>
     </div>
   );

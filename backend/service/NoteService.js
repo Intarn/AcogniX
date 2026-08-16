@@ -3,9 +3,10 @@ const supabase = require('../config/supabaseClient');
 const PersonalNote = require('../entities/PersonalNote');
 
 const AppError = require('../error/AppError');
+const WorkspaceService = require('./WorkspaceService');
 
 class NoteService {
-  // UC-25: Retrieve all Personal Notes in a Project
+  // UC-23: Retrieve all Personal Notes in a Project
     static async getProjectNotes(projectId, learnerId) {
         await this._assertProjectOwnedBy(
             projectId,
@@ -151,21 +152,22 @@ class NoteService {
     }
 
 
-    // UC-25 Basic Flow: Save a new Personal Note
+    // UC-23 Basic Flow: Save a new Personal Note
     static async createNote(projectId, learnerId, content, title = undefined) {
-        await this._assertProjectOwnedBy(
-            projectId,
-            learnerId
-        );
+        await WorkspaceService.assertProjectWritable(projectId, learnerId);
 
         const noteContent = String(content || '');
+        const plainContent = noteContent
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/&nbsp;/gi, ' ')
+            .trim();
 
-        // UC-25 Alternative Flow 1: Blank Submission
-        if (!noteContent.trim()) {
+        // UC-23 Alternative Flow 1: Blank Submission
+        if (!plainContent) {
             throw new AppError(
                 400,
                 'NOTE_CONTENT_REQUIRED',
-                'Note content cannot be empty.'
+                'Note content cannot be empty'
             );
         }
 
@@ -192,20 +194,25 @@ class NoteService {
     }
 
 
-    // UC-25 Basic Flow: Save changes to an existing Note
+    // UC-23 Basic Flow: Save changes to an existing Note
     static async updateNote(noteId, learnerId, content, title = undefined) {
-        await this._findOwnedNote(
+        const ownedNote = await this._findOwnedNote(
             noteId,
             learnerId
         );
+        await WorkspaceService.assertProjectWritable(ownedNote.projectId, learnerId);
 
         const noteContent = String(content || '');
+        const plainContent = noteContent
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/&nbsp;/gi, ' ')
+            .trim();
 
-        if (!noteContent.trim()) {
+        if (!plainContent) {
             throw new AppError(
                 400,
                 'NOTE_CONTENT_REQUIRED',
-                'Note content cannot be empty.'
+                'Note content cannot be empty'
             );
         }
 
@@ -230,12 +237,13 @@ class NoteService {
     }
 
 
-    // UC-25 Basic Flow Step 5: Delete a Personal Note
+    // UC-23 Basic Flow Step 5: Delete a Personal Note
     static async deleteNote(noteId,learnerId) {
-        await this._findOwnedNote(
+        const ownedNote = await this._findOwnedNote(
             noteId,
             learnerId
         );
+        await WorkspaceService.assertProjectWritable(ownedNote.projectId, learnerId);
 
         const { error } = await supabase
             .from('PersonalNote')
@@ -293,6 +301,14 @@ class NoteService {
                 404,
                 'PROJECT_NOT_FOUND',
                 'The AI Project could not be found.'
+            );
+        }
+
+        if (project.status === 'INACTIVE') {
+            throw new AppError(
+                403,
+                'PROJECT_ACCESS_REVOKED',
+                'Access to this Class Project has been revoked.'
             );
         }
 

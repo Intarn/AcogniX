@@ -71,3 +71,7 @@ coverage/
 *.temp
 .eslintcache
 uploads/temp/
+
+dist
+dist/frontend/index.html
+dist/assets

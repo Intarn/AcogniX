@@ -1,3 +1,4 @@
+// backend/service/AssessmentService.js
 const supabase = require('../config/supabaseClient');
 const Assessment = require('../entities/Assessment');
 const Question = require('../entities/Question');
@@ -8,43 +9,43 @@ const NotificationService = require('./NotificationService');
 const AssessmentAnalyticsIntegrationService = require('./AssessmentAnalyticsIntegrationService');
 const { EnrollmentStatus } = require('../enums/ClassroomEnums');
 const {
-    AssessmentType, 
-    AssessmentStatus, 
-    QuestionType, 
+    AssessmentType,
+    AssessmentStatus,
+    QuestionType,
     SubmissionStatus
 } = require('../enums/AssessmentEnums');
 const path = require('path');
 const crypto = require('crypto');
 
 class AssessmentService {
-    // UC-09: Create an official quiz or assignment in a managed Course 
     static async createAssessment(courseId, educatorId, assessmentInput) {
-        await this._assertCourseManagedBy(courseId, educatorId); 
+        await this._assertCourseManagedBy(courseId, educatorId);
 
         const {
-            title, 
-            description = null, 
-            type, 
-            totalPoints, 
-            allowLateSubmission = false, 
-            startTime = null, 
-            deadline = null, 
+            title,
+            description = null,
+            type,
+            totalPoints,
+            allowLateSubmission = false,
+            startTime = null,
+            deadline = null,
             questions = []
         } = assessmentInput;
 
         if (!title || !Object.values(AssessmentType).includes(type)) {
             throw new AppError(
-                400, 
+                400,
                 'INVALID_ASSESSMENT_DATA',
                 'Assessment title and type are required.'
             );
         }
 
         const numericTotalPoints = this._validateTotalPoints(totalPoints);
+        // Drafts may be incomplete. Question points are validated only when publishing.
 
         if ((startTime && !deadline) || (!startTime && deadline)) {
             throw new AppError(
-                400, 
+                400,
                 'INCOMPLETE_ASSESSMENT_SCHEDULE',
                 'Both start time and deadline are required.'
             );
@@ -54,284 +55,140 @@ class AssessmentService {
             this._validateSchedule(startTime, deadline);
         }
 
-        const initialStatus = startTime && deadline 
+        const initialStatus = startTime && deadline
             ? AssessmentStatus.SCHEDULED
             : AssessmentStatus.DRAFT;
-        
+
         const { data, error } = await supabase
             .from('Assessment')
             .insert({
-                courseId, 
-                title, 
-                description, 
-                type, 
-                startTime, 
-                deadline, 
-                totalPoints: numericTotalPoints, 
+                courseId,
+                title,
+                description,
+                type,
+                startTime,
+                deadline,
+                totalPoints: numericTotalPoints,
                 allowLateSubmission: Boolean(allowLateSubmission),
                 status: initialStatus
             })
             .select()
             .single();
-        
-        if (error) throw error; 
+
+        if (error) throw error;
 
         const savedQuestions = [];
-        for(const questionInput of questions) {
+        for (const questionInput of questions) {
             const question = await this._insertQuestion(
-                data.assessmentId, 
+                data.assessmentId,
                 questionInput
             );
             savedQuestions.push(question);
         }
 
         await this._notifyCourseLearners({
-            courseId, 
-            assessmentId: data.assessmentId, 
+            courseId,
+            assessmentId: data.assessmentId,
             action: 'CREATED'
-        })
+        });
+
         return {
-            assessment: this._toAssessment(data), 
+            assessment: this._toAssessment(data),
             questions: savedQuestions
         };
     }
 
-    // UC-09: List Assessments in a Course managed by the Educator
     static async getManagedAssessments(courseId, educatorId) {
         await this._assertCourseManagedBy(courseId, educatorId);
 
-        const { data, error } = await supabase 
+        const { data, error } = await supabase
             .from('Assessment')
             .select('*')
             .eq('courseId', courseId)
             .order('startTime', { ascending: false });
-        
-        if (error) throw error; 
+
+        if (error) throw error;
 
         const assessments = [];
         for (const row of data || []) {
             const synchronized = await this._synchronizeAssessmentStatus(row);
             assessments.push(this._toAssessment(synchronized));
         }
-
         return assessments;
     }
 
-    // UC-09: Get one Assessment managed by the curent Educator
-    static async getAssessmentById(
-        assessmentId,
-        educatorId
-    ) {
-        const assessmentRow =
-            await this._findAssessmentById(
-                assessmentId
-            );
-
-        await this._assertCourseManagedBy(
-            assessmentRow.courseId,
-            educatorId
-        );
-
-        const synchronized =
-            await this._synchronizeAssessmentStatus(
-                assessmentRow
-            );
-
-        return this._toAssessment(
-            synchronized
-        );
+    static async getAssessmentById(assessmentId, educatorId) {
+        const assessmentRow = await this._findAssessmentById(assessmentId);
+        await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
+        return this._toAssessment(synchronized);
     }
 
-    // UC-09: Get Questions for Educator view
-    static async getAssessmentQuestions(
-        assessmentId,
-        educatorId
-    ) {
-        const assessmentRow =
-            await this._findAssessmentById(
-                assessmentId
-            );
-
-        await this._assertCourseManagedBy(
-            assessmentRow.courseId,
-            educatorId
-        );
-
-        return this._loadQuestionsWithOptions(
-            assessmentId,
-            true
-        );
+    static async getAssessmentQuestions(assessmentId, educatorId) {
+        const assessmentRow = await this._findAssessmentById(assessmentId);
+        await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+        return this._loadQuestionsWithOptions(assessmentId, true);
     }
 
-    // UC-09: Get all Submissions of an Assessment
-    static async getAssessmentSubmissions(
-        assessmentId,
-        educatorId
-    ) {
-        const assessmentRow =
-            await this._findAssessmentById(
-                assessmentId
-            );
-
-        await this._assertCourseManagedBy(
-            assessmentRow.courseId,
-            educatorId
-        );
-
-        const {
-            data,
-            error
-        } = await supabase
-            .from('Submission')
-            .select('*')
-            .eq(
-                'assessmentId',
-                assessmentId
-            )
-            .order(
-                'submittedAt',
-                {
-                    ascending: false
-                }
-            );
-
-        if (error) {
-            throw error;
-        }
-
-        return (data || []).map(
-            row =>
-                this._toSubmission(
-                    row
-                )
-        );
-    }
-
-    // UC-09: Educator reviews one Submission
-    static async getSubmissionById(
-        submissionId,
-        educatorId
-    ) {
-        
-        // Find Submission
-        const {
-            data: submissionRow,
-            error: submissionError
-        } = await supabase
-            .from('Submission')
-            .select('*')
-            .eq(
-                'submissionId',
-                submissionId
-            )
-            .maybeSingle();
-
-        if (submissionError) {
-            throw submissionError;
-        }
-
-        if (!submissionRow) {
-            throw new AppError(
-                404,
-                'SUBMISSION_NOT_FOUND',
-                'The Submission could not be found.'
-            );
-        }
-
-
-        // Find its Assessment
-        const assessmentRow =
-            await this._findAssessmentById(
-                submissionRow.assessmentId
-            );
-
-
-
-        // Verify Educator owns Course
-        await this._assertCourseManagedBy(
-            assessmentRow.courseId,
-            educatorId
-        );
-
-        // 4. Load answers
-        const {
-            data: answerRows,
-            error: answerError
-        } = await supabase
-            .from('SubmissionAnswer')
-            .select('*')
-            .eq(
-                'submissionId',
-                submissionId
-            );
-
-        if (answerError) {
-            throw answerError;
-        }
-
-
-        // 5. Load Learner information
-        const {
-            data: learner,
-            error: learnerError
-        } = await supabase
-            .from('User')
-            .select(
-                'userId, email, displayName, avatarUrl'
-            )
-            .eq(
-                'userId',
-                submissionRow.learnerId
-            )
-            .maybeSingle();
-
-        if (learnerError) {
-            throw learnerError;
-        }
-
-
-        const submission =
-            this._toSubmission(
-                submissionRow
-            );
-
-
-        return {
-            submission,
-
-            learner:
-                learner || null,
-
-            answers:
-                (answerRows || []).map(
-                    row =>
-                        new SubmissionAnswer(
-                            row
-                        )
-                ),
-
-            files:
-                Array.isArray(
-                    submission.uploadedFileUrls
-                )
-                    ? submission
-                        .uploadedFileUrls
-                        .map(
-                            filePath =>
-                                this
-                                    ._getSubmissionFilePublicUrl(
-                                        filePath
-                                    )
-                        )
-                    : []
-        };
-    }
-
-    // UC-09: Alternative Flow 1: Active Assessments cannot be edited.
-    static async updateAssessment(assessmentId, educatorId, changes) {
+    static async getAssessmentSubmissions(assessmentId, educatorId) {
         const assessmentRow = await this._findAssessmentById(assessmentId);
         await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
 
+        const { data, error } = await supabase
+            .from('Submission')
+            .select('*')
+            .eq('assessmentId', assessmentId)
+            .order('submittedAt', { ascending: false });
+
+        if (error) throw error;
+        return (data || []).map(row => this._toSubmission(row));
+    }
+
+    static async getSubmissionById(submissionId, educatorId) {
+        const { data: submissionRow, error: submissionError } = await supabase
+            .from('Submission')
+            .select('*')
+            .eq('submissionId', submissionId)
+            .maybeSingle();
+
+        if (submissionError) throw submissionError;
+        if (!submissionRow) {
+            throw new AppError(404, 'SUBMISSION_NOT_FOUND', 'The Submission could not be found.');
+        }
+
+        const assessmentRow = await this._findAssessmentById(submissionRow.assessmentId);
+        await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+
+        const { data: answerRows, error: answerError } = await supabase
+            .from('SubmissionAnswer')
+            .select('*')
+            .eq('submissionId', submissionId);
+
+        if (answerError) throw answerError;
+
+        const { data: learner, error: learnerError } = await supabase
+            .from('User')
+            .select('userId, email, displayName, avatarUrl')
+            .eq('userId', submissionRow.learnerId)
+            .maybeSingle();
+
+        if (learnerError) throw learnerError;
+
+        const submission = this._toSubmission(submissionRow);
+
+        return {
+            submission,
+            learner: learner || null,
+            answers: (answerRows || []).map(row => new SubmissionAnswer(row)),
+            files: Array.isArray(submission.uploadedFileUrls)
+                ? submission.uploadedFileUrls.map(filePath => this._getSubmissionFilePublicUrl(filePath))
+                : []
+        };
+    }
+
+    static async updateAssessment(assessmentId, educatorId, changes) {
+        const assessmentRow = await this._findAssessmentById(assessmentId);
+        await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
         const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
         const assessment = this._toAssessment(synchronized);
 
@@ -344,40 +201,39 @@ class AssessmentService {
         }
 
         const updateData = {};
-        
+
         if (changes.title !== undefined) {
             if (!String(changes.title).trim()) {
                 throw new AppError(
-                400,
-                'ASSESSMENT_TITLE_REQUIRED',
-                'Assessment title cannot be empty.'
+                    400,
+                    'ASSESSMENT_TITLE_REQUIRED',
+                    'Assessment title cannot be empty.'
                 );
             }
             updateData.title = String(changes.title).trim();
         }
-
         if (changes.description !== undefined) {
             updateData.description = changes.description || null;
         }
-
         if (changes.type !== undefined) {
             if (!Object.values(AssessmentType).includes(changes.type)) {
                 throw new AppError(
-                400,
-                'INVALID_ASSESSMENT_TYPE',
-                'The supplied Assessment type is invalid.'
+                    400,
+                    'INVALID_ASSESSMENT_TYPE',
+                    'The supplied Assessment type is invalid.'
                 );
             }
             updateData.type = changes.type;
         }
-
         if (changes.totalPoints !== undefined) {
             updateData.totalPoints = this._validateTotalPoints(changes.totalPoints);
         }
-
         if (changes.allowLateSubmission !== undefined) {
             updateData.allowLateSubmission = Boolean(changes.allowLateSubmission);
         }
+
+        // Draft edits may temporarily have question points that do not match Total Points.
+        // The invariant is enforced by publishAssessment().
 
         const { data, error } = await supabase
             .from('Assessment')
@@ -397,51 +253,32 @@ class AssessmentService {
         return this._toAssessment(data);
     }
 
-    // UC-09 Alternative Flow: 1 Active Assessments cannot be deleted
     static async deleteAssessment(assessmentId, educatorId) {
-        // 1. Tìm Assessment
-        const assessmentRow = await this._findAssessmentById(
-            assessmentId
-        );
+        const assessmentRow = await this._findAssessmentById(assessmentId);
+        await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
+        const assessment = this._toAssessment(synchronized);
 
-        // 2. Kiểm tra Educator có quản lý Course này không
-        await this._assertCourseManagedBy(
-            assessmentRow.courseId,
-            educatorId
-        );
+        const deletableStatuses = [
+            AssessmentStatus.DRAFT,
+            AssessmentStatus.SCHEDULED
+        ];
 
-        // 3. Đồng bộ status hiện tại
-        const synchronized =
-            await this._synchronizeAssessmentStatus(
-                assessmentRow
-            );
-
-        const assessment = this._toAssessment(
-            synchronized
-        );
-
-        // 4. Chỉ Assessment còn editable mới được xóa
-        if (!assessment.isEditable()) {
+        if (!deletableStatuses.includes(assessment.status)) {
             throw new AppError(
                 409,
-                'ASSESSMENT_NOT_EDITABLE',
-                'An active or closed Assessment cannot be deleted.'
+                'ASSESSMENT_NOT_DELETABLE',
+                'Only Draft or Scheduled Assessments can be deleted.'
             );
         }
 
-        // 5. Xóa Assessment.
-        // Question, Submission, SubmissionAnswer
-        // sẽ được database tự động xóa nhờ ON DELETE CASCADE.
         const { error } = await supabase
             .from('Assessment')
             .delete()
             .eq('assessmentId', assessmentId);
 
-        if (error) {
-            throw error;
-        }
+        if (error) throw error;
 
-        // 6. Thông báo cho Learners
         await this._notifyCourseLearners({
             courseId: assessmentRow.courseId,
             assessmentId,
@@ -449,11 +286,9 @@ class AssessmentService {
         });
     }
 
-    // UC-09: Add a Questin before the Assessment becomes active.
     static async addQuestion(assessmentId, educatorId, questionInput) {
         const assessmentRow = await this._findAssessmentById(assessmentId);
         await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
-
         const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
         const assessment = this._toAssessment(synchronized);
 
@@ -468,34 +303,12 @@ class AssessmentService {
         return this._insertQuestion(assessmentId, questionInput);
     }
 
-    static async updateQuestion(
-        assessmentId,
-        questionId,
-        educatorId,
-        changes
-    ) {
-        // 1. Find Assessment
-        const assessmentRow =
-            await this._findAssessmentById(
-                assessmentId
-            );
+    static async updateQuestion(assessmentId, questionId, educatorId, changes) {
+        const assessmentRow = await this._findAssessmentById(assessmentId);
+        await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
+        const assessment = this._toAssessment(synchronized);
 
-        // 2. Verify that the current Educator manages the Course
-        await this._assertCourseManagedBy(
-            assessmentRow.courseId,
-            educatorId
-        );
-
-        // 3. Synchronize Assessment status
-        const synchronized =
-            await this._synchronizeAssessmentStatus(
-                assessmentRow
-            );
-
-        const assessment =
-            this._toAssessment(synchronized);
-
-        // 4. Active / closed Assessment cannot be edited
         if (!assessment.isEditable()) {
             throw new AppError(
                 409,
@@ -504,20 +317,14 @@ class AssessmentService {
             );
         }
 
-        // 5. Find the Question and make sure it belongs
-        //    to this Assessment
-        const { data: questionRow, error: questionError } =
-            await supabase
-                .from('Question')
-                .select('*')
-                .eq('questionId', questionId)
-                .eq('assessmentId', assessmentId)
-                .maybeSingle();
+        const { data: questionRow, error: questionError } = await supabase
+            .from('Question')
+            .select('*')
+            .eq('questionId', questionId)
+            .eq('assessmentId', assessmentId)
+            .maybeSingle();
 
-        if (questionError) {
-            throw questionError;
-        }
-
+        if (questionError) throw questionError;
         if (!questionRow) {
             throw new AppError(
                 404,
@@ -526,204 +333,85 @@ class AssessmentService {
             );
         }
 
-        // 6. Prepare update data
         const updateData = {};
 
-        // ----- content -----
         if (changes.content !== undefined) {
-            const content =
-                String(changes.content).trim();
-
+            const content = String(changes.content).trim();
             if (!content) {
-                throw new AppError(
-                    400,
-                    'QUESTION_CONTENT_REQUIRED',
-                    'Question content cannot be empty.'
-                );
+                throw new AppError(400, 'QUESTION_CONTENT_REQUIRED', 'Question content cannot be empty.');
             }
-
             updateData.content = content;
         }
 
-        // ----- points -----
         if (changes.points !== undefined) {
-            const points =
-                Number(changes.points);
-
-            if (
-                !Number.isFinite(points) ||
-                points < 0
-            ) {
-                throw new AppError(
-                    400,
-                    'INVALID_QUESTION_POINTS',
-                    'Question points must be a non-negative number.'
-                );
+            const points = Number(changes.points);
+            if (!Number.isFinite(points) || points <= 0) {
+                throw new AppError(400, 'INVALID_QUESTION_POINTS', 'Question points must be greater than 0.');
             }
-
             updateData.points = points;
         }
 
-        // ----- display order -----
         if (changes.displayOrder !== undefined) {
-            const displayOrder =
-                Number(changes.displayOrder);
-
-            if (
-                !Number.isInteger(displayOrder) ||
-                displayOrder < 0
-            ) {
-                throw new AppError(
-                    400,
-                    'INVALID_DISPLAY_ORDER',
-                    'Question display order must be a non-negative integer.'
-                );
+            const displayOrder = Number(changes.displayOrder);
+            if (!Number.isInteger(displayOrder) || displayOrder < 0) {
+                throw new AppError(400, 'INVALID_DISPLAY_ORDER', 'Question display order must be a non-negative integer.');
             }
-
-            updateData.displayOrder =
-                displayOrder;
+            updateData.displayOrder = displayOrder;
         }
 
-        // Determine final Question type
-        const finalType =
-            changes.type !== undefined
-                ? changes.type
-                : questionRow.type;
-
-        if (
-            !Object.values(QuestionType)
-                .includes(finalType)
-        ) {
-            throw new AppError(
-                400,
-                'INVALID_QUESTION_DATA',
-                'The supplied Question type is invalid.'
-            );
+        const finalType = changes.type !== undefined ? changes.type : questionRow.type;
+        if (!Object.values(QuestionType).includes(finalType)) {
+            throw new AppError(400, 'INVALID_QUESTION_DATA', 'The supplied Question type is invalid.');
         }
-
         if (changes.type !== undefined) {
             updateData.type = finalType;
         }
 
-        // 7. Handle MULTIPLE_CHOICE
-        if (
-            finalType ===
-            QuestionType.MULTIPLE_CHOICE
-        ) {
-            // Only recalculate options when new options
-            // are actually supplied.
+        if (finalType === QuestionType.MULTIPLE_CHOICE) {
             if (changes.options !== undefined) {
                 if (!Array.isArray(changes.options)) {
-                    throw new AppError(
-                        400,
-                        'INVALID_MULTIPLE_CHOICE_OPTIONS',
-                        'Multiple-choice options must be an array.'
-                    );
+                    throw new AppError(400, 'INVALID_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice options must be an array.');
                 }
-
-                const correctOptions =
-                    changes.options.filter(
-                        option =>
-                            option.isCorrect === true
-                    );
-
-                if (
-                    changes.options.length < 2 ||
-                    correctOptions.length !== 1
-                ) {
+                const correctOptions = changes.options.filter(option => option.isCorrect === true);
+                if (changes.options.length < 2 || correctOptions.length !== 1) {
                     throw new AppError(
                         400,
                         'INVALID_MULTIPLE_CHOICE_OPTIONS',
                         'A multiple-choice Question requires at least two options and exactly one correct option.'
                     );
                 }
-
-                const optionContents =
-                    changes.options.map(option =>
-                        String(
-                            option.content || ''
-                        ).trim()
-                    );
-
-                if (
-                    optionContents.some(
-                        content => !content
-                    )
-                ) {
-                    throw new AppError(
-                        400,
-                        'INVALID_MULTIPLE_CHOICE_OPTIONS',
-                        'Multiple-choice option content cannot be empty.'
-                    );
+                const optionContents = changes.options.map(option => String(option.content || '').trim());
+                if (optionContents.some(content => !content)) {
+                    throw new AppError(400, 'INVALID_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice option content cannot be empty.');
                 }
-
-                updateData.options =
-                    optionContents;
-
-                updateData.correctAnswer =
-                    String(
-                        correctOptions[0].content
-                    ).trim();
-            }
-
-            // ESSAY -> MULTIPLE_CHOICE requires options
-            else if (
-                questionRow.type !==
-                QuestionType.MULTIPLE_CHOICE
-            ) {
-                throw new AppError(
-                    400,
-                    'INVALID_MULTIPLE_CHOICE_OPTIONS',
-                    'Options are required when changing a Question to multiple choice.'
-                );
+                updateData.options = optionContents;
+                updateData.correctAnswer = String(correctOptions[0].content).trim();
+            } else if (questionRow.type !== QuestionType.MULTIPLE_CHOICE) {
+                throw new AppError(400, 'INVALID_MULTIPLE_CHOICE_OPTIONS', 'Options are required when changing a Question to multiple choice.');
             }
         }
 
-        // 8. Handle ESSAY
-        if (
-            finalType === QuestionType.ESSAY &&
-            questionRow.type !== QuestionType.ESSAY
-        ) {
+        if (finalType === QuestionType.ESSAY && questionRow.type !== QuestionType.ESSAY) {
             updateData.options = [];
             updateData.correctAnswer = null;
         }
 
-        // Nothing supplied
-        if (
-            Object.keys(updateData).length === 0
-        ) {
-            throw new AppError(
-                400,
-                'NO_QUESTION_CHANGES',
-                'No Question changes were supplied.'
-            );
+        if (Object.keys(updateData).length === 0) {
+            throw new AppError(400, 'NO_QUESTION_CHANGES', 'No Question changes were supplied.');
         }
 
-        // 9. Update DB
-        const { data, error } =
-            await supabase
-                .from('Question')
-                .update(updateData)
-                .eq(
-                    'questionId',
-                    questionId
-                )
-                .eq(
-                    'assessmentId',
-                    assessmentId
-                )
-                .select()
-                .single();
+        const { data, error } = await supabase
+            .from('Question')
+            .update(updateData)
+            .eq('questionId', questionId)
+            .eq('assessmentId', assessmentId)
+            .select()
+            .single();
 
-        if (error) {
-            throw error;
-        }
+        if (error) throw error;
 
-        // 10. Notify Learners if your UC-09
-        // notification integration is enabled
         await this._notifyCourseLearners({
-            courseId:
-                assessmentRow.courseId,
+            courseId: assessmentRow.courseId,
             assessmentId,
             action: 'UPDATED'
         });
@@ -731,39 +419,12 @@ class AssessmentService {
         return new Question(data);
     }
 
-    static async deleteQuestion(
-        assessmentId,
-        questionId,
-        educatorId
-    ) {
-        // 1. Find Assessment
-        const assessmentRow =
-            await this._findAssessmentById(
-                assessmentId
-            );
+    static async deleteQuestion(assessmentId, questionId, educatorId) {
+        const assessmentRow = await this._findAssessmentById(assessmentId);
+        await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
+        const assessment = this._toAssessment(synchronized);
 
-
-        // 2. Verify Educator manages this Course
-        await this._assertCourseManagedBy(
-            assessmentRow.courseId,
-            educatorId
-        );
-
-
-        // 3. Synchronize Assessment status
-        const synchronized =
-            await this._synchronizeAssessmentStatus(
-                assessmentRow
-            );
-
-        const assessment =
-            this._toAssessment(
-                synchronized
-            );
-
-
-        // 4. Active / closed Assessment
-        // cannot have Questions changed
         if (!assessment.isEditable()) {
             throw new AppError(
                 409,
@@ -772,93 +433,50 @@ class AssessmentService {
             );
         }
 
-
-        // 5. Make sure Question exists
-        // and belongs to this Assessment
-        const {
-            data: questionRow,
-            error: questionError
-        } = await supabase
+        const { data: questionRow, error: questionError } = await supabase
             .from('Question')
-            .select(
-                'questionId, assessmentId'
-            )
-            .eq(
-                'questionId',
-                questionId
-            )
-            .eq(
-                'assessmentId',
-                assessmentId
-            )
+            .select('questionId, assessmentId')
+            .eq('questionId', questionId)
+            .eq('assessmentId', assessmentId)
             .maybeSingle();
 
-
-        if (questionError) {
-            throw questionError;
-        }
-
-
+        if (questionError) throw questionError;
         if (!questionRow) {
-            throw new AppError(
-                404,
-                'QUESTION_NOT_FOUND',
-                'The Question could not be found in this Assessment.'
-            );
+            throw new AppError(404, 'QUESTION_NOT_FOUND', 'The Question could not be found in this Assessment.');
         }
 
-
-        // 6. Delete Question
-        const {
-            error: deleteError
-        } = await supabase
+        const { error: deleteError } = await supabase
             .from('Question')
             .delete()
-            .eq(
-                'questionId',
-                questionId
-            )
-            .eq(
-                'assessmentId',
-                assessmentId
-            );
+            .eq('questionId', questionId)
+            .eq('assessmentId', assessmentId);
 
+        if (deleteError) throw deleteError;
 
-        if (deleteError) {
-            throw deleteError;
-        }
-
-
-        // 7. Notify Learners
         await this._notifyCourseLearners({
-            courseId:
-                assessmentRow.courseId,
-
+            courseId: assessmentRow.courseId,
             assessmentId,
-
             action: 'UPDATED'
         });
     }
 
-    // UC-09: Configure or change the Assessment schedule before it becomes active.
     static async scheduleAssessment(assessmentId, educatorId, startTime, deadline) {
         const assessmentRow = await this._findAssessmentById(assessmentId);
         await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
-
         const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
         const assessment = this._toAssessment(synchronized);
 
         if (!assessment.isEditable()) {
             throw new AppError(
-                409, 
+                409,
                 'ASSESSMENT_NOT_EDITABLE',
                 'An active or closed Assessment cannot be rescheduled.'
             );
         }
-        
+
         this._validateSchedule(startTime, deadline);
 
-        const { data, error } = await supabase  
+        const { data, error } = await supabase
             .from('Assessment')
             .update({
                 startTime: new Date(startTime).toISOString(),
@@ -868,7 +486,7 @@ class AssessmentService {
             .eq('assessmentId', assessmentId)
             .select()
             .single();
-        
+
         if (error) throw error;
 
         await this._notifyCourseLearners({
@@ -880,152 +498,48 @@ class AssessmentService {
         return this._toAssessment(data);
     }
 
-    // Supporting endpoint for Educator Gradebook
-    static async getCourseGradebook(
-        courseId,
-        educatorId
-    ) {
-        /*
-        * Verify Course ownership.
-        */
-        await this._assertCourseManagedBy(
-            courseId,
-            educatorId
-        );
+    static async getCourseGradebook(courseId, educatorId) {
+        await this._assertCourseManagedBy(courseId, educatorId);
 
-
-        /*
-        * Load Course information.
-        */
-        const {
-            data: course,
-            error: courseError
-        } = await supabase
+        const { data: course, error: courseError } = await supabase
             .from('Course')
-            .select(
-                'courseId, educatorId, subjectName, courseCode, description, status'
-            )
-            .eq(
-                'courseId',
-                courseId
-            )
+            .select('courseId, educatorId, subjectName, courseCode, description, status')
+            .eq('courseId', courseId)
             .maybeSingle();
 
-        if (courseError) {
-            throw courseError;
-        }
+        if (courseError) throw courseError;
 
+        const assessments = await this.getManagedAssessments(courseId, educatorId);
 
-        /*
-        * Load Assessments.
-        */
-        const assessments =
-            await this.getManagedAssessments(
-                courseId,
-                educatorId
-            );
-
-
-        /*
-        * Load approved Learners.
-        */
-        const {
-            data: enrollments,
-            error: enrollmentError
-        } = await supabase
+        const { data: enrollments, error: enrollmentError } = await supabase
             .from('Enrollment')
-            .select(
-                'learnerId'
-            )
-            .eq(
-                'courseId',
-                courseId
-            )
-            .eq(
-                'status',
-                EnrollmentStatus.APPROVED
-            );
+            .select('learnerId')
+            .eq('courseId', courseId)
+            .eq('status', EnrollmentStatus.APPROVED);
 
-        if (enrollmentError) {
-            throw enrollmentError;
-        }
+        if (enrollmentError) throw enrollmentError;
 
-
-        const learnerIds = [
-            ...new Set(
-                (enrollments || []).map(
-                    item =>
-                        item.learnerId
-                )
-            )
-        ];
-
-
+        const learnerIds = [...new Set((enrollments || []).map(item => item.learnerId))];
         let learners = [];
-
         if (learnerIds.length > 0) {
-            const {
-                data,
-                error
-            } = await supabase
+            const { data, error } = await supabase
                 .from('User')
-                .select(
-                    'userId, email, displayName, avatarUrl'
-                )
-                .in(
-                    'userId',
-                    learnerIds
-                );
-
-            if (error) {
-                throw error;
-            }
-
-            learners =
-                data || [];
+                .select('userId, email, displayName, avatarUrl')
+                .in('userId', learnerIds);
+            if (error) throw error;
+            learners = data || [];
         }
 
-
-        /*
-        * Load all Submissions for all
-        * Assessments in this Course.
-        */
-        const assessmentIds =
-            assessments.map(
-                assessment =>
-                    assessment.assessmentId
-            );
-
-
+        const assessmentIds = assessments.map(assessment => assessment.assessmentId);
         let submissions = [];
-
-        if (
-            assessmentIds.length > 0
-        ) {
-            const {
-                data,
-                error
-            } = await supabase
+        if (assessmentIds.length > 0) {
+            const { data, error } = await supabase
                 .from('Submission')
                 .select('*')
-                .in(
-                    'assessmentId',
-                    assessmentIds
-                );
-
-            if (error) {
-                throw error;
-            }
-
-            submissions =
-                (data || []).map(
-                    row =>
-                        this._toSubmission(
-                            row
-                        )
-                );
+                .in('assessmentId', assessmentIds);
+            if (error) throw error;
+            submissions = (data || []).map(row => this._toSubmission(row));
         }
-
 
         return {
             course,
@@ -1035,7 +549,6 @@ class AssessmentService {
         };
     }
 
-    // Design-level operation from the Assessment Management class diagram 
     static async publishAssessment(assessmentId, educatorId) {
         const assessmentRow = await this._findAssessmentById(assessmentId);
         await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
@@ -1048,6 +561,11 @@ class AssessmentService {
             );
         }
 
+        await this._assertStoredQuestionPointsMatchTotal(
+            assessmentId,
+            assessmentRow.totalPoints
+        );
+
         const now = new Date();
         const startTime = new Date(assessmentRow.startTime);
         const deadline = new Date(assessmentRow.deadline);
@@ -1055,8 +573,7 @@ class AssessmentService {
         let status = AssessmentStatus.SCHEDULED;
         if (now >= startTime && now <= deadline) {
             status = AssessmentStatus.IN_PROGRESS;
-        } 
-        else if (now > deadline) {
+        } else if (now > deadline) {
             status = AssessmentStatus.CLOSED;
         }
 
@@ -1078,32 +595,12 @@ class AssessmentService {
         return this._toAssessment(data);
     }
 
-    // Optional implementation support for Assessment.instructionFileUrl.
-    static async uploadInstructionFile(
-        assessmentId,
-        educatorId,
-        file
-    ) {
-        const assessmentRow =
-            await this._findAssessmentById(
-                assessmentId
-            );
-
-
-        await this._assertCourseManagedBy(
-            assessmentRow.courseId,
-            educatorId
+    static async uploadInstructionFile(assessmentId, educatorId, file) {
+        const assessmentRow = await this._findAssessmentById(assessmentId);
+        await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+        const assessment = this._toAssessment(
+            await this._synchronizeAssessmentStatus(assessmentRow)
         );
-
-
-        const assessment =
-            this._toAssessment(
-                await this
-                    ._synchronizeAssessmentStatus(
-                        assessmentRow
-                    )
-            );
-
 
         if (!assessment.isEditable()) {
             throw new AppError(
@@ -1113,7 +610,6 @@ class AssessmentService {
             );
         }
 
-
         if (!file) {
             throw new AppError(
                 400,
@@ -1122,148 +618,54 @@ class AssessmentService {
             );
         }
 
+        const bucket = process.env.ASSESSMENT_STORAGE_BUCKET || 'materials';
+        const safeFileName = this._generateSafeFileName(file.originalname);
+        const filePath = `instructions/${assessmentId}/${safeFileName}`;
 
-        const bucket =
-            process.env
-                .ASSESSMENT_STORAGE_BUCKET;
-
-
-        if (!bucket) {
-            throw new AppError(
-                500,
-                'ASSESSMENT_STORAGE_NOT_CONFIGURED',
-                'Assessment storage is not configured.'
-            );
-        }
-
-
-        /*
-        * Generate a safe storage filename.
-        */
-        const safeFileName =
-            this._generateSafeFileName(
-                file.originalname
-            );
-
-
-        const filePath =
-            `instructions/${assessmentId}/${safeFileName}`;
-
-
-        /*
-        * Upload file to Supabase Storage.
-        */
-        const {
-            data: uploadedFile,
-            error: storageError
-        } =
-            await supabase.storage
-                .from(bucket)
-                .upload(
-                    filePath,
-                    file.buffer,
-                    {
-                        contentType:
-                            file.mimetype,
-
-                        upsert: false
-                    }
-                );
-
-
-        if (storageError) {
-            throw storageError;
-        }
-
-
-        /*
-        * IMPORTANT:
-        * Use the exact object path
-        * returned by Supabase.
-        */
-        const storedFilePath =
-            uploadedFile?.path ||
-            filePath;
-
-
-        /*
-        * Generate a public URL from
-        * the exact uploaded object.
-        */
-        const {
-            data: publicUrlData
-        } =
-            supabase.storage
-                .from(bucket)
-                .getPublicUrl(
-                    storedFilePath
-                );
-
-
-        const publicUrl =
-            publicUrlData?.publicUrl;
-
-
-        if (!publicUrl) {
-            throw new AppError(
-                500,
-                'ASSESSMENT_FILE_URL_FAILED',
-                'Unable to generate the Assessment instruction file URL.'
-            );
-        }
-
-        const {
-            data,
-            error
-        } =
-            await supabase
-                .from('Assessment')
-                .update({
-                    instructionFileUrl:
-                        publicUrl
-                })
-                .eq(
-                    'assessmentId',
-                    assessmentId
-                )
-                .select()
-                .single();
-
-
-        if (error) {
-            throw error;
-        }
-
-
-        await this
-            ._notifyCourseLearners({
-                courseId:
-                    data.courseId,
-
-                assessmentId,
-
-                action:
-                    'UPDATED'
+        const { data: uploadedFile, error: storageError } = await supabase.storage
+            .from(bucket)
+            .upload(filePath, file.buffer, {
+                contentType: file.mimetype,
+                upsert: true
             });
 
+        if (storageError) {
+            console.error('[Storage Upload Error]:', storageError);
+            throw new AppError(500, 'STORAGE_UPLOAD_ERROR', 'Failed to upload assessment instruction file.');
+        }
 
-        return this._toAssessment(
-            data
-        );
+        const storedFilePath = uploadedFile?.path || filePath;
+        const { data: publicUrlData } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(storedFilePath);
+
+        const publicUrl = publicUrlData?.publicUrl || storedFilePath;
+
+        const { data, error } = await supabase
+            .from('Assessment')
+            .update({ instructionFileUrl: publicUrl })
+            .eq('assessmentId', assessmentId)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        await this._notifyCourseLearners({
+            courseId: data.courseId,
+            assessmentId,
+            action: 'UPDATED'
+        });
+
+        return this._toAssessment(data);
     }
 
-    // UC-10 Basic Flow Step 1: Learner opens an Assessment that is currently available 
     static async getOpenAssessment(assessmentId, learnerId) {
         const assessmentRow = await this._findAssessmentById(assessmentId);
         await this._assertLearnerEnrolled(assessmentRow.courseId, learnerId);
-
         const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
         const assessment = this._toAssessment(synchronized);
 
-        if (
-            !assessment
-                .canAcceptSubmission()
-        ) {
+        if (!assessment.canAcceptSubmission()) {
             throw new AppError(
                 409,
                 'ASSESSMENT_NOT_OPEN',
@@ -1271,29 +673,20 @@ class AssessmentService {
             );
         }
 
-        const questions = await this._loadQuestionsWithOptions(
-            assessmentId, 
-            false
-        );
-
+        const questions = await this._loadQuestionsWithOptions(assessmentId, false);
         return {
-            assessment, 
+            assessment,
             questions
         };
     }
 
-    // UC-10 Start at most one Submission for each Learner and Assessment 
     static async startSubmission(assessmentId, learnerId) {
         const assessmentRow = await this._findAssessmentById(assessmentId);
         await this._assertLearnerEnrolled(assessmentRow.courseId, learnerId);
-
         const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
         const assessment = this._toAssessment(synchronized);
 
-        if (
-            !assessment
-                .canAcceptSubmission()
-        ) {
+        if (!assessment.canAcceptSubmission()) {
             throw new AppError(
                 409,
                 'ASSESSMENT_NOT_OPEN',
@@ -1307,57 +700,23 @@ class AssessmentService {
             .eq('assessmentId', assessmentId)
             .eq('learnerId', learnerId)
             .maybeSingle();
-        
-        if (existingError) throw existingError; 
+
+        if (existingError) throw existingError;
 
         if (existing) {
-
-            /*
-            * Quiz hoặc Assignment
-            * đang làm dở.
-            */
-            if (
-                existing.status ===
-                SubmissionStatus.IN_PROGRESS
-            ) {
-                return this._toSubmission(
-                    existing
-                );
+            if (existing.status === SubmissionStatus.IN_PROGRESS) {
+                return this._toSubmission(existing);
             }
 
-
-            /*
-            * Assignment đã submit nhưng
-            * Assessment vẫn đang mở:
-            *
-            * Learner được phép quay lại
-            * chỉnh sửa và resubmit.
-            */
             const editableSubmittedAssignment =
-                assessment.type ===
-                    AssessmentType.ASSIGNMENT &&
+                assessment.type === AssessmentType.ASSIGNMENT &&
                 assessment.isOpen() &&
-                [
-                    SubmissionStatus.SUBMITTED,
-                    SubmissionStatus.PENDING_REVIEW
-                ].includes(
-                    existing.status
-                );
+                [SubmissionStatus.SUBMITTED, SubmissionStatus.PENDING_REVIEW].includes(existing.status);
 
-
-            if (
-                editableSubmittedAssignment
-            ) {
-                return this._toSubmission(
-                    existing
-                );
+            if (editableSubmittedAssignment) {
+                return this._toSubmission(existing);
             }
 
-
-            /*
-            * Quiz đã submit,
-            * hoặc Submission đã GRADED.
-            */
             throw new AppError(
                 409,
                 'ASSESSMENT_ALREADY_SUBMITTED',
@@ -1365,7 +724,7 @@ class AssessmentService {
             );
         }
 
-        const { data, error } = await supabase 
+        const { data, error } = await supabase
             .from('Submission')
             .insert({
                 assessmentId,
@@ -1379,75 +738,29 @@ class AssessmentService {
             })
             .select()
             .single();
-        
-        if (error) throw error; 
 
+        if (error) throw error;
         return this._toSubmission(data);
     }
 
-    // UC-10 Basic Flow Step 2: Save on Learner response
     static async saveAnswer(submissionId, learnerId, questionId, response) {
-        const submission = await this._assertOwnedSubmission(
-            submissionId,
-            learnerId
-        );
+        const submission = await this._assertOwnedSubmission(submissionId, learnerId);
+        const assessmentRow = await this._findAssessmentById(submission.assessmentId);
+        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
+        const assessment = this._toAssessment(synchronized);
 
-        const assessmentRow =
-            await this._findAssessmentById(
-                submission.assessmentId
-            );
-
-
-        const synchronized =
-            await this
-                ._synchronizeAssessmentStatus(
-                    assessmentRow
-                );
-
-
-        const assessment =
-            this._toAssessment(
-                synchronized
-            );
-
-
-
-        const canAcceptSubmission =
-            assessment
-                .canAcceptSubmission();
-
+        const canAcceptSubmission = assessment.canAcceptSubmission();
         const editableQuiz =
-            assessment.type ===
-                AssessmentType.QUIZ &&
+            assessment.type === AssessmentType.QUIZ &&
             canAcceptSubmission &&
-            submission.status ===
-                SubmissionStatus.IN_PROGRESS;
+            submission.status === SubmissionStatus.IN_PROGRESS;
 
         const editableAssignment =
-            assessment.type ===
-                AssessmentType.ASSIGNMENT &&
-            (
-                (
-                    submission.status ===
-                        SubmissionStatus.IN_PROGRESS &&
-                    canAcceptSubmission
-                ) ||
-                (
-                    assessment.isOpen() &&
-                    [
-                        SubmissionStatus.SUBMITTED,
-                        SubmissionStatus.PENDING_REVIEW
-                    ].includes(
-                        submission.status
-                    )
-                )
-            );
+            assessment.type === AssessmentType.ASSIGNMENT &&
+            ((submission.status === SubmissionStatus.IN_PROGRESS && canAcceptSubmission) ||
+             (assessment.isOpen() && [SubmissionStatus.SUBMITTED, SubmissionStatus.PENDING_REVIEW].includes(submission.status)));
 
-
-        if (
-            !editableQuiz &&
-            !editableAssignment
-        ) {
+        if (!editableQuiz && !editableAssignment) {
             throw new AppError(
                 409,
                 'SUBMISSION_NOT_EDITABLE',
@@ -1463,13 +776,8 @@ class AssessmentService {
             .maybeSingle();
 
         if (questionError) throw questionError;
-
         if (!question) {
-            throw new AppError(
-                404,
-                'QUESTION_NOT_FOUND',
-                'The Question does not belong to this Assessment.'
-            );
+            throw new AppError(404, 'QUESTION_NOT_FOUND', 'The Question does not belong to this Assessment.');
         }
 
         const { data: existing, error: existingError } = await supabase
@@ -1482,7 +790,6 @@ class AssessmentService {
         if (existingError) throw existingError;
 
         let savedAnswer;
-
         if (existing) {
             const { data, error } = await supabase
                 .from('SubmissionAnswer')
@@ -1490,21 +797,18 @@ class AssessmentService {
                 .eq('answerId', existing.answerId)
                 .select()
                 .single();
-
             if (error) throw error;
             savedAnswer = data;
-        } 
-        else {
+        } else {
             const { data, error } = await supabase
                 .from('SubmissionAnswer')
                 .insert({
-                submissionId,
-                questionId,
-                response: String(response ?? '')
+                    submissionId,
+                    questionId,
+                    response: String(response ?? '')
                 })
                 .select()
                 .single();
-
             if (error) throw error;
             savedAnswer = data;
         }
@@ -1512,129 +816,37 @@ class AssessmentService {
         return new SubmissionAnswer(savedAnswer);
     }
 
-    static async getSubmissionAnswers(
-        submissionId,
-        learnerId
-    ) {
-        /*
-        * 1. Verify that this Submission
-        * belongs to the current Learner.
-        */
-        const submission =
-            await this._assertOwnedSubmission(
-                submissionId,
-                learnerId
-            );
+    static async getSubmissionAnswers(submissionId, learnerId) {
+        const submission = await this._assertOwnedSubmission(submissionId, learnerId);
 
+        const { data: answerRows, error: answerError } = await supabase
+            .from('SubmissionAnswer')
+            .select('*')
+            .eq('submissionId', submission.submissionId);
 
-        /*
-        * 2. Load all saved answers.
-        */
-        const {
-            data: answerRows,
-            error: answerError
-        } =
-            await supabase
-                .from('SubmissionAnswer')
-                .select('*')
-                .eq(
-                    'submissionId',
-                    submission.submissionId
-                );
+        if (answerError) throw answerError;
 
-
-        if (answerError) {
-            throw answerError;
-        }
-
-
-        return (
-            answerRows || []
-        ).map(
-            row =>
-                new SubmissionAnswer(
-                    row
-                )
-        );
+        return (answerRows || []).map(row => new SubmissionAnswer(row));
     }
 
-    // UC-10 Basic FLow step 2: Upload asignment files
-    static async uploadFiles(
-        submissionId,
-        learnerId,
-        files
-    ) {
-        /*
-        * 1. Check Submission ownership.
-        */
-        const submission =
-            await this._assertOwnedSubmission(
-                submissionId,
-                learnerId
-            );
+    static async uploadFiles(submissionId, learnerId, files) {
+        const submission = await this._assertOwnedSubmission(submissionId, learnerId);
+        const assessmentRow = await this._findAssessmentById(submission.assessmentId);
+        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
+        const assessment = this._toAssessment(synchronized);
 
-
-        /*
-        * 2. Load Assessment.
-        */
-        const assessmentRow =
-            await this._findAssessmentById(
-                submission.assessmentId
-            );
-
-
-        const synchronized =
-            await this
-                ._synchronizeAssessmentStatus(
-                    assessmentRow
-                );
-
-
-        const assessment =
-            this._toAssessment(
-                synchronized
-            );
-
-
-
-        const canAcceptSubmission =
-            assessment
-                .canAcceptSubmission();
-
-
+        const canAcceptSubmission = assessment.canAcceptSubmission();
         const editableAssignment =
-            assessment.type ===
-                AssessmentType.ASSIGNMENT &&
-            (
-                (
-                    submission.status ===
-                        SubmissionStatus.IN_PROGRESS &&
-                    canAcceptSubmission
-                ) ||
-                (
-                    assessment.isOpen() &&
-                    [
-                        SubmissionStatus.SUBMITTED,
-                        SubmissionStatus.PENDING_REVIEW
-                    ].includes(
-                        submission.status
-                    )
-                )
-            );
-
+            assessment.type === AssessmentType.ASSIGNMENT &&
+            ((submission.status === SubmissionStatus.IN_PROGRESS && canAcceptSubmission) ||
+             (assessment.isOpen() && [SubmissionStatus.SUBMITTED, SubmissionStatus.PENDING_REVIEW].includes(submission.status)));
 
         const editableQuiz =
-            assessment.type ===
-                AssessmentType.QUIZ &&
+            assessment.type === AssessmentType.QUIZ &&
             canAcceptSubmission &&
-            submission.status ===
-                SubmissionStatus.IN_PROGRESS;
+            submission.status === SubmissionStatus.IN_PROGRESS;
 
-
-        if (
-            !editableAssignment &&
-            !editableQuiz
-        ) {
+        if (!editableAssignment && !editableQuiz) {
             throw new AppError(
                 409,
                 'SUBMISSION_NOT_EDITABLE',
@@ -1642,78 +854,31 @@ class AssessmentService {
             );
         }
 
-
-        /*
-        * 5. Require at least one file.
-        */
-        if (
-            !files ||
-            files.length === 0
-        ) {
-            throw new AppError(
-                400,
-                'SUBMISSION_FILES_REQUIRED',
-                'Please select at least one file.'
-            );
+        if (!files || files.length === 0) {
+            throw new AppError(400, 'SUBMISSION_FILES_REQUIRED', 'Please select at least one file.');
         }
 
-        // 4. Lấy tên bucket từ .env
-        const bucket = process.env.ASSESSMENT_STORAGE_BUCKET;
-
-        if (!bucket) {
-            throw new AppError(
-                500,
-                'ASSESSMENT_STORAGE_NOT_CONFIGURED',
-                'Assessment storage is not configured.'
-            );
-        }
-
-        // Các file đã có trước đó trong Submission
-        const existingFileUrls = Array.isArray(
-            submission.uploadedFileUrls
-        )
-            ? submission.uploadedFileUrls
-            : [];
-
-        // Các file vừa upload trong request hiện tại
+        const bucket = process.env.ASSESSMENT_STORAGE_BUCKET || 'materials';
+        const existingFileUrls = Array.isArray(submission.uploadedFileUrls) ? submission.uploadedFileUrls : [];
         const uploadedFiles = [];
 
-        // 5. Upload từng file lên Supabase Storage
         for (const file of files) {
-            const originalFileName =
-                String(
-                    file.originalname || 'file'
-                )
-                    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
-                    .replace(/\s+/g, ' ')
-                    .trim();
+            const originalFileName = String(file.originalname || 'file')
+                .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+                .replace(/\s+/g, ' ')
+                .trim();
+            const storedFileName = `${crypto.randomUUID()}__${originalFileName}`;
+            const filePath = `submissions/${submissionId}/${storedFileName}`;
 
+            const { error: storageError } = await supabase.storage
+                .from(bucket)
+                .upload(filePath, file.buffer, {
+                    contentType: file.mimetype,
+                    upsert: true
+                });
 
-            const storedFileName =
-                `${crypto.randomUUID()}__${originalFileName}`;
+            if (storageError) throw storageError;
 
-
-            const filePath =
-                `submissions/${submissionId}/${storedFileName}`;
-
-            const { error: storageError } =
-                await supabase.storage
-                    .from(bucket)
-                    .upload(
-                        filePath,
-                        file.buffer,
-                        {
-                            contentType: file.mimetype,
-                            upsert: false
-                        }
-                    );
-
-            if (storageError) {
-                throw storageError;
-            }
-
-            // Không insert vào Submission_File nữa.
-            // Chỉ giữ metadata tạm để trả về Controller.
             uploadedFiles.push({
                 fileName: originalFileName,
                 fileUrl: filePath,
@@ -1721,360 +886,90 @@ class AssessmentService {
             });
         }
 
-        // 6. Ghép file cũ + file vừa upload
         const uploadedFileUrls = [
             ...existingFileUrls,
             ...uploadedFiles.map(file => file.fileUrl)
         ];
 
-        // 7. Lưu toàn bộ URL vào Submission.uploadedFileUrls
         const { error: updateError } = await supabase
             .from('Submission')
-            .update({
-                uploadedFileUrls
-            })
+            .update({ uploadedFileUrls })
             .eq('submissionId', submissionId);
 
-        if (updateError) {
-            throw updateError;
-        }
-
-        // 8. Trả metadata của các file vừa upload
+        if (updateError) throw updateError;
         return uploadedFiles;
     }
 
-    static async deleteSubmissionFile(
-        submissionId,
-        learnerId,
-        fileUrl
-    ) {
-        /*
-        * 1. Check Submission ownership.
-        */
-        const submission =
-            await this._assertOwnedSubmission(
-                submissionId,
-                learnerId
-            );
+    static async deleteSubmissionFile(submissionId, learnerId, fileUrl) {
+        const submission = await this._assertOwnedSubmission(submissionId, learnerId);
+        if (!fileUrl || !String(fileUrl).trim()) {
+            throw new AppError(400, 'SUBMISSION_FILE_REQUIRED', 'The Submission file is required.');
+        }
+        const normalizedFileUrl = String(fileUrl).trim();
 
+        const assessmentRow = await this._findAssessmentById(submission.assessmentId);
+        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
+        const assessment = this._toAssessment(synchronized);
 
-        /*
-        * 2. Validate file path.
-        */
-        if (
-            !fileUrl ||
-            !String(fileUrl).trim()
-        ) {
-            throw new AppError(
-                400,
-                'SUBMISSION_FILE_REQUIRED',
-                'The Submission file is required.'
-            );
+        if (assessment.type !== AssessmentType.ASSIGNMENT) {
+            throw new AppError(409, 'SUBMISSION_FILE_NOT_EDITABLE', 'Files can only be edited for Assignment submissions.');
         }
 
-
-        const normalizedFileUrl =
-            String(fileUrl).trim();
-
-
-        /*
-        * 3. Load Assessment.
-        */
-        const assessmentRow =
-            await this._findAssessmentById(
-                submission.assessmentId
-            );
-
-
-        const synchronized =
-            await this
-                ._synchronizeAssessmentStatus(
-                    assessmentRow
-                );
-
-
-        const assessment =
-            this._toAssessment(
-                synchronized
-            );
-
-
-        /*
-        * 4. Only ASSIGNMENT files
-        * may be edited here.
-        */
-        if (
-            assessment.type !==
-            AssessmentType.ASSIGNMENT
-        ) {
-            throw new AppError(
-                409,
-                'SUBMISSION_FILE_NOT_EDITABLE',
-                'Files can only be edited for Assignment submissions.'
-            );
-        }
-
-
-        const canAcceptSubmission =
-            assessment
-                .canAcceptSubmission();
-
-
+        const canAcceptSubmission = assessment.canAcceptSubmission();
         const canEditSubmission =
-            (
-                submission.status ===
-                    SubmissionStatus.IN_PROGRESS &&
-                canAcceptSubmission
-            ) ||
-            (
-                assessment.isOpen() &&
-                [
-                    SubmissionStatus.SUBMITTED,
-                    SubmissionStatus.PENDING_REVIEW
-                ].includes(
-                    submission.status
-                )
-            );
-
+            (submission.status === SubmissionStatus.IN_PROGRESS && canAcceptSubmission) ||
+            (assessment.isOpen() && [SubmissionStatus.SUBMITTED, SubmissionStatus.PENDING_REVIEW].includes(submission.status));
 
         if (!canEditSubmission) {
-            throw new AppError(
-                409,
-                'SUBMISSION_NOT_EDITABLE',
-                'This Submission can no longer be changed.'
-            );
+            throw new AppError(409, 'SUBMISSION_NOT_EDITABLE', 'This Submission can no longer be changed.');
         }
 
-
-        if (
-            !editableStatuses.includes(
-                submission.status
-            )
-        ) {
-            throw new AppError(
-                409,
-                'SUBMISSION_NOT_EDITABLE',
-                'This Submission can no longer be changed.'
-            );
+        const existingFileUrls = Array.isArray(submission.uploadedFileUrls) ? submission.uploadedFileUrls : [];
+        if (!existingFileUrls.includes(normalizedFileUrl)) {
+            throw new AppError(404, 'SUBMISSION_FILE_NOT_FOUND', 'The Submission file could not be found.');
         }
 
-
-        /*
-        * 7. Make sure this file
-        * actually belongs to the
-        * current Submission.
-        */
-        const existingFileUrls =
-            Array.isArray(
-                submission.uploadedFileUrls
-            )
-                ? submission.uploadedFileUrls
-                : [];
-
-
-        if (
-            !existingFileUrls.includes(
-                normalizedFileUrl
-            )
-        ) {
-            throw new AppError(
-                404,
-                'SUBMISSION_FILE_NOT_FOUND',
-                'The Submission file could not be found.'
-            );
+        const expectedPrefix = `submissions/${submissionId}/`;
+        if (!normalizedFileUrl.startsWith(expectedPrefix)) {
+            throw new AppError(403, 'SUBMISSION_FILE_ACCESS_DENIED', 'The file does not belong to this Submission.');
         }
 
+        const bucket = process.env.ASSESSMENT_STORAGE_BUCKET || 'materials';
+        const { error: storageError } = await supabase.storage.from(bucket).remove([normalizedFileUrl]);
+        if (storageError) throw storageError;
 
-        /*
-        * Additional path safety.
-        *
-        * Every uploaded Assignment
-        * file must live inside:
-        *
-        * submissions/<submissionId>/
-        */
-        const expectedPrefix =
-            `submissions/${submissionId}/`;
+        const updatedFileUrls = existingFileUrls.filter(item => item !== normalizedFileUrl);
+        const { data, error: updateError } = await supabase
+            .from('Submission')
+            .update({ uploadedFileUrls: updatedFileUrls })
+            .eq('submissionId', submissionId)
+            .select()
+            .single();
 
-
-        if (
-            !normalizedFileUrl
-                .startsWith(
-                    expectedPrefix
-                )
-        ) {
-            throw new AppError(
-                403,
-                'SUBMISSION_FILE_ACCESS_DENIED',
-                'The file does not belong to this Submission.'
-            );
-        }
-
-
-        /*
-        * 8. Get Storage bucket.
-        */
-        const bucket =
-            process.env
-                .ASSESSMENT_STORAGE_BUCKET;
-
-
-        if (!bucket) {
-            throw new AppError(
-                500,
-                'ASSESSMENT_STORAGE_NOT_CONFIGURED',
-                'Assessment storage is not configured.'
-            );
-        }
-
-
-        /*
-        * 9. Delete physical file
-        * from Supabase Storage.
-        */
-        const {
-            error: storageError
-        } =
-            await supabase
-                .storage
-                .from(bucket)
-                .remove([
-                    normalizedFileUrl
-                ]);
-
-
-        if (storageError) {
-            throw storageError;
-        }
-
-
-        /*
-        * 10. Remove path from
-        * Submission.uploadedFileUrls.
-        */
-        const updatedFileUrls =
-            existingFileUrls.filter(
-                item =>
-                    item !==
-                    normalizedFileUrl
-            );
-
-
-        const {
-            data,
-            error: updateError
-        } =
-            await supabase
-                .from('Submission')
-                .update({
-                    uploadedFileUrls:
-                        updatedFileUrls
-                })
-                .eq(
-                    'submissionId',
-                    submissionId
-                )
-                .select()
-                .single();
-
-
-        if (updateError) {
-            throw updateError;
-        }
-
+        if (updateError) throw updateError;
 
         return {
-            submission:
-                this._toSubmission(
-                    data
-                ),
-
-            uploadedFileUrls:
-                updatedFileUrls
+            submission: this._toSubmission(data),
+            uploadedFileUrls: updatedFileUrls
         };
     }
 
-    static async getLearnerAssessmentReview(
-        assessmentId,
-        learnerId
-    ) {
-        /*
-        * 1. Find Assessment
-        */
-        const assessmentRow =
-            await this._findAssessmentById(
-                assessmentId
-            );
+    static async getLearnerAssessmentReview(assessmentId, learnerId) {
+        const assessmentRow = await this._findAssessmentById(assessmentId);
+        await this._assertLearnerEnrolled(assessmentRow.courseId, learnerId);
+        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
+        const assessment = this._toAssessment(synchronized);
 
+        const questions = await this._loadQuestionsWithOptions(assessmentId, false);
 
-        /*
-        * 2. Learner must belong
-        * to this Course.
-        */
-        await this._assertLearnerEnrolled(
-            assessmentRow.courseId,
-            learnerId
-        );
+        const { data: submissionRow, error: submissionError } = await supabase
+            .from('Submission')
+            .select('*')
+            .eq('assessmentId', assessmentId)
+            .eq('learnerId', learnerId)
+            .maybeSingle();
 
-
-        /*
-        * 3. Synchronize current status.
-        */
-        const synchronized =
-            await this
-                ._synchronizeAssessmentStatus(
-                    assessmentRow
-                );
-
-
-        const assessment =
-            this._toAssessment(
-                synchronized
-            );
-
-
-        
-
-
-        /*
-        * 5. Load questions.
-        *
-        * false:
-        * do NOT expose correctAnswer.
-        */
-        const questions =
-            await this
-                ._loadQuestionsWithOptions(
-                    assessmentId,
-                    false
-                );
-
-
-        /*
-        * 6. Find this Learner's
-        * Submission.
-        */
-        const {
-            data: submissionRow,
-            error: submissionError
-        } =
-            await supabase
-                .from('Submission')
-                .select('*')
-                .eq(
-                    'assessmentId',
-                    assessmentId
-                )
-                .eq(
-                    'learnerId',
-                    learnerId
-                )
-                .maybeSingle();
-
-
-        if (submissionError) {
-            throw submissionError;
-        }
+        if (submissionError) throw submissionError;
 
         const finalizedStatuses = [
             SubmissionStatus.SUBMITTED,
@@ -2082,23 +977,10 @@ class AssessmentService {
             SubmissionStatus.GRADED
         ];
 
+        const hasFinalizedSubmission = submissionRow && finalizedStatuses.includes(submissionRow.status);
+        const assessmentClosed = assessment.status === AssessmentStatus.CLOSED;
 
-        const hasFinalizedSubmission =
-            submissionRow &&
-            finalizedStatuses.includes(
-                submissionRow.status
-            );
-
-
-        const assessmentClosed =
-            assessment.status ===
-            AssessmentStatus.CLOSED;
-
-
-        if (
-            !assessmentClosed &&
-            !hasFinalizedSubmission
-        ) {
+        if (!assessmentClosed && !hasFinalizedSubmission) {
             throw new AppError(
                 409,
                 'ASSESSMENT_NOT_REVIEWABLE',
@@ -2106,12 +988,6 @@ class AssessmentService {
             );
         }
 
-
-        /*
-        * Learner may not have submitted
-        * anything before the Assessment
-        * was closed.
-        */
         if (!submissionRow) {
             return {
                 assessment,
@@ -2122,84 +998,31 @@ class AssessmentService {
             };
         }
 
+        const { data: answerRows, error: answerError } = await supabase
+            .from('SubmissionAnswer')
+            .select('*')
+            .eq('submissionId', submissionRow.submissionId);
 
-        /*
-        * 7. Load Learner's answers.
-        */
-        const {
-            data: answerRows,
-            error: answerError
-        } =
-            await supabase
-                .from('SubmissionAnswer')
-                .select('*')
-                .eq(
-                    'submissionId',
-                    submissionRow
-                        .submissionId
-                );
+        if (answerError) throw answerError;
 
-
-        if (answerError) {
-            throw answerError;
-        }
-
-
-        const submission =
-            this._toSubmission(
-                submissionRow
-            );
-
+        const submission = this._toSubmission(submissionRow);
 
         return {
             assessment,
-
             questions,
-
             submission,
-
-            answers:
-                (answerRows || []).map(
-                    row =>
-                        new SubmissionAnswer(
-                            row
-                        )
-                ),
-
-            files:
-                Array.isArray(
-                    submission.uploadedFileUrls
-                )
-                    ? submission
-                        .uploadedFileUrls
-                        .map(
-                            filePath =>
-                                this
-                                    ._getSubmissionFilePublicUrl(
-                                        filePath
-                                    )
-                        )
-                    : []
+            answers: (answerRows || []).map(row => new SubmissionAnswer(row)),
+            files: Array.isArray(submission.uploadedFileUrls)
+                ? submission.uploadedFileUrls.map(filePath => this._getSubmissionFilePublicUrl(filePath))
+                : []
         };
     }
 
-    // UC-10 Basic Flow steps 3-5 and Alternative Flow 1
     static async submitSubmission(submissionId, learnerId) {
-        // 1. Kiểm tra Submission thuộc Learner hiện tại
-        const submissionRow = await this._assertOwnedSubmission(
-            submissionId,
-            learnerId
-        );
+        const submissionRow = await this._assertOwnedSubmission(submissionId, learnerId);
+        const assessmentRow = await this._findAssessmentById(submissionRow.assessmentId);
 
-        const assessmentRow =
-            await this._findAssessmentById(
-                submissionRow.assessmentId
-            );
-
-        if (
-            !assessmentRow.startTime ||
-            !assessmentRow.deadline
-        ) {
+        if (!assessmentRow.startTime || !assessmentRow.deadline) {
             throw new AppError(
                 409,
                 'ASSESSMENT_SCHEDULE_NOT_CONFIGURED',
@@ -2207,27 +1030,10 @@ class AssessmentService {
             );
         }
 
-        const startTime =
-            new Date(
-                assessmentRow.startTime
-            );
+        const startTime = new Date(assessmentRow.startTime);
+        const deadline = new Date(assessmentRow.deadline);
 
-
-        const deadline =
-            new Date(
-                assessmentRow.deadline
-            );
-
-
-        if (
-            Number.isNaN(
-                startTime.getTime()
-            ) ||
-            Number.isNaN(
-                deadline.getTime()
-            ) ||
-            startTime >= deadline
-        ) {
+        if (Number.isNaN(startTime.getTime()) || Number.isNaN(deadline.getTime()) || startTime >= deadline) {
             throw new AppError(
                 500,
                 'INVALID_ASSESSMENT_SCHEDULE',
@@ -2235,65 +1041,22 @@ class AssessmentService {
             );
         }
 
-        const synchronized =
-            await this
-                ._synchronizeAssessmentStatus(
-                    assessmentRow
-                );
+        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
+        const assessment = this._toAssessment(synchronized);
+        const now = new Date();
 
-
-        const assessment =
-            this._toAssessment(
-                synchronized
-            );
-
-
-        const now =
-            new Date();
-
-        const canAcceptSubmission =
-            assessment
-                .canAcceptSubmission(
-                    now
-                );
-
-
+        const canAcceptSubmission = assessment.canAcceptSubmission(now);
         const quizCanSubmit =
-            assessment.type ===
-                AssessmentType.QUIZ &&
+            assessment.type === AssessmentType.QUIZ &&
             canAcceptSubmission &&
-            submissionRow.status ===
-                SubmissionStatus.IN_PROGRESS;
-
+            submissionRow.status === SubmissionStatus.IN_PROGRESS;
 
         const assignmentCanSubmit =
-            assessment.type ===
-                AssessmentType.ASSIGNMENT &&
-            (
-                (
-                    submissionRow.status ===
-                        SubmissionStatus.IN_PROGRESS &&
-                    canAcceptSubmission
-                ) ||
+            assessment.type === AssessmentType.ASSIGNMENT &&
+            ((submissionRow.status === SubmissionStatus.IN_PROGRESS && canAcceptSubmission) ||
+             (assessment.isOpen(now) && [SubmissionStatus.SUBMITTED, SubmissionStatus.PENDING_REVIEW].includes(submissionRow.status)));
 
-                (
-                    assessment.isOpen(
-                        now
-                    ) &&
-                    [
-                        SubmissionStatus.SUBMITTED,
-                        SubmissionStatus.PENDING_REVIEW
-                    ].includes(
-                        submissionRow.status
-                    )
-                )
-            );
-
-
-        if (
-            !quizCanSubmit &&
-            !assignmentCanSubmit
-        ) {
+        if (!quizCanSubmit && !assignmentCanSubmit) {
             throw new AppError(
                 409,
                 'SUBMISSION_ALREADY_FINALIZED',
@@ -2301,23 +1064,12 @@ class AssessmentService {
             );
         }
 
-
-        // 4. Không cho submit trước giờ bắt đầu
         if (now < startTime) {
-            throw new AppError(
-                409,
-                'ASSESSMENT_NOT_STARTED',
-                'This Assessment has not started yet.'
-            );
+            throw new AppError(409, 'ASSESSMENT_NOT_STARTED', 'This Assessment has not started yet.');
         }
 
-        // 5. Kiểm tra nộp trễ
         const isLate = now > deadline;
-
-        if (
-            isLate &&
-            !assessmentRow.allowLateSubmission
-        ) {
+        if (isLate && !assessmentRow.allowLateSubmission) {
             throw new AppError(
                 409,
                 'LATE_SUBMISSION_NOT_ALLOWED',
@@ -2325,78 +1077,41 @@ class AssessmentService {
             );
         }
 
-        // 6. Load questions, có correctAnswer để backend chấm điểm
-        const questions = await this._loadQuestionsWithOptions(
-            assessmentRow.assessmentId,
-            true
-        );
+        const questions = await this._loadQuestionsWithOptions(assessmentRow.assessmentId, true);
 
-        // 7. Load câu trả lời của Learner
-        const {
-            data: answers,
-            error: answerError
-        } = await supabase
+        const { data: answers, error: answerError } = await supabase
             .from('SubmissionAnswer')
             .select('*')
             .eq('submissionId', submissionId);
 
-        if (answerError) {
-            throw answerError;
-        }
+        if (answerError) throw answerError;
 
-        // 8. File không còn nằm trong Submission_File.
-        // Đọc trực tiếp từ Submission.uploadedFileUrls.
-        const uploadedFileUrls = Array.isArray(
-            submissionRow.uploadedFileUrls
-        )
+        const uploadedFileUrls = Array.isArray(submissionRow.uploadedFileUrls)
             ? submissionRow.uploadedFileUrls
             : [];
 
-        // 9. Xác định có thể auto-grade hay không
-        const canAutoGrade = (
+        const canAutoGrade =
             assessmentRow.type === AssessmentType.QUIZ &&
             questions.length > 0 &&
-            questions.every(
-                question => question.isAutoGradable()
-            ) &&
-            uploadedFileUrls.length === 0
-        );
+            questions.every(question => question.isAutoGradable()) &&
+            uploadedFileUrls.length === 0;
 
         let status = SubmissionStatus.PENDING_REVIEW;
         let score = null;
 
-        // 10. Auto-grade nếu toàn bộ câu đều tự chấm được
         if (canAutoGrade) {
             const answerByQuestionId = new Map(
-                (answers || []).map(
-                    answer => [
-                        answer.questionId,
-                        answer.response
-                    ]
-                )
+                (answers || []).map(answer => [answer.questionId, answer.response])
             );
-
-            score = questions.reduce(
-                (total, question) => {
-                    const response =
-                        answerByQuestionId.get(
-                            question.questionId
-                        );
-
-                    return (
-                        total +
-                        question.grade(response)
-                    );
-                },
-                0
-            );
-
+            score = questions.reduce((total, question) => {
+                const response = answerByQuestionId.get(question.questionId);
+                return total + question.grade(response);
+            }, 0);
             status = SubmissionStatus.GRADED;
         }
 
         const submittedAt = now.toISOString();
 
-        // 11. Update Submission
         const { data, error } = await supabase
             .from('Submission')
             .update({
@@ -2409,23 +1124,16 @@ class AssessmentService {
             .select()
             .single();
 
-        if (error) {
-            throw error;
-        }
+        if (error) throw error;
 
-        // 12. Nếu auto-grade thành công thì cập nhật Analytics
         let analytics = null;
-
         if (status === SubmissionStatus.GRADED) {
-            analytics =
-                await AssessmentAnalyticsIntegrationService
-                    .recordAssessmentScore({
-                        learnerId,
-                        courseId: assessmentRow.courseId,
-                        assessmentId:
-                            assessmentRow.assessmentId,
-                        score
-                    });
+            analytics = await AssessmentAnalyticsIntegrationService.recordAssessmentScore({
+                learnerId,
+                courseId: assessmentRow.courseId,
+                assessmentId: assessmentRow.assessmentId,
+                score
+            });
         }
 
         return {
@@ -2434,207 +1142,76 @@ class AssessmentService {
         };
     }
 
-    // UC-10: List Assessments visible to the current Learner
-    static async getLearnerAssessments(
-        learnerId
-    ) {
-        /*
-        * 1. Find approved Courses
-        */
-        const {
-            data: enrollments,
-            error: enrollmentError
-        } = await supabase
-            .from('Enrollment')
-            .select(
-                'courseId'
-            )
-            .eq(
-                'learnerId',
-                learnerId
-            )
-            .eq(
-                'status',
-                EnrollmentStatus.APPROVED
-            );
+    static async getLearnerAssessments(learnerId) {
+        const { data: enrollments, error: enrollmentError } = await supabase
+        .from('Enrollment')
+        .select('courseId')
+        .eq('learnerId', learnerId)
+        .eq('status', EnrollmentStatus.APPROVED);
 
         if (enrollmentError) {
-            throw enrollmentError;
+        console.error('[AssessmentService] Enrollment fetch error:', enrollmentError);
+        throw new AppError(500, 'DB_ERROR', 'Failed to fetch enrolled courses.');
         }
 
+        const courseIds = [...new Set((enrollments || []).map((item) => item.courseId))].filter(Boolean);
+        if (courseIds.length === 0) return [];
 
-        const courseIds = [
-            ...new Set(
-                (enrollments || []).map(
-                    item =>
-                        item.courseId
-                )
-            )
-        ];
-
-
-        if (
-            courseIds.length === 0
-        ) {
-            return [];
-        }
-
-
-        /*
-        * 2. Load Assessments
-        */
-        const {
-            data: assessmentRows,
-            error: assessmentError
-        } = await supabase
-            .from('Assessment')
-            .select('*')
-            .in(
-                'courseId',
-                courseIds
-            )
-            .order(
-                'startTime',
-                {
-                    ascending: true
-                }
-            );
+        const { data: assessmentRows, error: assessmentError } = await supabase
+        .from('Assessment')
+        .select('*')
+        .in('courseId', courseIds)
+        .order('startTime', { ascending: true });
 
         if (assessmentError) {
-            throw assessmentError;
+        console.error('[AssessmentService] Assessments fetch error:', assessmentError);
+        throw new AppError(500, 'DB_ERROR', 'Failed to fetch assessments.');
         }
 
+        const assessmentIds = (assessmentRows || []).map((row) => row.assessmentId).filter(Boolean);
+        const submissionByAssessmentId = new Map();
 
-        const assessmentIds =
-            (assessmentRows || [])
-                .map(
-                    row =>
-                        row.assessmentId
-                );
+        if (assessmentIds.length > 0) {
+        const { data: submissionRows, error: submissionError } = await supabase
+            .from('Submission')
+            .select('*')
+            .eq('learnerId', learnerId)
+            .in('assessmentId', assessmentIds);
 
-
-
-        const submissionByAssessmentId =
-            new Map();
-
-
-        if (
-            assessmentIds.length > 0
-        ) {
-            const {
-                data: submissionRows,
-                error: submissionError
-            } =
-                await supabase
-                    .from('Submission')
-                    .select('*')
-                    .eq(
-                        'learnerId',
-                        learnerId
-                    )
-                    .in(
-                        'assessmentId',
-                        assessmentIds
-                    );
-
-
-            if (submissionError) {
-                throw submissionError;
-            }
-
-
-            for (
-                const submissionRow of
-                submissionRows || []
-            ) {
-                submissionByAssessmentId.set(
-                    String(
-                        submissionRow
-                            .assessmentId
-                    ),
-                    submissionRow
-                );
+        if (!submissionError && submissionRows) {
+            for (const submissionRow of submissionRows) {
+            submissionByAssessmentId.set(String(submissionRow.assessmentId), submissionRow);
             }
         }
-        
+        }
+
         const assessments = [];
+        for (const row of assessmentRows || []) {
+        const synchronized = await this._synchronizeAssessmentStatus(row);
+        const assessment = this._toAssessment(synchronized);
 
-        for (
-            const row of
-            assessmentRows || []
-        ) {
-            const synchronized =
-                await this
-                    ._synchronizeAssessmentStatus(
-                        row
-                    );
-
-            const assessment =
-                this._toAssessment(
-                    synchronized
-                );
-
-            /*
-            * Learners must not see Educator drafts.
-            */
-            if (
-                assessment.status !==
-                AssessmentStatus.DRAFT
-            ) {
-                const submissionRow =
-                    submissionByAssessmentId
-                        .get(
-                            String(
-                                assessment
-                                    .assessmentId
-                            )
-                        ) ||
-                    null;
-
-
-                assessments.push({
-                    ...assessment,
-
-                    submission:
-                        submissionRow
-                            ? {
-                                submissionId:
-                                    submissionRow
-                                        .submissionId,
-
-                                status:
-                                    submissionRow
-                                        .status,
-
-                                startedAt:
-                                    submissionRow
-                                        .startedAt,
-
-                                submittedAt:
-                                    submissionRow
-                                        .submittedAt,
-
-                                late:
-                                    Boolean(
-                                        submissionRow
-                                            .late
-                                    ),
-
-                                score:
-                                    submissionRow
-                                        .score
-                            }
-                            : null
-                });
-            }
+        if (assessment && assessment.status !== AssessmentStatus.DRAFT) {
+            const submissionRow = submissionByAssessmentId.get(String(assessment.assessmentId)) || null;
+            assessments.push({
+            ...assessment,
+            submission: submissionRow
+                ? {
+                    submissionId: submissionRow.submissionId,
+                    status: submissionRow.status,
+                    startedAt: submissionRow.startedAt,
+                    submittedAt: submissionRow.submittedAt,
+                    late: Boolean(submissionRow.late || submissionRow.isLate),
+                    score: submissionRow.score
+                }
+                : null
+            });
         }
-
+        }
 
         return assessments;
     }
-    
-    // Design-level operation for manually reviewed essay/file submissions.
-    static async gradeSubmission(submissionId, educatorId ,score, feedback = null) {
+
+    static async gradeSubmission(submissionId, educatorId, score, feedback = null) {
         const { data: submission, error: submissionError } = await supabase
             .from('Submission')
             .select('*')
@@ -2642,44 +1219,22 @@ class AssessmentService {
             .maybeSingle();
 
         if (submissionError) throw submissionError;
-
         if (!submission) {
-            throw new AppError(
-                404,
-                'SUBMISSION_NOT_FOUND',
-                'The Submission could not be found.'
-            );
+            throw new AppError(404, 'SUBMISSION_NOT_FOUND', 'The Submission could not be found.');
         }
 
-        const assessment = await this._findAssessmentById(
-            submission.assessmentId
-        );
+        const assessment = await this._findAssessmentById(submission.assessmentId);
+        const synchronized = await this._synchronizeAssessmentStatus(assessment);
+        const currentAssessment = this._toAssessment(synchronized);
 
-        const synchronized =
-            await this
-                ._synchronizeAssessmentStatus(
-                    assessment
-                );
-
-
-        const currentAssessment =
-            this._toAssessment(
-                synchronized
-            );
-
-
-        if (
-            currentAssessment.type ===
-                AssessmentType.ASSIGNMENT &&
-            currentAssessment.status !==
-                AssessmentStatus.CLOSED
-        ) {
+        if (currentAssessment.type === AssessmentType.ASSIGNMENT && currentAssessment.status !== AssessmentStatus.CLOSED) {
             throw new AppError(
                 409,
                 'ASSESSMENT_STILL_OPEN',
                 'This Assignment cannot be graded until its submission period has closed.'
             );
         }
+
         await this._assertCourseManagedBy(assessment.courseId, educatorId);
 
         if (submission.status !== SubmissionStatus.PENDING_REVIEW) {
@@ -2691,16 +1246,8 @@ class AssessmentService {
         }
 
         const numericScore = Number(score);
-        if (
-            !Number.isFinite(numericScore) ||
-            numericScore < 0 ||
-            numericScore > Number(assessment.totalPoints)
-        ) {
-            throw new AppError(
-                400,
-                'INVALID_SUBMISSION_SCORE',
-                'The score is outside the valid range.'
-            );
+        if (!Number.isFinite(numericScore) || numericScore < 0 || numericScore > Number(assessment.totalPoints)) {
+            throw new AppError(400, 'INVALID_SUBMISSION_SCORE', 'The score is outside the valid range.');
         }
 
         const { data, error } = await supabase
@@ -2716,12 +1263,11 @@ class AssessmentService {
 
         if (error) throw error;
 
-        const analytics = await AssessmentAnalyticsIntegrationService
-            .recordAssessmentScore({
-                learnerId: data.learnerId,
-                courseId: assessment.courseId,
-                assessmentId: assessment.assessmentId,
-                score: numericScore
+        const analytics = await AssessmentAnalyticsIntegrationService.recordAssessmentScore({
+            learnerId: data.learnerId,
+            courseId: assessment.courseId,
+            assessmentId: assessment.assessmentId,
+            score: numericScore
         });
 
         return {
@@ -2730,119 +1276,82 @@ class AssessmentService {
         };
     }
 
+    static _assertQuestionPointsMatchTotal(totalPoints, questions = []) {
+        if (!Array.isArray(questions) || questions.length === 0) {
+            return;
+        }
+
+        const normalizedPoints = questions.map(question => Number(question?.points));
+        if (normalizedPoints.some(points => !Number.isFinite(points) || points <= 0)) {
+            throw new AppError(
+                400,
+                'INVALID_QUESTION_POINTS',
+                'Each Question must have points greater than 0.'
+            );
+        }
+
+        const questionPointsTotal = normalizedPoints.reduce((sum, points) => sum + points, 0);
+        if (Math.abs(questionPointsTotal - Number(totalPoints)) > 0.001) {
+            throw new AppError(
+                400,
+                'QUESTION_POINTS_TOTAL_MISMATCH',
+                `The sum of Question points (${questionPointsTotal}) must equal the Assessment total points (${Number(totalPoints)}).`
+            );
+        }
+    }
+
+    static async _assertStoredQuestionPointsMatchTotal(assessmentId, totalPoints) {
+        const { data, error } = await supabase
+            .from('Question')
+            .select('points')
+            .eq('assessmentId', assessmentId);
+
+        if (error) throw error;
+        this._assertQuestionPointsMatchTotal(totalPoints, data || []);
+    }
+
     static _validateTotalPoints(value) {
-        const isValidType =
-            typeof value === 'number' ||
-            typeof value === 'string';
-
-        if (
-            !isValidType ||
-            (typeof value === 'string' && !value.trim())
-        ) {
-            throw new AppError(
-                400,
-                'INVALID_TOTAL_POINTS',
-                'Assessment total points must be a non-negative number.'
-            );
+        const isValidType = typeof value === 'number' || typeof value === 'string';
+        if (!isValidType || (typeof value === 'string' && !value.trim())) {
+            throw new AppError(400, 'INVALID_TOTAL_POINTS', 'Assessment total points must be a non-negative number.');
         }
-
         const numericTotalPoints = Number(value);
-
-        if (
-            !Number.isFinite(numericTotalPoints) ||
-            numericTotalPoints < 0
-        ) {
-            throw new AppError(
-                400,
-                'INVALID_TOTAL_POINTS',
-                'Assessment total points must be a non-negative number.'
-            );
+        if (!Number.isFinite(numericTotalPoints) || numericTotalPoints < 0) {
+            throw new AppError(400, 'INVALID_TOTAL_POINTS', 'Assessment total points must be a non-negative number.');
         }
-
         return numericTotalPoints;
     }
 
-    static _generateSafeFileName(
-        originalName
-        ) {
-        const normalizedName =
-            String(
-            originalName ||
-            'instruction-file'
-            )
-            .replace(
-                /\\/g,
-                '/'
-            );
-
-
-        const baseName =
-            path.posix.basename(
-            normalizedName
-            );
-
-
-        const safeBaseName =
-            baseName
-            .replace(
-                /[<>:"/\\|?*\x00-\x1F]/g,
-                '_'
-            )
-            .replace(
-                /\s+/g,
-                ' '
-            )
-            .trim();
-
-
-        return (
-            `${crypto.randomUUID()}__` +
-            `${safeBaseName}`
-        );
-        }
+    static _generateSafeFileName(originalName) {
+        const normalizedName = String(originalName || 'instruction-file').replace(/\\/g, '/');
+        const baseName = path.posix.basename(normalizedName);
+        const safeBaseName = baseName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/\s+/g, ' ').trim();
+        return `${crypto.randomUUID()}__${safeBaseName}`;
+    }
 
     static async _insertQuestion(assessmentId, questionInput) {
-        const {
-            content,
-            type,
-            points = 0,
-            displayOrder = 0,
-            options = []
-        } = questionInput;
-
+        const { content, type, points = 0, displayOrder = 0, options = [] } = questionInput;
         if (!content || !Object.values(QuestionType).includes(type)) {
-            throw new AppError(
-                400,
-                'INVALID_QUESTION_DATA',
-                'Question content and type are required.'
-            );
+            throw new AppError(400, 'INVALID_QUESTION_DATA', 'Question content and type are required.');
         }
-
+        const numericQuestionPoints = Number(points);
+        if (!Number.isFinite(numericQuestionPoints) || numericQuestionPoints <= 0) {
+            throw new AppError(400, 'INVALID_QUESTION_POINTS', 'Question points must be greater than 0.');
+        }
         let optionContents = [];
         let correctAnswer = null;
-
         if (type === QuestionType.MULTIPLE_CHOICE) {
-            const correctOptions =
-                options.filter(option => option.isCorrect);
-
-            if (
-                options.length < 2 ||
-                correctOptions.length !== 1
-            ) {
+            const correctOptions = options.filter(option => option.isCorrect);
+            if (options.length < 2 || correctOptions.length !== 1) {
                 throw new AppError(
                     400,
                     'INVALID_MULTIPLE_CHOICE_OPTIONS',
                     'A multiple-choice Question requires at least two options and exactly one correct option.'
                 );
             }
-
-            optionContents =
-                options.map(option => option.content);
-
-            correctAnswer =
-                correctOptions[0].content;
+            optionContents = options.map(option => option.content);
+            correctAnswer = correctOptions[0].content;
         }
-
         const { data, error } = await supabase
             .from('Question')
             .insert({
@@ -2851,27 +1360,22 @@ class AssessmentService {
                 type,
                 options: optionContents,
                 correctAnswer,
-                points: Number(points || 0),
+                points: numericQuestionPoints,
                 displayOrder
             })
             .select()
             .single();
 
         if (error) throw error;
-
         return new Question(data);
     }
-    static async _loadQuestionsWithOptions(
-        assessmentId,
-        includeCorrect
-    ) {
+
+    static async _loadQuestionsWithOptions(assessmentId, includeCorrect) {
         const { data, error } = await supabase
             .from('Question')
             .select('*')
             .eq('assessmentId', assessmentId)
-            .order('displayOrder', {
-                ascending: true
-            });
+            .order('displayOrder', { ascending: true });
 
         if (error) throw error;
 
@@ -2882,10 +1386,7 @@ class AssessmentService {
                 content: row.content,
                 type: row.type,
                 options: row.options || [],
-                correctAnswer:
-                    includeCorrect
-                        ? row.correctAnswer
-                        : null,
+                correctAnswer: includeCorrect ? row.correctAnswer : null,
                 points: row.points,
                 displayOrder: row.displayOrder
             })
@@ -2898,50 +1399,33 @@ class AssessmentService {
             .select('*')
             .eq('assessmentId', assessmentId)
             .maybeSingle();
-        
-        if (error) throw error; 
 
+        if (error) throw error;
         if (!data) {
-            throw new AppError(
-                404, 
-                'ASSESSMENT_NOT_FOUND',
-                'The Assessment could not be found.'
-            );
+            throw new AppError(404, 'ASSESSMENT_NOT_FOUND', 'The Assessment could not be found.');
         }
-
-        return data; 
+        return data;
     }
 
     static async _assertCourseManagedBy(courseId, educatorId) {
-        const { data, error } = await supabase  
+        const { data, error } = await supabase
             .from('Course')
             .select('courseId, educatorId')
             .eq('courseId', courseId)
             .maybeSingle();
-        
-        if (error) throw error; 
 
+        if (error) throw error;
         if (!data) {
-            throw new AppError(
-                404, 
-                'COURSE_NOT_FOUND',
-                'The Course could not be found.'
-            );
+            throw new AppError(404, 'COURSE_NOT_FOUND', 'The Course could not be found.');
         }
-
         if (data.educatorId !== educatorId) {
-            throw new AppError(
-                403, 
-                'COURSE_ACCESS_DENIED',
-                'Only the Educator managing this Course may manage its Assessments.'
-            );
+            throw new AppError(403, 'COURSE_ACCESS_DENIED', 'Only the Educator managing this Course may manage its Assessments.');
         }
-
         return data;
     }
 
     static async _assertLearnerEnrolled(courseId, learnerId) {
-        const { data, error } = await supabase 
+        const { data, error } = await supabase
             .from('Enrollment')
             .select('enrollmentId, status')
             .eq('courseId', courseId)
@@ -2951,78 +1435,54 @@ class AssessmentService {
 
         if (error) throw error;
         if (!data) {
-            throw new AppError(
-                403,
-                'COURSE_MEMBERSHIP_REQUIRED',
-                'You must be an approved member of the Course to access this Assessment.'
-            );
+            throw new AppError(403, 'COURSE_MEMBERSHIP_REQUIRED', 'You must be an approved member of the Course to access this Assessment.');
         }
-
         return data;
     }
 
     static async _assertOwnedSubmission(submissionId, learnerId) {
-        const { data, error, } = await supabase 
+        const { data, error } = await supabase
             .from('Submission')
             .select('*')
             .eq('submissionId', submissionId)
-            .eq('learnerId', learnerId)
             .maybeSingle();
-        
+
         if (error) throw error;
         if (!data) {
-            throw new AppError(
-                404,
-                'SUBMISSION_NOT_FOUND',
-                'The Submission could not be found.'
-            );
+            throw new AppError(404, 'SUBMISSION_NOT_FOUND', 'The Submission could not be found.');
         }
-
         return data;
     }
 
     static _validateSchedule(startTime, deadline) {
-        const start = new Date(startTime); 
+        const start = new Date(startTime);
         const end = new Date(deadline);
-
-        if (
-            Number.isNaN(start.getTime()) ||
-            Number.isNaN(end.getTime()) ||
-            start >= end
-        ) {
-            throw new AppError(
-                400,
-                'INVALID_ASSESSMENT_SCHEDULE',
-                'The Assessment deadline must be after the start time.'
-            );
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) {
+            throw new AppError(400, 'INVALID_ASSESSMENT_SCHEDULE', 'The Assessment deadline must be after the start time.');
         }
     }
 
     static async _synchronizeAssessmentStatus(assessmentRow) {
-        if (
-            assessmentRow.status === AssessmentStatus.DRAFT ||
-            !assessmentRow.startTime ||
-            !assessmentRow.deadline
-        ) {
-            return assessmentRow; 
+        if (!assessmentRow || assessmentRow.status === AssessmentStatus.DRAFT || !assessmentRow.startTime || !assessmentRow.deadline) {
+        return assessmentRow;
         }
-
         const now = new Date();
         const start = new Date(assessmentRow.startTime);
         const deadline = new Date(assessmentRow.deadline);
 
-        let nextStatus = AssessmentStatus.SCHEDULED; 
-
+        let nextStatus = AssessmentStatus.SCHEDULED;
         if (now >= start && now <= deadline) {
-            nextStatus = AssessmentStatus.IN_PROGRESS;
-        }
-        else if (now > deadline) {
-            nextStatus = AssessmentStatus.CLOSED;
+        nextStatus = AssessmentStatus.IN_PROGRESS;
+        } else if (now > deadline) {
+        nextStatus = AssessmentStatus.CLOSED;
         }
 
         if (nextStatus === assessmentRow.status) {
-            return assessmentRow;
+        return assessmentRow;
         }
+
+        // Cố gắng cập nhật trạng thái mới vào DB, nếu gặp lỗi phân quyền (RLS) thì fallback về object in-memory
+        try {
         const { data, error } = await supabase
             .from('Assessment')
             .update({ status: nextStatus })
@@ -3030,66 +1490,39 @@ class AssessmentService {
             .select()
             .single();
 
-        if (error) throw error;
-        return data;
+        if (!error && data) {
+            return data;
+        }
+        } catch (e) {
+        console.warn('[AssessmentService] Could not update sync status in DB, fallback in-memory:', e.message);
+        }
+
+        return { ...assessmentRow, status: nextStatus };
     }
 
-    static async _notifyCourseLearners({
-        courseId,
-        assessmentId,
-        action
-    }) {
-        return NotificationService
-            .notifyAssessmentChanged({
+    static async _notifyCourseLearners({ courseId, assessmentId, action }) {
+        return NotificationService.notifyAssessmentChanged({
             courseId,
             assessmentId,
             action
-            });
+        });
     }
 
     static _toAssessment(row) {
         return new Assessment({
-            assessmentId:
-                row.assessmentId,
-
-            courseId:
-                row.courseId,
-
-            title:
-                row.title,
-
-            description:
-                row.description,
-
-            type:
-                row.type,
-
-            instructionFileUrl:
-                this._getInstructionFilePublicUrl(
-                    row.instructionFileUrl
-                ),
-            instructionFileName:
-                this._getInstructionFileName(
-                    row.instructionFileUrl
-                ),
-
-            startTime:
-                row.startTime,
-
-            deadline:
-                row.deadline,
-
-            totalPoints:
-                row.totalPoints,
-
-            allowLateSubmission:
-                row.allowLateSubmission,
-
-            status:
-                row.status,
-
-            createdAt:
-                row.createdAt
+            assessmentId: row.assessmentId,
+            courseId: row.courseId,
+            title: row.title,
+            description: row.description,
+            type: row.type,
+            instructionFileUrl: this._getInstructionFilePublicUrl(row.instructionFileUrl),
+            instructionFileName: this._getInstructionFileName(row.instructionFileUrl),
+            startTime: row.startTime,
+            deadline: row.deadline,
+            totalPoints: row.totalPoints,
+            allowLateSubmission: row.allowLateSubmission,
+            status: row.status,
+            createdAt: row.createdAt
         });
     }
 
@@ -3104,153 +1537,48 @@ class AssessmentService {
             late: row.late,
             score: row.score,
             feedback: row.feedback,
-            uploadedFileUrls: Array.isArray(
-                row.uploadedFileUrls
-            )
-                ? row.uploadedFileUrls
-                : []
+            uploadedFileUrls: Array.isArray(row.uploadedFileUrls) ? row.uploadedFileUrls : []
         });
     }
 
-    static _getInstructionFilePublicUrl(
-        instructionFilePath
-    ) {
-        if (!instructionFilePath) {
-            return null;
-        }
-
-        /*
-        * Trường hợp dữ liệu đã là URL hoàn chỉnh.
-        */
-        if (
-            /^https?:\/\//i.test(
-                instructionFilePath
-            )
-        ) {
+    static _getInstructionFilePublicUrl(instructionFilePath) {
+        if (!instructionFilePath) return null;
+        if (/^https?:\/\//i.test(instructionFilePath)) {
             return instructionFilePath;
         }
-
-        const bucket =
-            process.env
-                .ASSESSMENT_STORAGE_BUCKET;
-
-        if (!bucket) {
-            return instructionFilePath;
-        }
-
-        const { data } =
-            supabase.storage
-                .from(bucket)
-                .getPublicUrl(
-                    instructionFilePath
-                );
-
-        return (
-            data?.publicUrl ||
-            instructionFilePath
-        );
+        const bucket = process.env.ASSESSMENT_STORAGE_BUCKET || 'materials';
+        const { data } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(instructionFilePath);
+        return data?.publicUrl || instructionFilePath;
     }
-    static _getInstructionFileName(
-    instructionFilePath
-    ) {
-        if (!instructionFilePath) {
-            return null;
-        }
 
-
+    static _getInstructionFileName(instructionFilePath) {
+        if (!instructionFilePath) return null;
         try {
-            const cleanValue =
-            decodeURIComponent(
-                String(
-                instructionFilePath
-                ).split('?')[0]
-            );
-
-
-            const storedName =
-            cleanValue
-                .split('/')
-                .pop();
-
-
-            if (!storedName) {
-            return null;
+            const cleanValue = decodeURIComponent(String(instructionFilePath).split('?')[0]);
+            const storedName = cleanValue.split('/').pop();
+            if (!storedName) return null;
+            const separatorIndex = storedName.indexOf('__');
+            if (separatorIndex !== -1) {
+                return storedName.slice(separatorIndex + 2);
             }
-
-
-            const separatorIndex =
-            storedName.indexOf(
-                '__'
-            );
-
-
-            if (
-            separatorIndex !== -1
-            ) {
-            return storedName.slice(
-                separatorIndex + 2
-            );
-            }
-
-
-            /*
-            * Old instruction files used
-            * UUID.ext and have lost their
-            * original filename.
-            */
             return 'Assessment instruction file';
-
         } catch {
-            return (
-            'Assessment instruction file'
-            );
+            return 'Assessment instruction file';
         }
     }
 
-    static _getSubmissionFilePublicUrl(
-        filePath
-    ) {
-        if (!filePath) {
-            return null;
-        }
-
-
-        /*
-        * Already a complete URL.
-        */
-        if (
-            /^https?:\/\//i.test(
-                filePath
-            )
-        ) {
+    static _getSubmissionFilePublicUrl(filePath) {
+        if (!filePath) return null;
+        if (/^https?:\/\//i.test(filePath)) {
             return filePath;
         }
-
-
-        const bucket =
-            process.env
-                .ASSESSMENT_STORAGE_BUCKET;
-
-
-        if (!bucket) {
-            return filePath;
-        }
-
-
-        const {
-            data
-        } =
-            supabase.storage
-                .from(bucket)
-                .getPublicUrl(
-                    filePath
-                );
-
-
-        return (
-            data?.publicUrl ||
-            filePath
-        );
+        const bucket = process.env.ASSESSMENT_STORAGE_BUCKET || 'materials';
+        const { data } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(filePath);
+        return data?.publicUrl || filePath;
     }
 }
 

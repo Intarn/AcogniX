@@ -1,5 +1,7 @@
 const AIServiceClient = require('../service/AIServiceClient');
 const AIHistoryService = require('../service/AIHistoryService');
+const WorkspaceService = require('../service/WorkspaceService');
+const WorkspaceIntegrationService = require('../service/WorkspaceIntegrationService');
 
 function handleControllerError(error, res) {
     if (error.statusCode) {
@@ -36,8 +38,14 @@ const generateQuiz = async (req, res) => {
         if (!projectId) {
             return res.status(400).json({ code: 'MISSING_PROJECT_ID', message: 'Missing projectId.' });
         }
-        // Gửi danh sách materialIds qua Service client
-        const result = await AIServiceClient.generateQuiz(projectId, materialIds, questionCount || 5, difficulty || 'medium');
+        await WorkspaceService.assertProjectWritable(projectId, req.user.userId, materialIds || []);
+        const prepared = await WorkspaceIntegrationService.ensureMaterialsProcessed(projectId, materialIds || []);
+        const result = await AIServiceClient.generateQuiz(
+            projectId,
+            prepared.readyMaterialIds,
+            questionCount || 5,
+            difficulty || 'medium'
+        );
         return res.status(200).json({ message: 'Quizzes generated!', data: result.questions, quizId: result.quizId });
     } catch (error) {
         return handleControllerError(error, res);
@@ -50,8 +58,14 @@ const generateFlashcards = async (req, res) => {
         if (!projectId) {
             return res.status(400).json({ code: 'MISSING_PROJECT_ID', message: 'Missing projectId.' });
         }
-        // Gửi danh sách materialIds qua Service client
-        const result = await AIServiceClient.generateFlashcards(projectId, materialIds, flashcardCount || 10, length || 'short');
+        await WorkspaceService.assertProjectWritable(projectId, req.user.userId, materialIds || []);
+        const prepared = await WorkspaceIntegrationService.ensureMaterialsProcessed(projectId, materialIds || []);
+        const result = await AIServiceClient.generateFlashcards(
+            projectId,
+            prepared.readyMaterialIds,
+            flashcardCount || 10,
+            length || 'short'
+        );
         return res.status(200).json({ message: 'Flashcards generated!', data: result.flashcards, flashcardSetId: result.flashcardSetId });
     } catch (error) {
         return handleControllerError(error, res);
@@ -81,9 +95,12 @@ const chat = async (req, res) => {
             });
         }
 
+        await WorkspaceService.assertProjectWritable(projectId, req.user.userId, materialIds || []);
+        const prepared = await WorkspaceIntegrationService.ensureMaterialsProcessed(projectId, materialIds || []);
+
         const result = await AIServiceClient.chat(
             projectId,
-            materialIds,
+            prepared.readyMaterialIds,
             conversationId || null,
             userMessage
         );
@@ -130,6 +147,33 @@ const getConversationHistory = async (req, res) => {
     }
 };
 
+const recordPracticeQuizAttempt = async (req, res) => {
+    try {
+        const { projectId, quizId } = req.params;
+        const result = await AIHistoryService.recordPracticeQuizAttempt(
+            projectId,
+            quizId,
+            req.user.userId,
+            req.body || {}
+        );
+        return res.status(200).json({
+            message: 'Practice Quiz result recorded.',
+            data: result
+        });
+    } catch (error) {
+        return handleControllerError(error, res);
+    }
+};
+
+const deleteSavedQuiz = async (req, res) => {
+  try {
+    const { projectId, quizId } = req.params;
+    await AIHistoryService.deleteQuiz(projectId, quizId, req.user.userId);
+    return res.status(200).json({ message: 'Deleted quiz successfully' });
+  } catch (error) {
+    return handleControllerError(error, res);
+  }
+};
 const deleteSavedFlashcardSet = async (req, res) => {
     try {
         const { projectId, setId } = req.params;
@@ -148,5 +192,7 @@ module.exports = {
     getSavedQuizzes,
     getSavedFlashcards,
     getConversationHistory,
-    deleteSavedFlashcardSet
+    recordPracticeQuizAttempt,
+    deleteSavedFlashcardSet,
+    deleteSavedQuiz
 };

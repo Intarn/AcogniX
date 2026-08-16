@@ -1,12 +1,11 @@
 const supabase = require('../config/supabaseClient');
 const { UserRole } = require('../enums/AuthEnums');
 
-const AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024; // Alt Flow 1 (UC-21)
+const AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 const AVATAR_BUCKET = 'avatars';
 
 class ProfileService {
-
-  // Basic Flow #1-2 (UC-21)
+  // UC19 Basic Flow: view the current authenticated User's profile.
   static async getProfile(userId) {
     const { data: profile, error } = await supabase
       .from('User')
@@ -20,7 +19,8 @@ class ProfileService {
       throw err;
     }
 
-    // Alt Flow 3 (UC-21): Learner-only aggregate learning dashboard
+    // UC19 Alternative Flow 3: only Learners receive the compact all-time
+    // learning summary. Educator profile responses keep this field null.
     let learningSummary = null;
     if (profile.role === UserRole.LEARNER) {
       learningSummary = await this.getLearnerAggregateStats(userId);
@@ -29,27 +29,133 @@ class ProfileService {
     return { profile, learningSummary };
   }
 
-  // Alt Flow 3 (UC-21): all-time aggregate metrics across all enrolled classes.
-  // DEPENDENCY: relies on tables owned by the Learning Tracking and Analytics /
-  // AI Workspace components (study sessions, AI interactions, flashcards),
-  // which are not created in this migration yet. Degrades gracefully to zeros
-  // until a "get_learner_aggregate_stats" RPC function is added in Supabase.
+  // UC19 UI02: calculate the three all-time metrics from the existing
+  // AcogniX tables instead of depending on an optional RPC function.
   static async getLearnerAggregateStats(userId) {
-    try {
-      const { data, error } = await supabase.rpc('get_learner_aggregate_stats', { p_user_id: userId });
-      if (error) throw error;
-      return data;
-    } catch (e) {
-      return { totalActiveStudyHours: 0, totalAiInteractions: 0, totalFlashcardsCreated: 0 };
+    const [sessionsResult, workspaceResult] = await Promise.all([
+      supabase
+        .from('Study_Session')
+        .select('startTime, endTime, durationMinutes')
+        .eq('learnerId', userId),
+      supabase
+        .from('AI_Workspace')
+        .select('workspaceId')
+        .eq('learnerId', userId)
+        .maybeSingle()
+    ]);
+
+    if (sessionsResult.error) throw sessionsResult.error;
+    if (workspaceResult.error) throw workspaceResult.error;
+
+    const totalStudyMilliseconds = this._calculateUniqueStudyMilliseconds(
+      sessionsResult.data || []
+    );
+
+    let totalAiInteractions = 0;
+    let totalFlashcardsCreated = 0;
+
+    const workspaceId = workspaceResult.data?.workspaceId;
+    if (workspaceId) {
+      const { data: projects, error: projectError } = await supabase
+        .from('AI_Project')
+        .select('projectId')
+        .eq('workspaceId', workspaceId);
+
+      if (projectError) throw projectError;
+
+      const projectIds = (projects || [])
+        .map((project) => project.projectId)
+        .filter(Boolean);
+
+      if (projectIds.length > 0) {
+        const [conversationResult, flashcardResult] = await Promise.all([
+          supabase
+            .from('Conversation')
+            .select('conversationId')
+            .in('projectId', projectIds),
+          supabase
+            .from('Flashcard_Set')
+            .select('flashcardSetId, Flashcard(flashcardId)')
+            .in('projectId', projectIds)
+        ]);
+
+        if (conversationResult.error) throw conversationResult.error;
+        if (flashcardResult.error) throw flashcardResult.error;
+
+        const conversationIds = (conversationResult.data || [])
+          .map((conversation) => conversation.conversationId)
+          .filter(Boolean);
+
+        if (conversationIds.length > 0) {
+          // One AI_TUTOR response represents one completed AI interaction.
+          const { count, error: messageError } = await supabase
+            .from('Chat_Message')
+            .select('messageId', { count: 'exact', head: true })
+            .in('conversationId', conversationIds)
+            .eq('senderRole', 'AI_TUTOR');
+
+          if (messageError) throw messageError;
+          totalAiInteractions = Number(count || 0);
+        }
+
+        totalFlashcardsCreated = (flashcardResult.data || []).reduce(
+          (sum, set) => sum + (Array.isArray(set.Flashcard) ? set.Flashcard.length : 0),
+          0
+        );
+      }
     }
+
+    return {
+      totalActiveStudyHours: Number((totalStudyMilliseconds / 3_600_000).toFixed(2)),
+      totalAiInteractions,
+      totalFlashcardsCreated
+    };
   }
 
-  // Basic Flow #5-6 / Alt Flow 1 (UC-21)
+  // Merge overlapping Study_Session intervals so the profile summary follows
+  // the same no-double-count rule introduced for UC03.
+  static _calculateUniqueStudyMilliseconds(sessions = []) {
+    const intervals = (sessions || [])
+      .map((session) => {
+        const start = new Date(session.startTime);
+        if (Number.isNaN(start.getTime())) return null;
+
+        let end = new Date(session.endTime);
+        if (Number.isNaN(end.getTime())) {
+          const durationMinutes = Math.max(0, Number(session.durationMinutes || 0));
+          end = new Date(start.getTime() + durationMinutes * 60_000);
+        }
+
+        if (end <= start) return null;
+        return [start.getTime(), end.getTime()];
+      })
+      .filter(Boolean)
+      .sort((a, b) => a[0] - b[0]);
+
+    if (intervals.length === 0) return 0;
+
+    let total = 0;
+    let [currentStart, currentEnd] = intervals[0];
+
+    for (let i = 1; i < intervals.length; i += 1) {
+      const [nextStart, nextEnd] = intervals[i];
+      if (nextStart <= currentEnd) {
+        currentEnd = Math.max(currentEnd, nextEnd);
+      } else {
+        total += currentEnd - currentStart;
+        currentStart = nextStart;
+        currentEnd = nextEnd;
+      }
+    }
+
+    return total + (currentEnd - currentStart);
+  }
+
+  // UC19 Basic Flow / Alternative Flow 1.
   static async updateProfile(userId, { displayName, avatarFile }) {
     const updates = { updatedAt: new Date() };
 
     if (displayName !== undefined) {
-      // Alt Flow 1 (UC-21): reject blank display name
       if (!displayName || !displayName.trim()) {
         const err = new Error('DISPLAY_NAME_REQUIRED');
         err.status = 400;
@@ -59,7 +165,6 @@ class ProfileService {
     }
 
     if (avatarFile) {
-      // Alt Flow 1 (UC-21): 5MB size limit
       if (avatarFile.size > AVATAR_MAX_SIZE_BYTES) {
         const err = new Error('AVATAR_TOO_LARGE');
         err.status = 400;
@@ -71,7 +176,10 @@ class ProfileService {
 
       const { error: uploadError } = await supabase.storage
         .from(AVATAR_BUCKET)
-        .upload(filePath, avatarFile.buffer, { contentType: avatarFile.mimetype, upsert: true });
+        .upload(filePath, avatarFile.buffer, {
+          contentType: avatarFile.mimetype,
+          upsert: true
+        });
 
       if (uploadError) {
         const err = new Error('AVATAR_UPLOAD_FAILED');
@@ -79,8 +187,13 @@ class ProfileService {
         throw err;
       }
 
-      const { data: publicUrlData } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(filePath);
-      updates.avatarUrl = publicUrlData.publicUrl;
+      const { data: publicUrlData } = supabase.storage
+        .from(AVATAR_BUCKET)
+        .getPublicUrl(filePath);
+
+      // The storage path is intentionally stable. Persist a version query so
+      // browsers do not keep showing the previous cached avatar after update.
+      updates.avatarUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`;
     }
 
     const { data, error } = await supabase

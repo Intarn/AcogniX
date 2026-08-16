@@ -1,6 +1,41 @@
 const os = require('os');
+const fs = require('fs');
 const supabase = require('../config/supabaseClient');
 const AppError = require('../error/AppError');
+
+
+const MAX_ERROR_LOGS = 100;
+const recentErrorLogs = [];
+let forceDatabaseFailure = process.env.INFRASTRUCTURE_FORCE_DB_OFFLINE === 'true';
+let forceQuotaWarning = process.env.INFRASTRUCTURE_FORCE_QUOTA_WARNING === 'true';
+const DAILY_TOKEN_QUOTA = Number(process.env.LLM_DAILY_TOKEN_QUOTA || 100000);
+
+function recordServerError(error, context = 'Server') {
+  const message = error?.message || String(error || 'Unknown server error');
+  const code = error?.code || error?.statusCode || 'SERVER_ERROR';
+  const now = Date.now();
+  const duplicate = recentErrorLogs.find(entry =>
+    entry.context === context && entry.code === String(code) && entry.message === message && now - new Date(entry.timestamp).getTime() < 60000
+  );
+  if (duplicate) return duplicate;
+
+  const entry = {
+    id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date(now).toISOString(),
+    level: 'ERROR',
+    context,
+    code: String(code),
+    message,
+    details: error?.stack ? String(error.stack).split('\n').slice(0, 3).join(' | ') : null
+  };
+  recentErrorLogs.unshift(entry);
+  if (recentErrorLogs.length > MAX_ERROR_LOGS) recentErrorLogs.length = MAX_ERROR_LOGS;
+  return entry;
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 const NETWORK_ERROR_PATTERNS = [
   /fetch failed/i,
@@ -52,7 +87,7 @@ async function countSince(table, field, since, extraFilters = []) {
 }
 
 class InfrastructureService {
-  // UC-20: Monitor server resources and the actual Supabase connectivity state.
+  // UC18: Monitor server resources and the actual Supabase connectivity state.
   static async getSystemHealth() {
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
@@ -81,9 +116,16 @@ class InfrastructureService {
     let databaseQueryOk = true;
     let databaseLatencyMs = null;
     let databaseError = null;
+    let databaseErrorDetail = null;
 
     const startedAt = Date.now();
     try {
+      if (forceDatabaseFailure) {
+        const simulated = new Error('Connection Timeout');
+        simulated.code = 'DB_CONNECTION_TIMEOUT';
+        throw simulated;
+      }
+
       const { error } = await supabase
         .from('User')
         .select('userId')
@@ -93,17 +135,20 @@ class InfrastructureService {
 
       if (error) {
         databaseQueryOk = false;
-        databaseError = error.message || 'Supabase query failed.';
-        // A failed SQL/PostgREST query does not automatically mean Supabase is offline.
+        databaseErrorDetail = error.message || 'Supabase query failed.';
         databaseReachable = !isNetworkError(error);
         databaseStatus = databaseReachable ? 'DEGRADED' : 'OFFLINE';
+        databaseError = databaseReachable ? databaseErrorDetail : 'Connection Timeout';
+        recordServerError(error, 'Database Health Check');
       }
     } catch (error) {
       databaseLatencyMs = Date.now() - startedAt;
       databaseQueryOk = false;
-      databaseError = error?.message || 'Unable to reach Supabase.';
+      databaseErrorDetail = error?.message || 'Unable to reach Supabase.';
+      databaseError = 'Connection Timeout';
       databaseReachable = false;
       databaseStatus = 'OFFLINE';
+      recordServerError(error, 'Database Health Check');
     }
 
     return {
@@ -123,11 +168,12 @@ class InfrastructureService {
       databaseReachable,
       databaseQueryOk,
       databaseLatencyMs,
-      databaseError
+      databaseError,
+      databaseErrorDetail
     };
   }
 
-  // UC-20: Actual platform-wide analytics aggregated from the same Supabase tables
+  // UC18: Actual platform-wide analytics aggregated from the same Supabase tables
   // that the application writes to during normal usage.
   static async getPlatformAnalytics() {
     const now = new Date();
@@ -298,14 +344,15 @@ class InfrastructureService {
         quizzesGeneratedToday: formatCount(quizzesTodayResult.count),
         flashcardSetsGeneratedToday: formatCount(flashcardsTodayResult.count),
         estimatedTokensConsumed,
+        tokensConsumed: estimatedTokensConsumed,
         tokenUsageIsEstimated: true,
-        quotaWarning: estimatedTokensConsumed > 100000,
-        quotaReference: 100000
+        quotaWarning: forceQuotaWarning || estimatedTokensConsumed >= DAILY_TOKEN_QUOTA,
+        quotaReference: DAILY_TOKEN_QUOTA
       }
     };
   }
 
-  // UC-20: Legacy endpoint retained for the existing Dashboard widget.
+  // UC18: Legacy endpoint retained for the existing Dashboard widget.
   static async getLLMUsage() {
     const today = startOfDay();
 
@@ -324,12 +371,13 @@ class InfrastructureService {
       flashcardSetsGeneratedToday: flashcardResult,
       estimatedTokensConsumed: estimatedTokens,
       tokenUsageIsEstimated: true,
-      quotaWarning: estimatedTokens > 100000,
-      quotaReference: 100000
+      tokensConsumed: estimatedTokens,
+      quotaWarning: forceQuotaWarning || estimatedTokens >= DAILY_TOKEN_QUOTA,
+      quotaReference: DAILY_TOKEN_QUOTA
     };
   }
 
-  // UC-20: Update LLM API Key (Save to System_Settings table)
+  // UC18: Update LLM API Key (Save to System_Settings table)
   static async updateAPIKey(newApiKey) {
     if (!newApiKey) throw new AppError(400, 'INVALID_KEY', 'API Key cannot be empty.');
 
@@ -338,7 +386,85 @@ class InfrastructureService {
       .upsert([{ setting_key: 'GEMINI_API_KEY', setting_value: newApiKey }], { onConflict: 'setting_key' });
 
     if (error) throw new AppError(500, 'DB_ERROR', 'Failed to update Backup API Key.');
+    forceQuotaWarning = false;
     return { success: true, message: 'Backup API Key updated successfully to ensure uninterrupted AI Workspace features.' };
+  }
+
+  static async restartDatabaseConnection() {
+    // Supabase uses stateless HTTP requests rather than a persistent application-side pool.
+    // A safe "restart" here means clearing the test/offline latch and actively retrying a fresh query.
+    forceDatabaseFailure = false;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const startedAt = Date.now();
+      try {
+        const { error } = await supabase.from('User').select('userId').limit(1);
+        if (!error) {
+          return {
+            success: true,
+            databaseStatus: 'ONLINE',
+            databaseLatencyMs: Date.now() - startedAt,
+            message: 'Database connection re-established successfully.'
+          };
+        }
+        lastError = error;
+      } catch (error) {
+        lastError = error;
+      }
+      await delay(300);
+    }
+
+    recordServerError(lastError || new Error('Connection Timeout'), 'Database Restart');
+    throw new AppError(503, 'DB_CONNECTION_TIMEOUT', 'Connection Timeout');
+  }
+
+  static async getErrorLogs(limit = 50) {
+    const boundedLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+    const fileEntries = [];
+    const logPath = process.env.SERVER_ERROR_LOG_PATH;
+
+    if (logPath && fs.existsSync(logPath)) {
+      try {
+        const lines = fs.readFileSync(logPath, 'utf8').split(/\r?\n/).filter(Boolean).slice(-boundedLimit).reverse();
+        lines.forEach((line, index) => {
+          fileEntries.push({
+            id: `file-${index}-${line.length}`,
+            timestamp: null,
+            level: 'ERROR',
+            context: 'Server Log File',
+            code: 'SERVER_LOG',
+            message: line,
+            details: null
+          });
+        });
+      } catch (error) {
+        recordServerError(error, 'Error Log Reader');
+      }
+    }
+
+    return [...recentErrorLogs, ...fileEntries].slice(0, boundedLimit);
+  }
+
+  static recordServerError(error, context) {
+    return recordServerError(error, context);
+  }
+
+  static simulateDatabaseFailure() {
+    if (process.env.NODE_ENV === 'production') {
+      throw new AppError(403, 'TEST_MODE_DISABLED', 'Database failure simulation is disabled in production.');
+    }
+    forceDatabaseFailure = true;
+    recordServerError(Object.assign(new Error('Connection Timeout'), { code: 'DB_CONNECTION_TIMEOUT' }), 'Controlled Database Failure');
+    return { success: true, message: 'Controlled database connection failure enabled for testing.' };
+  }
+
+  static simulateQuotaExceeded() {
+    if (process.env.NODE_ENV === 'production') {
+      throw new AppError(403, 'TEST_MODE_DISABLED', 'Quota simulation is disabled in production.');
+    }
+    forceQuotaWarning = true;
+    return { success: true, message: 'Controlled LLM API quota warning enabled for testing.' };
   }
 }
 

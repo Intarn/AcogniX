@@ -1,936 +1,220 @@
-import {
-  useEffect,
-  useMemo,
-  useState
-} from 'react';
-
-import {
-  Link
-} from 'react-router';
-
-import {
-  archiveCourse,
-  getCourses
-} from '../../features/classroom/courseApi';
-
-
-const ENROLLMENTS_KEY =
-  'acognix_enrollments';
-
-
-function getStoredArray(key) {
-  try {
-    const value =
-      JSON.parse(
-        localStorage.getItem(key)
-      );
-
-    return Array.isArray(value)
-      ? value
-      : [];
-  } catch {
-    return [];
-  }
-}
-
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { archiveCourse, getCourses } from '../../features/classroom/courseApi';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function MyCoursesPage() {
-  const [
-    courses,
-    setCourses
-  ] = useState([]);
+  const { showToast } = useToast();
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [archiveTarget, setArchiveTarget] = useState(null);
+  const [archiving, setArchiving] = useState(false);
 
-  const [
-  loading,
-  setLoading
-] = useState(true);
-
-
-const [
-  loadError,
-  setLoadError
-] = useState('');
-
-  const enrollments =
-  useMemo(
-    () =>
-      getStoredArray(
-        ENROLLMENTS_KEY
-      ),
-    []
-  );
-
-
-  const [
-    courseToArchive,
-    setCourseToArchive
-  ] = useState(null);
-
-
-  /*
-   * ACTIVE trước,
-   * ARCHIVED sau.
-   *
-   * Trong mỗi nhóm:
-   * course mới hơn nằm trước.
-   */
-  function getApprovedLearnerCount(
-    courseId
-  ) {
-    const learnerIds =
-      enrollments
-        .filter(
-          (enrollment) =>
-            String(
-              enrollment.courseId
-            ) ===
-              String(courseId) &&
-            enrollment.status ===
-              'APPROVED'
-        )
-        .map(
-          (enrollment) =>
-            String(
-              enrollment.learnerId
-            )
-        );
-
-
-    return new Set(
-      learnerIds
-    ).size;
-  }
-  
   useEffect(() => {
-    async function loadCourses() {
+    let cancelled = false;
+    async function fetchCourses() {
       try {
-        const result =
-          await getCourses();
-
-
-        setCourses(
-          Array.isArray(
-            result?.courses
-          )
-            ? result.courses
-            : []
-        );
-      } catch (error) {
-        console.error(
-          'Unable to load courses:',
-          error
-        );
+        setLoading(true);
+        const res = await getCourses();
+        const list = Array.isArray(res?.courses) ? res.courses : Array.isArray(res) ? res : [];
+        if (!cancelled) setCourses(list);
+      } catch (err) {
+        showToast('Failed to load courses.', 'error');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
-
-
-    loadCourses();
+    fetchCourses();
+    return () => { cancelled = true; };
   }, []);
 
-  const sortedCourses =
-    useMemo(() => {
-      return [...courses].sort(
-        (first, second) => {
-          if (
-            first.status !==
-            second.status
-          ) {
-            if (
-              first.status ===
-              'ACTIVE'
-            ) {
-              return -1;
-            }
-
-            if (
-              second.status ===
-              'ACTIVE'
-            ) {
-              return 1;
-            }
-          }
+  const filteredCourses = courses.filter((c) => {
+    const matchesStatus = statusFilter === 'ALL' || c.status === statusFilter;
+    const matchesSearch = !searchTerm.trim() || 
+      c.subjectName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      c.courseCode?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesStatus && matchesSearch;
+  });
 
 
-          const firstDate =
-            new Date(
-              first.updatedAt ||
-              first.createdAt ||
-              0
-            ).getTime();
-
-
-          const secondDate =
-            new Date(
-              second.updatedAt ||
-              second.createdAt ||
-              0
-            ).getTime();
-
-
-          return (
-            secondDate -
-            firstDate
-          );
-        }
-      );
-    }, [courses]);
-
-
-  function openArchiveDialog(
-    course
-  ) {
-    setCourseToArchive(
-      course
-    );
+  function requestArchive(course) {
+    if (!course || course.status === 'ARCHIVED') return;
+    setArchiveTarget(course);
   }
 
-
-  function closeArchiveDialog() {
-    setCourseToArchive(
-      null
-    );
+  function cancelArchive() {
+    if (archiving) return;
+    setArchiveTarget(null);
   }
 
-
-  async function handleArchiveCourse() {
-    if (!courseToArchive) {
-      return;
-    }
+  async function confirmArchive() {
+    if (!archiveTarget || archiving) return;
 
     try {
-      const result =
-        await archiveCourse(
-          courseToArchive.courseId
-        );
+      setArchiving(true);
+      const result = await archiveCourse(archiveTarget.courseId);
+      const archivedCourse = result?.course || { ...archiveTarget, status: 'ARCHIVED' };
 
-      const archivedCourse =
-        result.course;
+      setCourses((current) => current.map((course) =>
+        String(course.courseId) === String(archiveTarget.courseId)
+          ? { ...course, ...archivedCourse, status: 'ARCHIVED' }
+          : course
+      ));
 
-      setCourses(
-        (previousCourses) =>
-          previousCourses.map(
-            (course) =>
-              String(
-                course.courseId
-              ) ===
-              String(
-                archivedCourse.courseId
-              )
-                ? archivedCourse
-                : course
-          )
-      );
-
-      setCourseToArchive(null);
+      showToast(result?.message || 'Course has been archived.', 'success');
+      setArchiveTarget(null);
     } catch (error) {
-      console.error(
-        'Unable to archive course:',
-        error
-      );
-
-      alert(
-        error.message ||
-        'Unable to archive course.'
-      );
+      showToast(error?.message || 'Unable to archive course. Please try again.', 'error');
+    } finally {
+      setArchiving(false);
     }
   }
 
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 bg-gray-50/50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-blue-600 border-t-transparent animate-spin"></div>
+          <p className="text-xs font-bold text-gray-500">Loading your courses...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <>
-      {/* TOPBAR */}
-      <header
-        className="
-          h-16
-          bg-white
-          border-b
-          border-gray-100
-          flex
-          items-center
-          justify-between
-          px-6
-          flex-shrink-0
-        "
-      >
+    <div className="flex-1 flex flex-col h-full bg-gray-50/50 overflow-hidden">
+      {/* HEADER */}
+      <header className="min-h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 py-4 flex-shrink-0 gap-4">
         <div>
-          <h1
-            className="
-              text-lg
-              font-bold
-              text-gray-800
-            "
-          >
-            My Courses
-          </h1>
-
-          <p
-            className="
-              text-xs
-              text-gray-400
-              mt-0.5
-            "
-          >
-            Manage the courses you teach.
-          </p>
+          <h1 className="text-xl font-black text-gray-900 tracking-tight">Course Management</h1>
+          <p className="text-xs text-gray-500 mt-1 font-medium">Create, manage, and archive your instructional classes.</p>
         </div>
-
-
-        <Link
-          to="/educator/courses/new"
-          className="
-            bg-blue-600
-            hover:bg-blue-700
-            text-white
-            text-xs
-            font-semibold
-            px-4
-            py-2
-            rounded-lg
-            shadow-sm
-          "
-        >
-          + Create New Course
-        </Link>
+        <div className="flex items-center gap-3">
+          <input
+            type="text"
+            placeholder="Search courses..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 text-xs font-semibold outline-none focus:border-blue-600 focus:bg-white transition w-60 shadow-xs"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 text-xs font-bold text-gray-700 outline-none focus:border-blue-600 transition shadow-xs cursor-pointer"
+          >
+            <option value="ALL">All Status</option>
+            <option value="ACTIVE">Active</option>
+            <option value="ARCHIVED">Archived</option>
+          </select>
+          <Link
+            to="/educator/courses/new"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-5 py-2.5 rounded-2xl shadow-md transition flex items-center gap-2 whitespace-nowrap"
+          >
+            <span>+</span> Create New Course
+          </Link>
+        </div>
       </header>
 
-
-      {/* CONTENT */}
-      <main
-        className="
-          flex-1
-          min-h-0
-          overflow-y-auto
-          p-6
-        "
-      >
-        {sortedCourses.length === 0 ? (
-          /*
-           * EMPTY STATE
-           */
-          <div
-            className="
-              min-h-[300px]
-              flex
-              items-center
-              justify-center
-            "
-          >
-            <div
-              className="
-                text-center
-                max-w-md
-              "
-            >
-              <div
-                className="
-                  w-14
-                  h-14
-                  mx-auto
-                  rounded-full
-                  bg-blue-50
-                  flex
-                  items-center
-                  justify-center
-                  mb-4
-                "
-              >
-                <svg
-                  className="
-                    w-7
-                    h-7
-                    text-blue-500
-                  "
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                  />
-                </svg>
-              </div>
-
-
-              <h2
-                className="
-                  text-base
-                  font-bold
-                  text-gray-800
-                "
-              >
-                No courses yet
-              </h2>
-
-
-              <p
-                className="
-                  text-sm
-                  text-gray-500
-                  mt-2
-                "
-              >
-                Create your first course
-                to begin managing learners,
-                materials, announcements,
-                and assessments.
-              </p>
-
-
-              <Link
-                to="/educator/courses/new"
-                className="
-                  inline-block
-                  mt-4
-                  text-sm
-                  font-semibold
-                  text-blue-600
-                  hover:underline
-                "
-              >
-                Create a course
+      {/* MAIN GRID */}
+      <main className="flex-1 overflow-y-auto p-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filteredCourses.length === 0 ? (
+            <div className="col-span-full py-20 text-center bg-white rounded-3xl border border-gray-100 shadow-xs p-8">
+              <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl mx-auto mb-3 font-bold">📚</div>
+              <h3 className="text-base font-black text-gray-900 mb-1">No courses found</h3>
+              <p className="text-xs text-gray-400 max-w-sm mx-auto mb-6">Get started by creating your first instructional course.</p>
+              <Link to="/educator/courses/new" className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-6 py-3 rounded-2xl shadow-md transition inline-flex items-center gap-2">
+                <span>+</span> Create Course
               </Link>
             </div>
-          </div>
-        ) : (
-          /*
-           * COURSE GRID
-           */
-          <div
-            className="
-              grid
-              grid-cols-1
-              md:grid-cols-2
-              xl:grid-cols-3
-              gap-5
-            "
-          >
-            {sortedCourses.map(
-              (course) => {
-                const isArchived =
-                  course.status ===
-                  'ARCHIVED';
-
-
-                return (
-                  <article
-                    key={
-                      course.courseId
-                    }
-                    className="
-                      bg-white
-                      rounded-xl
-                      border
-                      border-gray-100
-                      shadow-sm
-                      overflow-hidden
-                      flex
-                      flex-col
-                    "
-                  >
-                    {/* TOP DECORATION */}
-                    <div
-                      className={`
-                        h-2
-
-                        ${
-                          isArchived
-                            ? 'bg-gray-300'
-                            : 'bg-blue-500'
-                        }
-                      `}
-                    />
-
-
-                    <div
-                      className="
-                        p-5
-                        flex-1
-                        flex
-                        flex-col
-                      "
-                    >
-                      {/* HEADER */}
-                      <div
-                        className="
-                          flex
-                          items-start
-                          justify-between
-                          gap-3
-                        "
-                      >
-                        <div
-                          className="
-                            min-w-0
-                          "
-                        >
-                          <h2
-                            className="
-                              text-base
-                              font-bold
-                              text-gray-800
-                              truncate
-                            "
-                            title={
-                              course.subjectName
-                            }
-                          >
-                            {
-                              course.subjectName
-                            }
-                          </h2>
-
-
-                          <p
-                            className="
-                              text-xs
-                              text-gray-500
-                              mt-1
-                            "
-                          >
-                            {
-                              course.courseCode
-                            }
-                          </p>
-                        </div>
-
-
-                        <span
-                          className={`
-                            flex-shrink-0
-                            rounded-full
-                            px-2.5
-                            py-1
-                            text-[10px]
-                            font-bold
-
-                            ${
-                              isArchived
-                                ? `
-                                  bg-gray-100
-                                  text-gray-600
-                                `
-                                : `
-                                  bg-green-100
-                                  text-green-700
-                                `
-                            }
-                          `}
-                        >
-                          {
-                            course.status
-                          }
-                        </span>
-                      </div>
-
-
-                      {/* DESCRIPTION */}
-                      <p
-                        className="
-                          text-sm
-                          text-gray-500
-                          mt-4
-                          line-clamp-3
-                          min-h-[60px]
-                        "
-                      >
-                        {
-                          course.description ||
-                          'No description provided.'
-                        }
-                      </p>
-
-
-                      {/* COURSE INFORMATION */}
-                      <div
-                        className="
-                          mt-5
-                          space-y-3
-                        "
-                      >
-                        <div
-                          className="
-                            flex
-                            items-center
-                            justify-between
-                            gap-3
-                          "
-                        >
-                          <span
-                            className="
-                              text-xs
-                              text-gray-400
-                            "
-                          >
-                            Enrollment Code
-                          </span>
-
-
-                          <span
-                            className={`
-                              text-xs
-                              font-bold
-                              tracking-wider
-
-                              ${
-                                isArchived
-                                  ? 'text-gray-400'
-                                  : 'text-gray-700'
-                              }
-                            `}
-                          >
-                            {
-                              course.enrollmentCode ||
-                              'N/A'
-                            }
-                          </span>
-                        </div>
-
-
-                        <div
-                          className="
-                            flex
-                            items-center
-                            justify-between
-                            gap-3
-                          "
-                        >
-                          <span
-                            className="
-                              text-xs
-                              text-gray-400
-                            "
-                          >
-                            Learners
-                          </span>
-
-
-                          <span
-                            className="
-                              text-xs
-                              font-semibold
-                              text-gray-700
-                            "
-                          >
-                            {
-                              getApprovedLearnerCount(
-                                course.courseId
-                              )
-                            }
-                          </span>
-                        </div>
-                      </div>
-
-
-                      {/* ARCHIVED MESSAGE */}
-                      {isArchived && (
-                        <div
-                          className="
-                            mt-4
-                            bg-gray-50
-                            border
-                            border-gray-100
-                            rounded-lg
-                            px-3
-                            py-2
-                          "
-                        >
-                          <p
-                            className="
-                              text-[11px]
-                              text-gray-500
-                            "
-                          >
-                            This course is
-                            archived. New
-                            enrollment is
-                            disabled, but
-                            historical data
-                            remains available.
-                          </p>
-                        </div>
-                      )}
-
-
-                      {/* ACTIONS */}
-                      <div
-                        className="
-                          mt-auto
-                          pt-5
-                          flex
-                          items-center
-                          gap-2
-                        "
-                      >
-                        <Link
-                          to={
-                            `/educator/courses/${course.courseId}`
-                          }
-                          className="
-                            flex-1
-                            text-center
-                            text-xs
-                            font-semibold
-                            text-blue-600
-                            bg-blue-50
-                            px-3
-                            py-2
-                            rounded-lg
-                            hover:bg-blue-100
-                          "
-                        >
-                          View Details
-                        </Link>
-
-
-                        {!isArchived && (
-                          <>
-                            <Link
-                              to={
-                                `/educator/courses/${course.courseId}/edit`
-                              }
-                              className="
-                                text-xs
-                                font-semibold
-                                text-gray-600
-                                bg-gray-100
-                                px-3
-                                py-2
-                                rounded-lg
-                                hover:bg-gray-200
-                              "
-                            >
-                              Edit
-                            </Link>
-
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openArchiveDialog(
-                                  course
-                                )
-                              }
-                              className="
-                                text-xs
-                                font-semibold
-                                text-amber-700
-                                bg-amber-50
-                                px-3
-                                py-2
-                                rounded-lg
-                                hover:bg-amber-100
-                              "
-                            >
-                              Archive
-                            </button>
-                          </>
-                        )}
-                      </div>
+          ) : (
+            filteredCourses.map((course) => {
+              const isArchived = course.status === 'ARCHIVED';
+              return (
+                <div key={course.courseId} className={`bg-white rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group ${isArchived ? 'opacity-75' : ''}`}>
+                  <div className="h-32 bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 p-5 flex flex-col justify-between text-white relative">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-full uppercase tracking-wider">
+                        {course.courseCode}
+                      </span>
+                      <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${isArchived ? 'bg-gray-800/60 text-gray-200' : 'bg-emerald-400/30 text-emerald-100 backdrop-blur-sm'}`}>
+                        {course.status}
+                      </span>
                     </div>
-                  </article>
-                );
-              }
-            )}
-          </div>
-        )}
+                    <h3 className="text-base font-black text-white line-clamp-1 group-hover:text-blue-100 transition-colors" title={course.subjectName}>
+                      {course.subjectName}
+                    </h3>
+                  </div>
+                  <div className="p-5 flex flex-col flex-1 justify-between gap-4">
+                    <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
+                      {course.description || 'No description provided for this course.'}
+                    </p>
+                    <div className="pt-3 border-t border-gray-50 flex gap-2">
+                      <Link
+                        to={`/educator/courses/${course.courseId}`}
+                        className={`flex-1 py-2.5 rounded-2xl text-xs font-bold text-center block transition shadow-xs ${isArchived ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white'}`}
+                      >
+                        {isArchived ? 'View Archived' : 'View Details'}
+                      </Link>
+
+                      {!isArchived && (
+                        <button
+                          type="button"
+                          onClick={() => requestArchive(course)}
+                          className="px-4 py-2.5 rounded-2xl text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 transition shadow-xs"
+                        >
+                          Archive
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
       </main>
 
-
-      {/* ARCHIVE CONFIRMATION */}
-      {courseToArchive && (
+      {archiveTarget && (
         <div
-          className="
-            fixed
-            inset-0
-            z-50
-            bg-gray-900/50
-            flex
-            items-center
-            justify-center
-            p-4
-          "
+          className="fixed inset-0 z-50 bg-gray-950/40 backdrop-blur-[1px] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="archive-course-title"
         >
-          <div
-            className="
-              bg-white
-              rounded-xl
-              shadow-xl
-              w-full
-              max-w-md
-            "
-          >
-            <div
-              className="
-                p-6
-              "
-            >
-              <div
-                className="
-                  w-11
-                  h-11
-                  rounded-full
-                  bg-amber-100
-                  flex
-                  items-center
-                  justify-center
-                  mb-4
-                "
-              >
-                <svg
-                  className="
-                    w-6
-                    h-6
-                    text-amber-600
-                  "
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.667 1.73-3L13.73 4c-.77-1.333-2.69-1.333-3.46 0L3.34 16c-.77 1.333.19 3 1.73 3z"
-                  />
-                </svg>
-              </div>
+          <div className="w-full max-w-md bg-white rounded-3xl border border-gray-100 shadow-2xl p-6">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl mb-4">⚠️</div>
+            <h2 id="archive-course-title" className="text-lg font-black text-gray-900">Archive Course?</h2>
+            <p className="text-xs text-gray-600 leading-relaxed mt-2">
+              This Course will no longer be available as an active Course. Do you want to continue?
+            </p>
+            <p className="text-[11px] text-gray-400 mt-3">
+              {archiveTarget.subjectName} ({archiveTarget.courseCode}) will remain available as historical Course information, but new enrollment requests will be disabled.
+            </p>
 
-
-              <h2
-                className="
-                  text-lg
-                  font-bold
-                  text-gray-800
-                "
-              >
-                Archive Course?
-              </h2>
-
-
-              <p
-                className="
-                  text-sm
-                  text-gray-500
-                  mt-2
-                "
-              >
-                This Course will no
-                longer be available as
-                an active Course. Do you
-                want to continue?
-              </p>
-
-
-              <div
-                className="
-                  mt-4
-                  bg-gray-50
-                  rounded-lg
-                  px-3
-                  py-3
-                "
-              >
-                <p
-                  className="
-                    text-sm
-                    font-semibold
-                    text-gray-700
-                  "
-                >
-                  {
-                    courseToArchive
-                      .subjectName
-                  }
-                </p>
-
-
-                <p
-                  className="
-                    text-xs
-                    text-gray-400
-                    mt-1
-                  "
-                >
-                  {
-                    courseToArchive
-                      .courseCode
-                  }
-                </p>
-              </div>
-
-
-              <p
-                className="
-                  text-xs
-                  text-gray-400
-                  mt-4
-                "
-              >
-                The enrollment code will
-                no longer be available
-                for new enrollment.
-                Existing historical data
-                will be preserved.
-              </p>
-            </div>
-
-
-            <div
-              className="
-                px-6
-                py-4
-                border-t
-                border-gray-100
-                flex
-                justify-end
-                gap-3
-              "
-            >
+            <div className="flex justify-end gap-3 mt-6">
               <button
                 type="button"
-                onClick={
-                  closeArchiveDialog
-                }
-                className="
-                  text-sm
-                  font-semibold
-                  text-gray-600
-                  bg-gray-100
-                  px-4
-                  py-2
-                  rounded-lg
-                  hover:bg-gray-200
-                "
+                onClick={cancelArchive}
+                disabled={archiving}
+                className="px-5 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition disabled:opacity-50"
               >
                 Cancel
               </button>
-
-
               <button
                 type="button"
-                onClick={
-                  handleArchiveCourse
-                }
-                className="
-                  text-sm
-                  font-semibold
-                  text-white
-                  bg-amber-600
-                  hover:bg-amber-700
-                  px-4
-                  py-2
-                  rounded-lg
-                "
+                onClick={confirmArchive}
+                disabled={archiving}
+                className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition shadow-sm disabled:opacity-50"
               >
-                Archive Course
+                {archiving ? 'Archiving...' : 'Confirm Archive'}
               </button>
             </div>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

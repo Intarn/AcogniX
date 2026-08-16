@@ -1,5 +1,23 @@
+// backend/controllers/CourseContentController.js
 const CourseContentService = require('../service/CourseContentService');
 const { UserRole } = require('../enums/AuthEnums');
+
+/**
+ * Xử lý lỗi tập trung cho CourseContentController
+ */
+function handleControllerError(error, res) {
+  if (error.statusCode) {
+    return res.status(error.statusCode).json({
+      code: error.code || 'ERROR',
+      message: error.message
+    });
+  }
+  console.error('[CourseContentController Error]:', error);
+  return res.status(500).json({
+    code: 'INTERNAL_SERVER_ERROR',
+    message: error.message || 'An unexpected error occurred.'
+  });
+}
 
 class CourseContentController {
   static async uploadMaterial(req, res) {
@@ -9,11 +27,18 @@ class CourseContentController {
       const { title, description, resourceType, linkUrl } = req.body;
       const file = req.file;
 
-      const material = await CourseContentService.addMaterial(educatorId, courseId, title, description, resourceType, file, linkUrl);
-      return res.status(201).json({ message: "Material uploaded successfully.", material });
+      const material = await CourseContentService.addMaterial(
+        educatorId,
+        courseId,
+        title,
+        description,
+        resourceType,
+        file,
+        linkUrl
+      );
+      return res.status(201).json({ message: 'Material uploaded successfully.', material });
     } catch (error) {
-      const status = error.statusCode || 500;
-      return res.status(status).json({ message: error.message });
+      return handleControllerError(error, res);
     }
   }
 
@@ -22,17 +47,13 @@ class CourseContentController {
       const educatorId = req.user.userId;
       const { materialId } = req.params;
       const { title, description, resourceType, linkUrl } = req.body;
-      const file = req.file; // Captured new file from multer
+      const file = req.file;
 
-      // Encapsulate update data
       const updates = { title, description, resourceType, linkUrl };
-    
-      // Pass the new file to the service to replace the old one in Supabase Storage if provided
       const material = await CourseContentService.updateMaterial(educatorId, materialId, updates, file);
-      return res.status(200).json({ message: "Material updated successfully.", material });
+      return res.status(200).json({ message: 'Material updated successfully.', material });
     } catch (error) {
-      const status = error.statusCode || 500;
-      return res.status(status).json({ message: error.message });
+      return handleControllerError(error, res);
     }
   }
 
@@ -40,161 +61,103 @@ class CourseContentController {
     try {
       const educatorId = req.user.userId;
       const { materialId } = req.params;
-
       await CourseContentService.deleteMaterial(educatorId, materialId);
-      return res.status(200).json({ message: "Material deleted successfully from class and synchronized workspaces." });
+      return res.status(200).json({ message: 'Material deleted successfully from class and synchronized workspaces.' });
     } catch (error) {
-      const status = error.statusCode || 500;
-      return res.status(status).json({ message: error.message });
+      return handleControllerError(error, res);
     }
   }
 
   static async getMaterials(req, res) {
     try {
-      const { courseId } =
-        req.params;
-
-      const userId =
-        req.user.userId;
-
-      const role =
-        req.user.role;
-
+      const { courseId } = req.params;
+      const userId = req.user.userId;
+      const role = req.user.role;
       let materials;
 
-      if (
-        role ===
-        UserRole.EDUCATOR
-      ) {
-        materials =
-          await CourseContentService
-            .getMaterialsForEducator(
-              userId,
-              courseId
-            );
-      } else if (
-        role ===
-        UserRole.LEARNER
-      ) {
-        materials =
-          await CourseContentService
-            .getMaterialsForLearner(
-              userId,
-              courseId
-            );
+      if (role === UserRole.EDUCATOR) {
+        materials = await CourseContentService.getMaterialsForEducator(userId, courseId);
+      } else if (role === UserRole.LEARNER) {
+        materials = await CourseContentService.getMaterialsForLearner(userId, courseId);
       } else {
-        return res
-          .status(403)
-          .json({
-            message:
-              'You do not have permission to access this class content.'
-          });
+        return res.status(403).json({ message: 'You do not have permission to access this class content.' });
       }
 
-      return res
-        .status(200)
-        .json({
-          materials
-        });
+      return res.status(200).json({ materials });
     } catch (error) {
-      const status =
-        error.statusCode || 500;
+      return handleControllerError(error, res);
+    }
+  }
 
-      return res
-        .status(status)
-        .json({
-          message:
-            error.message
-        });
+  static async getMaterialFile(req, res) {
+    try {
+      const result = await CourseContentService.getMaterialFileForLearner(
+        req.user.userId,
+        req.params.materialId
+      );
+
+      const disposition = req.query.download === '1' ? 'attachment' : 'inline';
+      const safeFileName = String(result.fileName || 'course-material')
+        .replace(/[^\x20-\x7E]|[\r\n"]/g, '_');
+
+      res.setHeader('Content-Type', result.mimeType || 'application/octet-stream');
+      res.setHeader('Content-Length', result.buffer.length);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${safeFileName}"`);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      return res.status(200).send(result.buffer);
+    } catch (error) {
+      return handleControllerError(error, res);
     }
   }
 
   static async postAnnouncement(req, res) {
     try {
-      const educatorId = req.user.userId;
-      const { courseId } = req.params;
       const { title, body } = req.body;
-      const files = req.files; // multiple files
+      const files = req.files;
 
-      const result = await CourseContentService.publishAnnouncement(educatorId, courseId, title, body, files);
-
-      // UC-17 Alt Flow 3: Email Service Failure
-      if (result.emailFailed) {
-        return res.status(201).json({ 
-          message: "The announcement was posted successfully, but email notifications could not be sent at this time due to a server issue.", 
-          announcement: result.announcement 
-        });
-      }
-
-      return res.status(201).json({ message: "Announcement posted successfully.", announcement: result.announcement });
+      const result = await CourseContentService.publishAnnouncement(
+        req.user.userId,
+        req.params.courseId,
+        title,
+        body,
+        files
+      );
+      return res.status(201).json({
+        message: 'Announcement posted successfully.',
+        ...result
+      });
     } catch (error) {
-      const status = error.statusCode || 500;
-      // UC-17 Alt Flow 1: Missing Required Fields is naturally handled here (400 Bad Request)
-      return res.status(status).json({ message: error.message });
+      return handleControllerError(error, res);
     }
   }
 
-  static async getAnnouncements(
-    req,
-    res
-  ) {
+  static async getAnnouncements(req, res) {
     try {
-      const {
-        courseId
-      } = req.params;
-
-      const userId =
-        req.user.userId;
-
-      const role =
-        req.user.role;
-
+      const { courseId } = req.params;
+      const userId = req.user.userId;
+      const role = req.user.role;
       let announcements;
 
-      if (
-        role ===
-        UserRole.EDUCATOR
-      ) {
-        announcements =
-          await CourseContentService
-            .getAnnouncementsForEducator(
-              userId,
-              courseId
-            );
-      } else if (
-        role ===
-        UserRole.LEARNER
-      ) {
-        announcements =
-          await CourseContentService
-            .getAnnouncementsForLearner(
-              userId,
-              courseId
-            );
+      if (role === UserRole.EDUCATOR) {
+        announcements = await CourseContentService.getAnnouncementsForEducator(userId, courseId);
+      } else if (role === UserRole.LEARNER) {
+        announcements = await CourseContentService.getAnnouncementsForLearner(userId, courseId);
       } else {
-        return res
-          .status(403)
-          .json({
-            message:
-              'You do not have permission to access this class content.'
-          });
+        return res.status(403).json({ message: 'You do not have permission to access this class content.' });
       }
 
-      return res
-        .status(200)
-        .json({
-          announcements
-        });
+      return res.status(200).json({ announcements });
     } catch (error) {
-      const status =
-        error.statusCode || 500;
+      return handleControllerError(error, res);
+    }
+  }
 
-      return res
-        .status(status)
-        .json({
-          message:
-            error.message
-        });
+  static async deleteAnnouncement(req, res) {
+    try {
+      await CourseContentService.deleteAnnouncement(req.user.userId, req.params.announcementId);
+      return res.status(200).json({ message: 'Announcement deleted successfully.' });
+    } catch (error) {
+      return handleControllerError(error, res);
     }
   }
 }

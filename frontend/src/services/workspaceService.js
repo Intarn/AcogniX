@@ -11,6 +11,13 @@ export const getWorkspaceData = async () => {
   }
 };
 
+export const updateProjectActiveContext = async (projectId, selectedMaterialIds) => {
+  return await apiRequest(`/workspace/projects/${projectId}/context`, {
+    method: 'PUT',
+    body: JSON.stringify({ selectedMaterialIds })
+  });
+};
+
 // Lấy danh sách tài liệu hoặc tạo project mới nếu cần
 export const createWorkspaceProject = async (name, workspaceId, courseId = null) => {
   try {

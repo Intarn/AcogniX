@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { getWeeklyReportNotifications } from '../../services/analyticsService';
 
 // ==========================================
 // MOCK DATA: THÔNG BÁO THEO TỪNG VAI TRÒ
@@ -54,15 +55,6 @@ const MOCK_NOTIFICATIONS = {
       createdAt: new Date().toISOString(),
       read: false,
       link: '/educator/courses/c-101/members'
-    },
-    {
-      id: 'e2',
-      title: 'Báo cáo hiệu suất lớp học (Tuần)',
-      message: 'Hệ thống đã tổng hợp báo cáo. Có 3 sinh viên cần được chú ý.',
-      type: 'WEEKLY_REPORT',
-      createdAt: new Date(Date.now() - 43200000).toISOString(), // 12 tiếng trước
-      read: false,
-      link: '/educator/courses/c-101/analytics'
     }
   ],
   SYSTEM_ADMINISTRATOR: [
@@ -93,12 +85,42 @@ export default function NotificationPopover() {
   const [notifications, setNotifications] = useState([]);
   const popoverRef = useRef(null);
 
-  // Load danh sách thông báo tương ứng với Role
+  // Keep the existing placeholder notifications for unrelated use cases, but
+  // UC11 weekly reports must come from the backend rather than mock data.
   useEffect(() => {
-    if (user?.role) {
+    let cancelled = false;
+
+    async function loadNotifications() {
+      if (!user?.role) {
+        setNotifications([]);
+        return;
+      }
+
       const roleKey = String(user.role).toUpperCase();
-      setNotifications(MOCK_NOTIFICATIONS[roleKey] || []);
+      const baseNotifications = MOCK_NOTIFICATIONS[roleKey] || [];
+
+      if (roleKey !== 'EDUCATOR') {
+        setNotifications(baseNotifications);
+        return;
+      }
+
+      setNotifications(baseNotifications);
+      try {
+        const response = await getWeeklyReportNotifications();
+        if (cancelled) return;
+        const weeklyNotifications = Array.isArray(response?.notifications)
+          ? response.notifications
+          : [];
+        setNotifications([...weeklyNotifications, ...baseNotifications]);
+      } catch (error) {
+        // Other notification types remain available even if the weekly-report
+        // endpoint is temporarily unavailable.
+        if (!cancelled) setNotifications(baseNotifications);
+      }
     }
+
+    loadNotifications();
+    return () => { cancelled = true; };
   }, [user]);
 
   const unreadCount = notifications.filter(n => !n.read).length;

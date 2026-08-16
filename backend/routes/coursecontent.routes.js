@@ -31,6 +31,12 @@ router.delete(
   CourseContentController.deleteMaterial
 );
 
+router.delete(
+  '/announcements/:announcementId',
+  authorize(UserRole.EDUCATOR),
+  CourseContentController.deleteAnnouncement
+);
+
 // UC-17: Post Announcements
 router.post(
   '/:courseId/announcements', 
@@ -40,6 +46,12 @@ router.post(
 );
 
 // UC-16: View Materials and Announcements
+router.get(
+  '/materials/:materialId/file',
+  authorize(UserRole.LEARNER),
+  CourseContentController.getMaterialFile
+);
+
 router.get(
   '/:courseId/materials', 
   authorize(UserRole.LEARNER, UserRole.EDUCATOR), 

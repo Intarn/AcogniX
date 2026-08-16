@@ -1,6 +1,7 @@
 const supabase = require('../config/supabaseClient');
 const crypto = require('crypto');
 const { CourseStatus } = require('../enums/CourseEnums');
+const WorkspaceIntegrationService = require('./WorkspaceIntegrationService');
 
 function generateEnrollmentCode() {
   return crypto.randomBytes(4).toString('hex').toUpperCase(); // e.g. "A1B2C3D4"
@@ -137,6 +138,13 @@ class CourseService {
       throw err;
     }
 
+    try {
+      await WorkspaceIntegrationService.archiveClassProjects(courseId);
+    } catch (integrationError) {
+      // WorkspaceService also self-heals from Course.status on the next load.
+      console.error('[CourseService] Failed to archive Class Projects:', integrationError);
+    }
+
     return data;
   }
 
@@ -208,6 +216,13 @@ class CourseService {
       err.status = 500;
       throw err;
     }
+
+    try {
+      await WorkspaceIntegrationService.archiveClassProjects(courseId);
+    } catch (integrationError) {
+      console.error('[CourseService] Failed to archive Class Projects:', integrationError);
+    }
+
     return data;
   }
 

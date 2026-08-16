@@ -1,59 +1,33 @@
+// backend/routes/workspace.routes.js
 const express = require('express');
 const multer = require('multer');
 const WorkspaceController = require('../controllers/WorkspaceController');
-const { requireAuth, authorize } = require('../middleware/authMiddleware');
 const NoteController = require('../controllers/NoteController');
+const { requireAuth, authorize } = require('../middleware/authMiddleware');
 const { UserRole } = require('../enums/AuthEnums');
-const router = express.Router();
 
-// Use multer to store file in RAM (buffer) before uploading to Supabase
+const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Routes requiring authentication
 router.use(requireAuth);
+router.use(authorize(UserRole.LEARNER));
 
+// Project CRUD
 router.get('/', WorkspaceController.getWorkspaceData);
 router.post('/projects', WorkspaceController.createProject);
+router.patch('/projects/:projectId/rename', WorkspaceController.renameProject);
+router.delete('/projects/:projectId', WorkspaceController.deleteProject);
+router.put('/projects/:projectId/context', WorkspaceController.updateActiveContext);
 
-// Route to handle file upload (expects field named 'material')
+// Materials
 router.post('/projects/:projectId/materials', upload.single('material'), WorkspaceController.uploadMaterial);
-
 router.delete('/projects/:projectId/materials/:materialId', WorkspaceController.deleteMaterial);
-// UC-25: Get all Personal Notes in an AI Project
-router.get(
-  '/projects/:projectId/notes',
-  authorize(UserRole.LEARNER),
-  NoteController.getProjectNotes
-);
 
-router.get(
-    '/notes',
-    requireAuth,
-    authorize(
-        UserRole.LEARNER
-    ),
-    NoteController.getAllNotes
-);
-
-// UC-25: Save a new Personal Note
-router.post(
-  '/projects/:projectId/notes',
-  authorize(UserRole.LEARNER),
-  NoteController.createNote
-);
-
-// UC-25: Update an existing Personal Note
-router.patch(
-  '/notes/:noteId',
-  authorize(UserRole.LEARNER),
-  NoteController.updateNote
-);
-
-// UC-25: Delete a Personal Note
-router.delete(
-  '/notes/:noteId',
-  authorize(UserRole.LEARNER),
-  NoteController.deleteNote
-);
+// Notes
+router.get('/projects/:projectId/notes', NoteController.getProjectNotes);
+router.get('/notes', NoteController.getAllNotes);
+router.post('/projects/:projectId/notes', NoteController.createNote);
+router.patch('/notes/:noteId', NoteController.updateNote);
+router.delete('/notes/:noteId', NoteController.deleteNote);
 
 module.exports = router;

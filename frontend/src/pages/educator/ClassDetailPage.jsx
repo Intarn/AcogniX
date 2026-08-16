@@ -1,209 +1,78 @@
-import {
-  useEffect,
-  useState
-} from 'react';
-
-import {
-  Link,
-  useNavigate,
-  useParams
-} from 'react-router';
-
-import {
-  getCourses
-} from '../../features/classroom/courseApi';
-
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { getCourses } from '../../features/classroom/courseApi';
 
 export default function ClassDetailPage() {
-  const navigate =
-    useNavigate();
+  const navigate = useNavigate();
+  const { courseId: routeCourseId } = useParams();
+  const courseId = routeCourseId || null;
 
-  const {
-    courseId:
-      routeCourseId
-  } = useParams();
+  const [course, setCourse] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [copied, setCopied] = useState(false);
 
-
-  const [
-    course,
-    setCourse
-  ] = useState(null);
-
-
-  const [
-    loading,
-    setLoading
-  ] = useState(true);
-
-  const [
-    loadError,
-    setLoadError
-  ] = useState(''); 
-
-  const [
-    copied,
-    setCopied
-  ] = useState(false);
-
-
-  const courseId =
-    routeCourseId || null;
-
-  
   useEffect(() => {
     if (!courseId) {
       setCourse(null);
       setLoading(false);
-
       return;
     }
-
-
     let cancelled = false;
-
 
     async function loadCourse() {
       try {
         setLoading(true);
         setLoadError('');
-
-
-        const result =
-          await getCourses();
-
-
-        const courses =
-          Array.isArray(
-            result?.courses
-          )
-            ? result.courses
-            : [];
-
-
-        const foundCourse =
-          courses.find(
-            (item) =>
-              String(
-                item.courseId
-              ) ===
-              String(courseId)
-          );
-
-
+        const result = await getCourses();
+        const courses = Array.isArray(result?.courses) ? result.courses : [];
+        const foundCourse = courses.find((item) => String(item.courseId) === String(courseId));
         if (!cancelled) {
-          setCourse(
-            foundCourse || null
-          );
+          setCourse(foundCourse || null);
         }
       } catch (error) {
         if (!cancelled) {
-          console.error(
-            'Unable to load course:',
-            error
-          );
-
-
-          setLoadError(
-            error.message ||
-            'Unable to load course.'
-          );
+          console.error('Unable to load course:', error);
+          setLoadError(error.message || 'Unable to load course.');
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
-
-
     loadCourse();
-
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [courseId]);
 
-
   async function handleCopyEnrollmentCode() {
-    if (
-      !course?.enrollmentCode ||
-      course.status ===
-        'ARCHIVED'
-    ) {
-      return;
-    }
-
-
+    if (!course?.enrollmentCode || course.status === 'ARCHIVED') return;
     try {
-      await navigator.clipboard.writeText(
-        course.enrollmentCode
-      );
-
+      await navigator.clipboard.writeText(course.enrollmentCode);
       setCopied(true);
-
-
-      setTimeout(
-        () => {
-          setCopied(false);
-        },
-        1800
-      );
+      setTimeout(() => setCopied(false), 1800);
     } catch {
-      /*
-       * Clipboard API may be blocked
-       * in some browser contexts.
-       *
-       * Do not crash the page.
-       */
-      alert(
-        `Enrollment Code: ${course.enrollmentCode}`
-      );
+      alert(`Enrollment Code: ${course.enrollmentCode}`);
     }
   }
 
-
-  /*
-   * LOADING STATE
-   */
   if (loading) {
     return (
-      <div
-        className="
-          flex-1
-          flex
-          items-center
-          justify-center
-          text-sm
-          text-gray-500
-        "
-      >
-        Loading course...
+      <div className="flex-1 flex items-center justify-center p-8 bg-gray-50/50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-blue-600 border-t-transparent animate-spin"></div>
+          <p className="text-xs font-bold text-gray-500">Loading course details...</p>
+        </div>
       </div>
     );
   }
 
-  if (loadError) {
+  if (loadError || !course) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white rounded-xl border border-red-100 shadow-sm p-8 text-center">
-          <h1 className="text-lg font-bold text-gray-800">
-            Unable to Load Course
-          </h1>
-
-          <p className="text-sm text-gray-500 mt-2">
-            {loadError}
-          </p>
-
-          <button
-            type="button"
-            onClick={() =>
-              navigate(
-                '/educator/courses'
-              )
-            }
-            className="mt-5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg"
-          >
+      <div className="flex-1 flex items-center justify-center p-6 bg-gray-50/50">
+        <div className="max-w-md w-full bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center space-y-4">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-red-50 text-red-500 flex items-center justify-center text-2xl font-bold">!</div>
+          <h1 className="text-lg font-black text-gray-800">Course Not Found</h1>
+          <p className="text-xs text-gray-500">{loadError || 'The requested course does not exist.'}</p>
+          <button onClick={() => navigate('/educator/courses')} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-6 py-3 rounded-2xl shadow-md transition">
             Back to My Courses
           </button>
         </div>
@@ -211,1096 +80,128 @@ export default function ClassDetailPage() {
     );
   }
 
-  /*
-   * COURSE NOT FOUND
-   */
-  if (!course) {
-    return (
-      <div
-        className="
-          flex-1
-          flex
-          items-center
-          justify-center
-          p-6
-        "
-      >
-        <div
-          className="
-            max-w-md
-            w-full
-            bg-white
-            rounded-xl
-            border
-            border-gray-100
-            shadow-sm
-            p-8
-            text-center
-          "
-        >
-          <div
-            className="
-              w-14
-              h-14
-              mx-auto
-              rounded-full
-              bg-red-50
-              flex
-              items-center
-              justify-center
-              mb-4
-            "
-          >
-            <svg
-              className="
-                w-7
-                h-7
-                text-red-500
-              "
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.667 1.73-3L13.73 4c-.77-1.333-2.69-1.333-3.46 0L3.34 16c-.77 1.333.19 3 1.73 3z"
-              />
-            </svg>
-          </div>
-
-
-          <h1
-            className="
-              text-lg
-              font-bold
-              text-gray-800
-            "
-          >
-            Course Not Found
-          </h1>
-
-
-          <p
-            className="
-              text-sm
-              text-gray-500
-              mt-2
-            "
-          >
-            The requested course does
-            not exist or is no longer
-            available.
-          </p>
-
-
-          <button
-            type="button"
-            onClick={() =>
-              navigate(
-                '/educator/courses'
-              )
-            }
-            className="
-              mt-5
-              bg-blue-600
-              hover:bg-blue-700
-              text-white
-              text-sm
-              font-semibold
-              px-5
-              py-2.5
-              rounded-lg
-            "
-          >
-            Back to My Courses
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-
-  const isArchived =
-    course.status ===
-    'ARCHIVED';
-
+  const isArchived = course.status === 'ARCHIVED';
 
   return (
-    <>
-      {/* TOPBAR */}
-      <header
-        className="
-          min-h-16
-          bg-white
-          border-b
-          border-gray-100
-          flex
-          items-center
-          justify-between
-          gap-4
-          px-6
-          py-3
-          flex-shrink-0
-        "
-      >
-        <div
-          className="
-            min-w-0
-          "
-        >
-          <div
-            className="
-              flex
-              items-center
-              gap-2
-              text-xs
-              text-gray-400
-              mb-1
-            "
-          >
-            <Link
-              to="/educator/courses"
-              className="
-                hover:text-blue-600
-              "
-            >
-              My Courses
-            </Link>
-
-            <span>
-              /
-            </span>
-
-            <span
-              className="
-                truncate
-              "
-            >
-              {
-                course.subjectName
-              }
-            </span>
+    <div className="flex-1 flex flex-col h-full bg-gray-50/50 overflow-hidden">
+      {/* HEADER */}
+      <header className="min-h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 py-4 flex-shrink-0">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-gray-400 mb-1">
+            <Link to="/educator/courses" className="hover:text-blue-600 transition-colors">My Courses</Link>
+            <span>/</span>
+            <span className="text-gray-700 truncate">{course.subjectName}</span>
           </div>
-
-
-          <div
-            className="
-              flex
-              items-center
-              gap-3
-              flex-wrap
-            "
-          >
-            <h1
-              className="
-                text-lg
-                font-bold
-                text-gray-800
-              "
-            >
-              {
-                course.subjectName
-              }
-            </h1>
-
-
-            <span
-              className={`
-                inline-flex
-                items-center
-                rounded-full
-                px-2.5
-                py-1
-                text-[10px]
-                font-bold
-
-                ${
-                  isArchived
-                    ? `
-                      bg-gray-100
-                      text-gray-600
-                    `
-                    : `
-                      bg-green-100
-                      text-green-700
-                    `
-                }
-              `}
-            >
-              {
-                course.status
-              }
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-xl font-black text-gray-900 tracking-tight">{course.subjectName}</h1>
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${isArchived ? 'bg-gray-200 text-gray-600' : 'bg-emerald-100 text-emerald-700'}`}>
+              {course.status}
             </span>
           </div>
         </div>
-
-
         {!isArchived && (
-          <Link
-            to={
-              `/educator/courses/${course.courseId}/edit`
-            }
-            className="
-              bg-blue-600
-              hover:bg-blue-700
-              text-white
-              text-xs
-              font-semibold
-              px-4
-              py-2
-              rounded-lg
-              shadow-sm
-              whitespace-nowrap
-            "
-          >
+          <Link to={`/educator/courses/${course.courseId}/edit`} className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-5 py-2.5 rounded-xl transition shadow-xs whitespace-nowrap">
             Edit Course
           </Link>
         )}
       </header>
 
-
-      {/* MAIN */}
-      <main
-        className="
-          flex-1
-          min-h-0
-          overflow-y-auto
-          p-6
-          space-y-6
-        "
-      >
-
-        {/* ARCHIVED NOTICE */}
+      {/* MAIN CONTENT */}
+      <main className="flex-1 overflow-y-auto p-8 space-y-6">
         {isArchived && (
-          <div
-            className="
-              bg-amber-50
-              border
-              border-amber-200
-              rounded-xl
-              px-4
-              py-3
-            "
-          >
-            <div
-              className="
-                flex
-                items-start
-                gap-3
-              "
-            >
-              <svg
-                className="
-                  w-5
-                  h-5
-                  text-amber-600
-                  flex-shrink-0
-                  mt-0.5
-                "
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.667 1.73-3L13.73 4c-.77-1.333-2.69-1.333-3.46 0L3.34 16c-.77 1.333.19 3 1.73 3z"
-                />
-              </svg>
-
-
-              <div>
-                <p
-                  className="
-                    text-sm
-                    font-semibold
-                    text-amber-800
-                  "
-                >
-                  This course is
-                  archived.
-                </p>
-
-                <p
-                  className="
-                    text-xs
-                    text-amber-700
-                    mt-1
-                  "
-                >
-                  New enrollment is
-                  disabled. Historical
-                  course data remains
-                  available for viewing.
-                </p>
-              </div>
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded-2xl px-5 py-4 flex items-center gap-3">
+            <span className="text-lg">⚠️</span>
+            <div>
+              <p>This course is archived.</p>
+              <p className="font-medium text-amber-700 mt-0.5">New enrollment is disabled. Historical data remains available for viewing only.</p>
             </div>
           </div>
         )}
 
-
-        {/* COURSE SUMMARY */}
-        <section
-          className="
-            bg-white
-            rounded-xl
-            border
-            border-gray-100
-            shadow-sm
-            overflow-hidden
-          "
-        >
-          <div
-            className="
-              px-6
-              py-4
-              border-b
-              border-gray-100
-            "
-          >
-            <h2
-              className="
-                text-base
-                font-bold
-                text-gray-800
-              "
-            >
-              Course Overview
-            </h2>
-
-            <p
-              className="
-                text-xs
-                text-gray-400
-                mt-1
-              "
-            >
-              Basic information and
-              classroom access details.
-            </p>
+        {/* COURSE SUMMARY CARD */}
+        <section className="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
+          <div className="px-6 py-5 border-b border-gray-50">
+            <h2 className="text-base font-black text-gray-900">Course Overview</h2>
+            <p className="text-xs text-gray-400 mt-0.5 font-medium">Basic information and classroom access details.</p>
           </div>
-
-
-          <div
-            className="
-              p-6
-            "
-          >
-            <div
-              className="
-                grid
-                grid-cols-1
-                md:grid-cols-3
-                gap-5
-              "
-            >
-
-              {/* COURSE CODE */}
-              <div
-                className="
-                  bg-gray-50
-                  rounded-xl
-                  p-4
-                "
-              >
-                <p
-                  className="
-                    text-[11px]
-                    uppercase
-                    font-semibold
-                    text-gray-400
-                  "
-                >
-                  Course Code
-                </p>
-
-                <p
-                  className="
-                    text-base
-                    font-bold
-                    text-gray-800
-                    mt-2
-                  "
-                >
-                  {
-                    course.courseCode
-                  }
-                </p>
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {/* CODE */}
+              <div className="bg-gray-50/60 rounded-2xl p-5 border border-gray-100">
+                <p className="text-[10px] uppercase font-black text-gray-400 tracking-wider">Course Code</p>
+                <p className="text-lg font-black text-gray-900 mt-1">{course.courseCode}</p>
               </div>
-
-
               {/* ENROLLMENT CODE */}
-              <div
-                className="
-                  bg-gray-50
-                  rounded-xl
-                  p-4
-                "
-              >
-                <p
-                  className="
-                    text-[11px]
-                    uppercase
-                    font-semibold
-                    text-gray-400
-                  "
-                >
-                  Enrollment Code
-                </p>
-
-
-                <div
-                  className="
-                    mt-2
-                    flex
-                    items-center
-                    justify-between
-                    gap-3
-                  "
-                >
-                  <p
-                    className={`
-                      text-base
-                      font-bold
-                      tracking-wider
-
-                      ${
-                        isArchived
-                          ? 'text-gray-400'
-                          : 'text-gray-800'
-                      }
-                    `}
-                  >
-                    {
-                      course.enrollmentCode ||
-                      'N/A'
-                    }
+              <div className="bg-gray-50/60 rounded-2xl p-5 border border-gray-100">
+                <p className="text-[10px] uppercase font-black text-gray-400 tracking-wider">Enrollment Code</p>
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <p className={`text-lg font-black tracking-widest ${isArchived ? 'text-gray-400' : 'text-blue-600'}`}>
+                    {course.enrollmentCode || 'N/A'}
                   </p>
-
-
                   {course.enrollmentCode && !isArchived && (
                     <button
-                      type="button"
-                      onClick={
-                        handleCopyEnrollmentCode
-                      }
-                      className={`
-                        text-[11px]
-                        font-semibold
-                        px-2.5
-                        py-1.5
-                        rounded-lg
-
-                        ${
-                          copied
-                            ? `
-                              text-green-700
-                              bg-green-100
-                            `
-                            : `
-                              text-blue-600
-                              bg-blue-50
-                              hover:bg-blue-100
-                            `
-                        }
-                      `}
+                      onClick={handleCopyEnrollmentCode}
+                      className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-colors ${copied ? 'bg-emerald-100 text-emerald-700' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 shadow-xs'}`}
                     >
-                      {
-                        copied
-                          ? 'Copied'
-                          : 'Copy'
-                      }
+                      {copied ? 'Copied!' : 'Copy Code'}
                     </button>
                   )}
                 </div>
-
-
-                {isArchived && (
-                  <p
-                    className="
-                      text-[10px]
-                      text-gray-400
-                      mt-2
-                    "
-                  >
-                    Disabled for new
-                    enrollment.
-                  </p>
-                )}
               </div>
-
-
               {/* STATUS */}
-              <div
-                className="
-                  bg-gray-50
-                  rounded-xl
-                  p-4
-                "
-              >
-                <p
-                  className="
-                    text-[11px]
-                    uppercase
-                    font-semibold
-                    text-gray-400
-                  "
-                >
-                  Status
-                </p>
-
-
-                <div className="mt-2">
-                  <span
-                    className={`
-                      inline-flex
-                      rounded-full
-                      px-3
-                      py-1
-                      text-xs
-                      font-bold
-
-                      ${
-                        isArchived
-                          ? `
-                            bg-gray-200
-                            text-gray-600
-                          `
-                          : `
-                            bg-green-100
-                            text-green-700
-                          `
-                      }
-                    `}
-                  >
-                    {
-                      course.status
-                    }
-                  </span>
-                </div>
+              <div className="bg-gray-50/60 rounded-2xl p-5 border border-gray-100">
+                <p className="text-[10px] uppercase font-black text-gray-400 tracking-wider">Status</p>
+                <p className="text-lg font-black text-gray-900 mt-1 capitalize">{course.status.toLowerCase()}</p>
               </div>
             </div>
-
-
-            {/* DESCRIPTION */}
-            <div
-              className="
-                mt-6
-              "
-            >
-              <p
-                className="
-                  text-xs
-                  uppercase
-                  font-semibold
-                  text-gray-400
-                "
-              >
-                Description
-              </p>
-
-
-              <p
-                className="
-                  text-sm
-                  text-gray-600
-                  leading-6
-                  mt-2
-                  whitespace-pre-wrap
-                "
-              >
-                {
-                  course.description ||
-                  'No description provided.'
-                }
+            <div className="mt-6">
+              <p className="text-[10px] uppercase font-black text-gray-400 tracking-wider mb-2">Description</p>
+              <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap bg-gray-50/40 p-4 rounded-2xl border border-gray-50">
+                {course.description || 'No description provided.'}
               </p>
             </div>
           </div>
         </section>
 
-
-        {/* CLASSROOM MANAGEMENT */}
+        {/* CLASSROOM HUB */}
         <section>
-          <div
-            className="
-              mb-4
-            "
-          >
-            <h2
-              className="
-                text-base
-                font-bold
-                text-gray-800
-              "
-            >
-              Classroom Management
-            </h2>
-
-            <p
-              className="
-                text-xs
-                text-gray-400
-                mt-1
-              "
-            >
-              Manage classroom content,
-              learners, assessments,
-              and performance.
-            </p>
+          <div className="mb-5">
+            <h2 className="text-base font-black text-gray-900">Classroom Management</h2>
+            <p className="text-xs text-gray-400 mt-0.5 font-medium">Manage content, members, assessments, and track performance.</p>
           </div>
-
-
-          <div
-            className="
-              grid
-              grid-cols-1
-              md:grid-cols-2
-              xl:grid-cols-3
-              gap-4
-            "
-          >
-
-            {/* MATERIALS */}
-            <Link
-              to={
-                `/educator/courses/${course.courseId}/materials`
-              }
-              className="
-                bg-white
-                rounded-xl
-                border
-                border-gray-100
-                shadow-sm
-                p-5
-                hover:border-blue-200
-                hover:shadow-md
-                transition
-              "
-            >
-              <div
-                className="
-                  w-10
-                  h-10
-                  rounded-lg
-                  bg-blue-50
-                  flex
-                  items-center
-                  justify-center
-                "
-              >
-                <svg
-                  className="
-                    w-5
-                    h-5
-                    text-blue-600
-                  "
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2zm2 4h6m-6 4h6m-6 4h4"
-                  />
-                </svg>
-              </div>
-
-
-              <h3
-                className="
-                  text-sm
-                  font-bold
-                  text-gray-800
-                  mt-4
-                "
-              >
-                Materials
-              </h3>
-
-              <p
-                className="
-                  text-xs
-                  text-gray-500
-                  mt-1
-                "
-              >
-                Upload, edit, organize,
-                and remove classroom
-                learning materials.
-              </p>
-            </Link>
-
-
-            {/* MEMBERS */}
-            <Link
-              to={
-                `/educator/courses/${course.courseId}/members`
-              }
-              className="
-                bg-white
-                rounded-xl
-                border
-                border-gray-100
-                shadow-sm
-                p-5
-                hover:border-blue-200
-                hover:shadow-md
-                transition
-              "
-            >
-              <div
-                className="
-                  w-10
-                  h-10
-                  rounded-lg
-                  bg-violet-50
-                  flex
-                  items-center
-                  justify-center
-                "
-              >
-                <svg
-                  className="
-                    w-5
-                    h-5
-                    text-violet-600
-                  "
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2a5 5 0 0110 0v2M12 11a4 4 0 100-8 4 4 0 000 8z"
-                  />
-                </svg>
-              </div>
-
-
-              <h3
-                className="
-                  text-sm
-                  font-bold
-                  text-gray-800
-                  mt-4
-                "
-              >
-                Members
-              </h3>
-
-              <p
-                className="
-                  text-xs
-                  text-gray-500
-                  mt-1
-                "
-              >
-                Review enrollment
-                requests and manage
-                enrolled learners.
-              </p>
-            </Link>
-
-
-            {/* ANNOUNCEMENTS */}
-            <Link
-              to={
-                `/educator/courses/${course.courseId}/announcements`
-              }
-              className="
-                bg-white
-                rounded-xl
-                border
-                border-gray-100
-                shadow-sm
-                p-5
-                hover:border-blue-200
-                hover:shadow-md
-                transition
-              "
-            >
-              <div
-                className="
-                  w-10
-                  h-10
-                  rounded-lg
-                  bg-amber-50
-                  flex
-                  items-center
-                  justify-center
-                "
-              >
-                <svg
-                  className="
-                    w-5
-                    h-5
-                    text-amber-600
-                  "
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M11 5h2m-1-1v2m7 5a7 7 0 01-7 7H8l-4 3v-6a7 7 0 117-4z"
-                  />
-                </svg>
-              </div>
-
-
-              <h3
-                className="
-                  text-sm
-                  font-bold
-                  text-gray-800
-                  mt-4
-                "
-              >
-                Announcements
-              </h3>
-
-              <p
-                className="
-                  text-xs
-                  text-gray-500
-                  mt-1
-                "
-              >
-                Post classroom updates
-                and notify enrolled
-                learners.
-              </p>
-            </Link>
-
-
-            {/* ASSESSMENTS */}
-            <Link
-              to={
-                `/educator/courses/${course.courseId}/assessments`
-              }
-              className="
-                bg-white
-                rounded-xl
-                border
-                border-gray-100
-                shadow-sm
-                p-5
-                hover:border-blue-200
-                hover:shadow-md
-                transition
-              "
-            >
-              <div
-                className="
-                  w-10
-                  h-10
-                  rounded-lg
-                  bg-emerald-50
-                  flex
-                  items-center
-                  justify-center
-                "
-              >
-                <svg
-                  className="
-                    w-5
-                    h-5
-                    text-emerald-600
-                  "
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a3 3 0 006 0M9 12h6m-6 4h6"
-                  />
-                </svg>
-              </div>
-
-
-              <h3
-                className="
-                  text-sm
-                  font-bold
-                  text-gray-800
-                  mt-4
-                "
-              >
-                Assessments
-              </h3>
-
-              <p
-                className="
-                  text-xs
-                  text-gray-500
-                  mt-1
-                "
-              >
-                Create quizzes and
-                assignments, manage
-                schedules and grading.
-              </p>
-            </Link>
-
-
-            {/* ANALYTICS */}
-            <Link
-              to={
-                `/educator/analytics?courseId=${course.courseId}`
-              }
-              className="
-                bg-white
-                rounded-xl
-                border
-                border-gray-100
-                shadow-sm
-                p-5
-                hover:border-blue-200
-                hover:shadow-md
-                transition
-              "
-            >
-              <div
-                className="
-                  w-10
-                  h-10
-                  rounded-lg
-                  bg-cyan-50
-                  flex
-                  items-center
-                  justify-center
-                "
-              >
-                <svg
-                  className="
-                    w-5
-                    h-5
-                    text-cyan-600
-                  "
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M4 19V9m5 10V5m5 14v-7m5 7V3"
-                  />
-                </svg>
-              </div>
-
-
-              <h3
-                className="
-                  text-sm
-                  font-bold
-                  text-gray-800
-                  mt-4
-                "
-              >
-                Analytics
-              </h3>
-
-              <p
-                className="
-                  text-xs
-                  text-gray-500
-                  mt-1
-                "
-              >
-                Review class-wide
-                learning and performance
-                statistics.
-              </p>
-            </Link>
-
-
-            {/* GRADEBOOK */}
-            <Link
-              to={
-                `/educator/gradebook?courseId=${course.courseId}`
-              }
-              className="
-                bg-white
-                rounded-xl
-                border
-                border-gray-100
-                shadow-sm
-                p-5
-                hover:border-blue-200
-                hover:shadow-md
-                transition
-              "
-            >
-              <div
-                className="
-                  w-10
-                  h-10
-                  rounded-lg
-                  bg-rose-50
-                  flex
-                  items-center
-                  justify-center
-                "
-              >
-                <svg
-                  className="
-                    w-5
-                    h-5
-                    text-rose-600
-                  "
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M9 12h6m-6 4h6M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z"
-                  />
-                </svg>
-              </div>
-
-
-              <h3
-                className="
-                  text-sm
-                  font-bold
-                  text-gray-800
-                  mt-4
-                "
-              >
-                Gradebook
-              </h3>
-
-              <p
-                className="
-                  text-xs
-                  text-gray-500
-                  mt-1
-                "
-              >
-                View official assessment
-                scores across the class.
-              </p>
-            </Link>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            <HubCard to={`/educator/courses/${course.courseId}/materials`} icon="📚" color="blue" title="Materials" desc="Upload and organize learning materials." />
+            <HubCard to={`/educator/courses/${course.courseId}/members`} icon="👥" color="violet" title="Members" desc="Review requests and manage learners." />
+            <HubCard to={`/educator/courses/${course.courseId}/announcements`} icon="📢" color="amber" title="Announcements" desc="Post updates and notify the class." />
+            <HubCard to={`/educator/courses/${course.courseId}/assessments`} icon="✍️" color="emerald" title="Assessments" desc="Create quizzes, assignments & schedule." />
+            <HubCard to={`/educator/analytics?courseId=${course.courseId}`} icon="📈" color="cyan" title="Analytics" desc="Review class performance statistics." />
+            <HubCard to={`/educator/gradebook?courseId=${course.courseId}`} icon="📊" color="rose" title="Gradebook" desc="View official scores across the class." />
           </div>
         </section>
       </main>
-    </>
+    </div>
+  );
+}
+
+function HubCard({ to, icon, color, title, desc }) {
+  const colorMap = {
+    blue: 'bg-blue-50 text-blue-600 border-blue-100 hover:border-blue-300',
+    violet: 'bg-violet-50 text-violet-600 border-violet-100 hover:border-violet-300',
+    amber: 'bg-amber-50 text-amber-600 border-amber-100 hover:border-amber-300',
+    emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:border-emerald-300',
+    cyan: 'bg-cyan-50 text-cyan-600 border-cyan-100 hover:border-cyan-300',
+    rose: 'bg-rose-50 text-rose-600 border-rose-100 hover:border-rose-300',
+  };
+
+  return (
+    <Link to={to} className={`bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-all group flex flex-col justify-between`}>
+      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-bold mb-4 transition-transform group-hover:scale-105 ${colorMap[color].split(' ')[0]} ${colorMap[color].split(' ')[1]}`}>
+        {icon}
+      </div>
+      <div>
+        <h3 className="text-sm font-black text-gray-900">{title}</h3>
+        <p className="text-xs text-gray-500 mt-1 leading-relaxed">{desc}</p>
+      </div>
+    </Link>
   );
 }

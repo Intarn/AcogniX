@@ -10,21 +10,23 @@ export function ToastProvider({ children }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const clearToasts = useCallback(() => {
+    setToasts([]);
+  }, []);
+
   const showToast = useCallback((message, type = 'info') => {
     const id = Date.now() + Math.random();
     setToasts((prev) => [...prev, { id, message, type }]);
-    
-    // Tự động tắt sau 3.5 giây
+
     setTimeout(() => {
       removeToast(id);
     }, 3500);
   }, [removeToast]);
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={{ showToast, clearToasts }}>
       {children}
 
-      {/* Container hiển thị danh sách Toast floating */}
       <div className="fixed top-5 right-5 z-[9999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none">
         {toasts.map((toast) => (
           <div

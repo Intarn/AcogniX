@@ -1,12 +1,36 @@
+// frontend/src/services/analyticsService.js
 import { apiRequest } from './apiClient';
 
-export const pingStudySession = async (courseId = null) => {
+export const pingStudySession = async (payload, options = {}) => {
   return await apiRequest('/analytics/ping', {
     method: 'POST',
-    body: JSON.stringify({ courseId })
+    body: JSON.stringify(payload),
+    keepalive: Boolean(options.keepalive)
   });
 };
 
 export const getClassPerformance = async (courseId) => {
-  return await apiRequest(`/analytics/courses/${courseId}`, { method: 'GET' });
+  return await apiRequest(`/analytics/courses/${courseId}`, {
+    method: 'GET'
+  });
+};
+
+export const getWeeklyClassPerformance = async (courseId) => {
+  return await apiRequest(`/analytics/courses/${courseId}/weekly-report`, {
+    method: 'GET'
+  });
+};
+
+export const getWeeklyReportNotifications = async () => {
+  return await apiRequest('/analytics/weekly-notifications', {
+    method: 'GET'
+  });
+};
+
+// Used by an authorized test/scheduler simulation for UC11 UI04.
+export const generateWeeklyClassPerformanceReport = async (courseId, generatedAt = null) => {
+  return await apiRequest(`/analytics/courses/${courseId}/weekly-report/generate`, {
+    method: 'POST',
+    body: JSON.stringify(generatedAt ? { generatedAt } : {})
+  });
 };

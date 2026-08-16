@@ -14,7 +14,26 @@ const router = express.Router();
 router.use(requireAuth);
 
 router.get('/', ProfileController.getProfile);
-router.put('/', upload.single('avatar'), ProfileController.updateProfile);
+
+// UC19 UI05: convert Multer's size-limit exception into the same specific
+// validation response used by ProfileService instead of leaking a generic 500.
+router.put(
+  '/',
+  (req, res, next) => {
+    upload.single('avatar')(req, res, (error) => {
+      if (error?.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          message: 'File size exceeds the maximum limit of 5MB.',
+          code: 'AVATAR_TOO_LARGE'
+        });
+      }
+      if (error) return next(error);
+      return next();
+    });
+  },
+  ProfileController.updateProfile
+);
+
 router.put('/password', ProfileController.changePassword);
 
 module.exports = router;

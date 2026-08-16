@@ -3,83 +3,48 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getCourses, enrollInClass } from '../../services/courseService';
 import { useToast } from '../../contexts/ToastContext';
+
 export default function MyCourses() {
   const { showToast } = useToast();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [filter, setFilter] = useState('Active');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Trạng thái quản lý Modal Enroll in Class
+  // Modal Enroll in Class
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [courseCode, setCourseCode] = useState('');
+  const [codeError, setCodeError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Tải danh sách khóa học thực tế từ Backend
   const fetchCourses = async () => {
     try {
       setLoading(true);
       setErrorMsg(null);
       const data = await getCourses();
-      
       const rawList = Array.isArray(data) ? data : data?.courses || data?.data || [];
-      
-      // Map trực tiếp thuộc tính trả về từ DB/Server
-      const realCourses = rawList.map(
-        (course) => {
-          return {
-            id: course.courseId,
 
-            name:
-              course.subjectName ||
-              `Untitled Course`,
-
-            teacher:
-              course.educator?.displayName ||
-              course.educator?.email ||
-              'Unknown Educator',
-
-            category:
-              course.courseCode ||
-              'General',
-
-            description:
-              course.description ||
-              '',
-
-            status:
-              course.status,
-
-            enrollmentStatus:
-              course.enrollmentStatus,
-
-            approvedAt:
-              course.approvedAt,
-
-            /*
-            
-      Backend hiện chưa trả progress.
-      Tạm thời giữ 0 để UI cũ
-      vẫn render được.*/
-      progress: 0,
-
-            /*
-            
-      Course.status hiện là
-      ACTIVE / ARCHIVED,
-      không phải completion progress.*/
-      isCompleted:
-        course.status === 'ARCHIVED',
-
-            imageUrl: null
-          };
-        }
-      );
+      const realCourses = rawList.map((course) => ({
+        id: course.courseId,
+        name: course.subjectName || 'Unnamed Course',
+        code: course.courseCode || 'N/A',
+        teacher:
+          course.educator?.displayName ||
+          course.educator?.email ||
+          'Educator',
+        description: course.description || 'No detailed description available for this course.',
+        status: course.status || 'ACTIVE',
+        enrollmentStatus: course.enrollmentStatus || 'APPROVED',
+        approvedAt: course.approvedAt,
+        progress: 0,
+        isArchived: course.status === 'ARCHIVED'
+      }));
 
       setCourses(realCourses);
     } catch (err) {
-      console.error("Lỗi kết nối Backend My Courses:", err);
-      setErrorMsg(err.message || "Không thể tải danh sách khóa học từ Server.");
+      console.error('[MyCourses Error]:', err);
+      setErrorMsg(err.message || 'Unable to load course list.');
       setCourses([]);
     } finally {
       setLoading(false);
@@ -90,216 +55,214 @@ export default function MyCourses() {
     fetchCourses();
   }, []);
 
-  // Xử lý gửi mã lớp học lên Backend
-  const handleEnrollClass =
-    async (e) => {
-      e.preventDefault();
+  const handleEnrollClass = async (e) => {
+    e.preventDefault();
+    const normalizedCode = courseCode.trim().toUpperCase();
 
-      const normalizedCode =
-        courseCode
-          .trim()
-          .toUpperCase();
+    if (!normalizedCode) {
+      setCodeError('Class code cannot be empty.');
+      return;
+    }
+    setCodeError('');
 
-      /*
-      * UC15 - Alternative Flow:
-      * Empty Class Code.
-      */
-      if (!normalizedCode) {
-        showToast(
-          'Please enter a class code.',
-          'warning'
-        );
+    try {
+      setSubmitting(true);
+      const result = await enrollInClass(normalizedCode);
 
-        return;
+      showToast(
+        result?.message || 'Class enrollment request sent successfully!',
+        'success'
+      );
+      setIsModalOpen(false);
+      setCourseCode('');
+    } catch (err) {
+      console.error('[Enroll Error]:', err);
+      let message = 'Unable to send class enrollment request.';
+
+      switch (err.code) {
+        case 'INVALID_OR_EXPIRED_CLASS_CODE':
+          message = 'Invalid or expired class code. Please check with your Educator and try again.';
+          break;
+        case 'ALREADY_ENROLLED':
+          message = 'You are already enrolled in this class.';
+          break;
+        case 'ENROLLMENT_REQUEST_PENDING':
+          message = 'Your enrollment request is pending approval.';
+          break;
+        case 'CLASS_CODE_REQUIRED':
+          message = 'Class code cannot be empty.';
+          break;
+        default:
+          message = err.message || message;
+          break;
       }
+      showToast(message, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
-      try {
-        setSubmitting(true);
-
-        const result =
-          await enrollInClass(
-            normalizedCode
-          );
-
-        /*
-        * Success:
-        * Enrollment request is PENDING.
-        */
-        showToast(
-          result?.message ||
-          'Your enrollment request has been submitted and is awaiting approval.',
-          'success'
-        );
-
-        /*
-        * Chỉ đóng modal khi request
-        * được submit thành công.
-        */
-        setIsModalOpen(false);
-
-        setCourseCode('');
-
-      } catch (err) {
-        console.error(
-          'Unable to join class:',
-          err
-        );
-
-        /*
-        * UC15 error cases.
-        */
-        let message =
-          err.message ||
-          'Unable to submit enrollment request.';
-
-        switch (err.code) {
-          case 'INVALID_OR_EXPIRED_CLASS_CODE':
-            message =
-              'Invalid or expired class code. Please check the code with your Educator and try again.';
-            break;
-
-          case 'ALREADY_ENROLLED':
-            message =
-              'You are already enrolled in this Class.';
-            break;
-
-          case 'ENROLLMENT_REQUEST_PENDING':
-            message =
-              'Your enrollment request is already awaiting approval.';
-            break;
-
-          case 'CLASS_CODE_REQUIRED':
-            message =
-              'Please enter a class code.';
-            break;
-
-          default:
-            break;
-        }
-
-        showToast(
-          message,
-          'error'
-        );
-
-        /*
-        * KHÔNG đóng modal khi lỗi.
-        *
-        * Learner có thể sửa code
-        * và submit lại ngay.
-        */
-
-      } finally {
-        setSubmitting(false);
-      }
-    };
-
-  // Lọc khóa học theo trạng thái
-  const filteredCourses =
-    courses.filter(
-      (course) => {
-        if (filter === 'Active') {
-          return (
-            course.status === 'ACTIVE'
-          );
-        }
-
-        if (filter === 'Archived') {
-          return (
-            course.status === 'ARCHIVED'
-          );
-        }
-
-        return true;
-      }
-    );
+  const filteredCourses = courses
+    .filter((course) => {
+      if (filter === 'Active') return course.status === 'ACTIVE';
+      if (filter === 'Archived') return course.status === 'ARCHIVED';
+      return true;
+    })
+    .filter((course) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase().trim();
+      return (
+        course.name.toLowerCase().includes(q) ||
+        course.code.toLowerCase().includes(q) ||
+        course.teacher.toLowerCase().includes(q)
+      );
+    });
 
   if (loading) {
     return (
-      <main className="flex-1 p-6 flex justify-center items-center bg-gray-50">
-        <p className="text-gray-500 text-sm">Đang tải danh sách khóa học từ Backend...</p>
+      <main className="flex-1 flex items-center justify-center bg-gray-50/50 p-8">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-blue-600 border-t-transparent animate-spin"></div>
+          <p className="text-xs font-bold text-gray-500">Loading course list...</p>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="flex-1 p-6 overflow-y-auto bg-gray-50 relative">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">My Courses</h1>
-        <div className="flex items-center gap-2">
-          <select 
-            value={filter} 
+    <main className="flex-1 p-8 overflow-y-auto space-y-8 bg-gray-50/50 relative">
+      {/* HEADER & TOP CONTROLS */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight">My Courses</h1>
+          <p className="text-xs text-gray-500 mt-1 font-medium">
+            Manage and access the classes you have enrolled in
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Search bar */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search by name, code..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-white border border-gray-200 rounded-2xl pl-9 pr-4 py-2.5 text-xs font-semibold outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100 transition-all shadow-xs w-48 sm:w-60"
+            />
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
+              🔍
+            </span>
+          </div>
+
+          {/* Filter Status */}
+          <select
+            value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white outline-none focus:ring-1 focus:ring-blue-300"
+            className="bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-xs font-bold text-gray-700 outline-none focus:border-blue-600 shadow-xs cursor-pointer"
           >
             <option value="Active">Active</option>
             <option value="Archived">Archived</option>
             <option value="All Courses">All Courses</option>
           </select>
 
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm transition"
+          {/* Enroll Button */}
+          <button
+            onClick={() => {
+              setCodeError('');
+              setIsModalOpen(true);
+            }}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-5 py-2.5 rounded-2xl shadow-md shadow-blue-600/15 hover:shadow-lg transition-all flex items-center gap-2"
           >
-            + Enroll in Class
+            <span>+</span> Join New Class
           </button>
         </div>
       </div>
 
       {errorMsg && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold">
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl text-xs font-bold">
           {errorMsg}
         </div>
       )}
 
-      {/* Course Grid */}
+      {/* COURSE CARDS GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {filteredCourses.length === 0 ? (
-          <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-gray-100">
-            <p className="text-gray-500 text-xs">No courses found matching this filter.</p>
+          <div className="col-span-full py-20 text-center bg-white rounded-3xl border border-gray-100 p-8 shadow-xs">
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl mx-auto mb-3 font-bold">
+              📚
+            </div>
+            <h3 className="text-base font-black text-gray-900 mb-1">No courses found</h3>
+            <p className="text-xs text-gray-400 max-w-sm mx-auto mb-6">
+              {searchQuery
+                ? `No results match "${searchQuery}". Try searching with a different keyword.`
+                : 'You do not have any courses in this category. Enter a class code from your educator.'}
+            </p>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-6 py-3 rounded-2xl shadow-md transition-all inline-flex items-center gap-2"
+            >
+              <span>+</span> Enter Class Code
+            </button>
           </div>
         ) : (
-          filteredCourses.map(course => {
-            let progressColor = 'bg-emerald-500';
-            if (course.progress < 70) progressColor = 'bg-amber-500';
-            if (course.progress < 40) progressColor = 'bg-red-500';
+          filteredCourses.map((course) => {
+            const isArchived = course.status === 'ARCHIVED';
 
             return (
-              <div 
-                key={course.id} 
-                className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col ${course.isCompleted ? 'opacity-75' : ''}`}
+              <div
+                key={course.id}
+                className={`bg-white rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group ${
+                  isArchived ? 'opacity-75' : ''
+                }`}
               >
-                {course.imageUrl ? (
-                  <img 
-                    src={course.imageUrl} 
-                    alt={course.name} 
-                    className="h-32 w-full object-cover" 
-                  />
-                ) : (
-                  <div className="h-32 w-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm p-4 text-center">
-                    {course.category}
-                  </div>
-                )}
-                <div className="p-4 flex flex-col flex-1">
-                  <h3 className="text-sm font-bold text-gray-800 mb-1 line-clamp-1">{course.name}</h3>
-                  <p className="text-[11px] text-gray-400 mb-3">By {course.teacher}</p>
-                  <div className="mt-auto">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] text-gray-500">Progress</span>
-                      <span className={`text-[10px] font-semibold ${course.isCompleted ? 'text-gray-500' : 'text-emerald-600'}`}>
-                        {course.isCompleted ? '100% Completed' : course.progress + '%'}
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden mb-3">
-                      <div className={`${course.isCompleted ? 'bg-gray-400' : progressColor} h-full`} style={{ width: `${course.isCompleted ? 100 : course.progress}%` }}></div>
-                    </div>
-                    <Link 
-                      to={
-                        `/learner/courses/${course.id}`
-                      }
-                      className={`block w-full text-center ${course.isCompleted ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-blue-50 hover:bg-blue-100 text-blue-600'} font-bold text-xs py-2 rounded-lg transition-colors`}
+                {/* Card Banner */}
+                <div className="h-32 bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 p-5 flex flex-col justify-between text-white relative">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-full uppercase tracking-wider">
+                      {course.code}
+                    </span>
+                    <span
+                      className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                        isArchived
+                          ? 'bg-gray-800/60 text-gray-200'
+                          : 'bg-emerald-400/30 text-emerald-100 backdrop-blur-sm'
+                      }`}
                     >
-                      {course.isCompleted ? 'Review Course' : 'Continue Learning'}
+                      {course.status}
+                    </span>
+                  </div>
+                  <h3
+                    className="text-base font-black text-white line-clamp-1 group-hover:text-blue-100 transition-colors"
+                    title={course.name}
+                  >
+                    {course.name}
+                  </h3>
+                </div>
+
+                {/* Card Body */}
+                <div className="p-5 flex flex-col flex-1 justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span>👨‍🏫</span>
+                      <span className="font-bold text-gray-800 truncate">{course.teacher}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
+                      {course.description}
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="pt-3 border-t border-gray-50">
+                    <Link
+                      to={`/learner/courses/${course.id}`}
+                      className={`w-full py-2.5 rounded-2xl text-xs font-bold text-center block transition-all shadow-xs ${
+                        isArchived
+                          ? 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                          : 'bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white'
+                      }`}
+                    >
+                      {isArchived ? 'Review Course →' : 'Go to Class →'}
                     </Link>
                   </div>
                 </div>
@@ -309,40 +272,66 @@ export default function MyCourses() {
         )}
       </div>
 
-      {/* Modal Popup: Enroll in Class */}
+      {/* MODAL ENROLL IN CLASS */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl">
-            <h2 className="text-lg font-bold text-gray-800 mb-1">Enroll in Class</h2>
-            <p className="text-xs text-gray-400 mb-4">Enter your class code provided by your instructor to join.</p>
-            
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden p-6 space-y-5">
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-lg font-black text-gray-900">Join Class</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter the class code provided by your educator.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 flex items-center justify-center text-xs font-bold transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
             <form onSubmit={handleEnrollClass} className="space-y-4" noValidate>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Class / Course Code</label>
-                <input 
-                  type="text" 
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Class Code <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
                   required
                   value={courseCode}
-                  onChange={(e) => setCourseCode(e.target.value)}
-                  placeholder="Enter Code (e.g., CS101-2026)" 
-                  className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-blue-500 uppercase tracking-wider font-semibold"
+                  onChange={(e) => {
+                    setCourseCode(e.target.value);
+                    if (codeError) setCodeError('');
+                  }}
+                  placeholder="Example: CS101, PHY2026..."
+                  className={`w-full bg-gray-50 border rounded-2xl p-3.5 text-xs font-bold text-gray-900 outline-none uppercase tracking-wider transition-all ${
+                    codeError
+                      ? 'border-red-400 bg-red-50/20 focus:border-red-500'
+                      : 'border-gray-200 focus:border-blue-600 focus:bg-white'
+                  }`}
                 />
+                {codeError && (
+                  <p className="text-[11px] font-bold text-red-500 mt-1.5 flex items-center gap-1">
+                    <span>⚠️</span> {codeError}
+                  </p>
+                )}
               </div>
 
-              <div className="flex justify-end gap-2 mt-6">
-                <button 
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                  className="px-5 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition-colors"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition disabled:opacity-50"
+                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md transition-all disabled:opacity-50"
                 >
-                  {submitting ? 'Submitting...' : 'Request to Join'}
+                  {submitting ? 'Checking code...' : 'Send Request'}
                 </button>
               </div>
             </form>

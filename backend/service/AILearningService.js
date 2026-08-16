@@ -5,12 +5,15 @@ class AILearningService {
     static async _assertProjectAccess(projectId, learnerId) {
         const { data: project, error: projectError } = await supabase
             .from('AI_Project')
-            .select('workspaceId')
+            .select('workspaceId, status')
             .eq('projectId', projectId)
             .maybeSingle();
             
         if (projectError) throw projectError;
         if (!project) throw new AppError(404, 'PROJECT_NOT_FOUND', 'The AI Project could not be found.');
+        if (project.status === 'INACTIVE') {
+            throw new AppError(403, 'PROJECT_ACCESS_REVOKED', 'Access to this Class Project has been revoked.');
+        }
 
         const { data: workspace, error: workspaceError } = await supabase
             .from('AI_Workspace')

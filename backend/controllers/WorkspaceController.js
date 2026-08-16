@@ -1,33 +1,68 @@
+// backend/controllers/WorkspaceController.js
 const WorkspaceService = require('../service/WorkspaceService');
-const AIServiceClient = require('../service/AIServiceClient');
+const AppError = require('../error/AppError');
 
 class WorkspaceController {
   static async getWorkspaceData(req, res) {
     try {
-      const learnerId = req.user.userId; 
+      const learnerId = req.user.userId;
       const workspace = await WorkspaceService.getWorkspace(learnerId);
       return res.status(200).json(workspace);
     } catch (error) {
-      return res.status(404).json({ message: "Workspace not found." });
+      console.error('[WorkspaceController] getWorkspaceData error:', error);
+      return res.status(error.statusCode || 500).json({
+        code: error.code || 'DB_ERROR',
+        message: error.message || 'Không thể tải dữ liệu Workspace.'
+      });
     }
   }
 
   static async createProject(req, res) {
     try {
-      const { workspaceId, courseId, name } = req.body;
-      
-      // Basic Flow (UC-01)
-      if (!name) {
-        return res.status(400).json({ message: "Project name cannot be empty." }); 
+      const { name, workspaceId, courseId } = req.body;
+      const learnerId = req.user.userId;
+
+      if (!name || !String(name).trim()) {
+        return res.status(400).json({ code: 'INVALID_NAME', message: 'Tên project không được để trống.' });
       }
-      
-      const newProject = await WorkspaceService.createPersonalProject(workspaceId, courseId, name);
-      return res.status(201).json({ message: "Project created successfully.", project: newProject });
+
+      // Tự động tìm workspaceId nếu client không gửi kèm
+      let targetWsId = workspaceId;
+      if (!targetWsId) {
+        const ws = await WorkspaceService.getWorkspace(learnerId);
+        targetWsId = ws.workspaceId;
+      }
+
+      const project = await WorkspaceService.createPersonalProject(targetWsId, courseId, name.trim());
+      return res.status(201).json({ message: 'Tạo project thành công.', project });
     } catch (error) {
-      if (error.message === 'PROJECT_NAME_EXISTS') {
-        return res.status(409).json({ message: "Project name already exists. Please choose another name." }); // Alternative flow 3 (UC-01)
+      if (error.statusCode === 409 || error.code === 'PROJECT_NAME_EXISTS') {
+        return res.status(409).json({ code: 'PROJECT_NAME_EXISTS', message: 'Project name already exists. Please choose another name.' });
       }
-      return res.status(500).json({ message: "Server error while creating project." });
+      return res.status(error.statusCode || 500).json({ message: error.message || 'Lỗi tạo project.' });
+    }
+  }
+
+  static async renameProject(req, res) {
+    try {
+      const { projectId } = req.params;
+      const { name } = req.body;
+      const learnerId = req.user.userId;
+      const updated = await WorkspaceService.renameProject(projectId, learnerId, name);
+      return res.status(200).json({ message: 'Đổi tên project thành công.', project: updated });
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ code: error.code || 'ERROR', message: error.message });
+    }
+  }
+
+  static async deleteProject(req, res) {
+    try {
+      const { projectId } = req.params;
+      const learnerId = req.user.userId;
+      await WorkspaceService.deletePersonalProject(projectId, learnerId);
+      return res.status(200).json({ message: 'Đã xóa project thành công.' });
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ code: error.code || 'ERROR', message: error.message });
     }
   }
 
@@ -35,57 +70,47 @@ class WorkspaceController {
     try {
       const { projectId } = req.params;
       const file = req.file;
-
+      const learnerId = req.user.userId;
       if (!file) {
-        return res.status(400).json({ message: "Please select a file to upload." });
+        return res.status(400).json({ code: 'NO_FILE', message: 'Vui lòng chọn file tải lên.' });
       }
-
-      // 1. Lưu file vào Supabase (Hoạt động tốt)
       const material = await WorkspaceService.uploadPersonalMaterial(
         projectId,
+        learnerId,
         file.buffer,
         file.originalname,
         file.mimetype,
         file.size
       );
-
-      // 2. Chuyển cho Server Python (AI) đọc và trích xuất ngữ cảnh
-      try {
-        const materialId = material.materialId || material.id;
-        await AIServiceClient.extractDocument(
-          materialId,
-          file.buffer,
-          file.originalname,
-          file.mimetype
-        );
-        console.log(`[AI] Đã trích xuất và nạp ngữ cảnh thành công cho file: ${file.originalname}`);
-      } catch (aiErr) {
-        console.error("[Lỗi kết nối AI Server]:", aiErr.message);
-        
-        // QUAN TRỌNG: Ném thẳng lỗi ra Frontend thay vì trả về 201 Thành công
-        return res.status(502).json({ 
-          message: "Tài liệu đã được lưu, nhưng Server AI xử lý thất bại. Lỗi: " + aiErr.message 
-        });
-      }
-
-      return res.status(201).json({ message: "Upload và AI nạp ngữ cảnh thành công!", material });
+      return res.status(201).json({ message: 'Tải tài liệu lên thành công.', material });
     } catch (error) {
-      console.error("Lỗi chi tiết khi upload file:", error);
-      if (error.message === 'FILE_TOO_LARGE') {
-        return res.status(400).json({ message: "File size exceeds the 50MB limit." });
-      }
-      return res.status(500).json({ message: "Server error while uploading file." });
+      return res.status(error.statusCode || 500).json({ code: error.code || 'ERROR', message: error.message });
     }
   }
 
   static async deleteMaterial(req, res) {
     try {
       const { projectId, materialId } = req.params;
-      await WorkspaceService.deletePersonalMaterial(projectId, materialId);
-      return res.status(200).json({ message: "Đã xóa tài liệu thành công." });
+      await WorkspaceService.deletePersonalMaterial(projectId, materialId, req.user.userId);
+      return res.status(200).json({ message: 'Đã xóa tài liệu.' });
     } catch (error) {
-      console.error("Lỗi khi xóa tài liệu:", error);
-      return res.status(500).json({ message: "Lỗi server khi xóa tài liệu." });
+      return res.status(error.statusCode || 500).json({ code: error.code || 'ERROR', message: error.message });
+    }
+  }
+  static async updateActiveContext(req, res) {
+    try {
+      const { projectId } = req.params;
+      const { selectedMaterialIds } = req.body;
+      const learnerId = req.user.userId;
+
+      const result = await WorkspaceService.updateProjectActiveContext(
+        projectId,
+        learnerId,
+        selectedMaterialIds
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ code: error.code || 'DB_ERROR', message: error.message });
     }
   }
 }

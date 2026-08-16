@@ -1,3 +1,4 @@
+// frontend/src/components/layout/AdminSidebar.jsx
 import { NavLink } from 'react-router';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -44,13 +45,10 @@ export default function AdminSidebar() {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332 1.253" /></svg>
             Course Management
           </NavLink>
-          <NavLink to="/admin/community" className={navLinkClass}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h8m-8 4h5m7-8a9 9 0 01-9 9H9l-4 4v-4.5A9 9 0 013 8a9 9 0 019-9h2a9 9 0 019 9v0z" /></svg>
-            Community
-          </NavLink>
+          {/* Đã xóa mục Community tại đây */}
           <NavLink to="/admin/analytics" className={navLinkClass}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-            Analytics
+            Monitor Infrastructure
           </NavLink>
           <NavLink to="/admin/tickets" className={navLinkClass}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>

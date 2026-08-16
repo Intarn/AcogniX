@@ -3,8 +3,7 @@ import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-// Layouts & Protected Route
-import AppLayout from '../layouts/AppLayout'; // Layout chung
+import AppLayout from '../layouts/AppLayout';
 import LearnerLayout from '../layouts/LearnerLayout';
 import EducatorLayout from '../layouts/EducatorLayout';
 import AdminLayout from '../layouts/AdminLayout';
@@ -14,15 +13,12 @@ import ProtectedRoute from './ProtectedRoute';
 import LoginPage from '../pages/auth/LoginPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import LearnerDashboard from '../pages/learner/Dashboard';
-import CourseDetail from '../pages/learner/CourseDetail'; // File này đã có
+import CourseDetail from '../pages/learner/CourseDetail';
 import EducatorDashboard from '../pages/educator/Dashboard';
 import AdminDashboard from '../pages/admin/Dashboard';
 import CommunityPage from "../pages/shared/CommunityPage";
 
-/**
- * Component này điều hướng người dùng đến dashboard phù hợp
- * với vai trò của họ ngay sau khi đăng nhập.
- */
+
 const RoleBasedRedirect = () => {
   const { user } = useAuth();
 
@@ -53,10 +49,9 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <ProtectedRoute />, // Bảo vệ trang chủ
+        element: <ProtectedRoute />,
         children: [{ index: true, element: <RoleBasedRedirect /> }],
       },
-      // --- Nhóm Route cho LEARNER ---
       {
         element: <ProtectedRoute allowedRoles={['learner']} />,
         children: [
@@ -71,7 +66,6 @@ export const router = createBrowserRouter([
           },
         ],
       },
-      // --- Nhóm Route cho EDUCATOR ---
       {
         element: <ProtectedRoute allowedRoles={['educator']} />,
         children: [
@@ -82,7 +76,6 @@ export const router = createBrowserRouter([
           },
         ],
       },
-      // --- Nhóm Route cho ADMIN ---
       {
         element: <ProtectedRoute allowedRoles={['admin']} />,
         children: [
