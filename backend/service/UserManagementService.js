@@ -4,42 +4,87 @@ const { UserRole, AccountStatus } = require('../enums/AuthEnums');
 const EmailService = require('./EmailService');
 const TwoFactorService = require('./TwoFactorService');
 
-class UserManagementService {
-  // Basic Flow #2 (UC-12): Admin searches for accounts by name or email.
-  static async searchAccounts(query) {
-    let dbQuery = supabase
-      .from('User')
-      .select('userId, email, displayName, role, status, createdAt')
-      .order('createdAt', { ascending: false }) 
-      .limit(50);
+const USER_SELECT_FIELDS = 'userId, email, displayName, role, status, createdAt';
 
-    if (query && query.trim() !== '') {
-      dbQuery = dbQuery.or(`email.ilike.%${query}%,displayName.ilike.%${query}%`);
+class UserManagementService {
+  // Basic Flow #2 (UC-12): Admin searches for accounts by exact name or email.
+  // When the search box is empty, return the latest accounts for the management list.
+  static async searchAccounts(query) {
+    const normalizedQuery = String(query || '').trim();
+
+    if (!normalizedQuery) {
+      const { data, error } = await supabase
+        .from('User')
+        .select(USER_SELECT_FIELDS)
+        .order('createdAt', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        const err = new Error('SEARCH_FAILED');
+        err.status = 500;
+        throw err;
+      }
+
+      return data || [];
     }
 
-    const { data, error } = await dbQuery;
+    // Two explicit queries avoid broad "contains" matching. This is important for
+    // UI01/UI09: searching a complete email/name must not also return unrelated
+    // accounts such as "Nguyen Van Anh" for "Nguyen Van An".
+    const [emailResult, nameResult] = await Promise.all([
+      supabase
+        .from('User')
+        .select(USER_SELECT_FIELDS)
+        .ilike('email', normalizedQuery)
+        .limit(50),
+      supabase
+        .from('User')
+        .select(USER_SELECT_FIELDS)
+        .ilike('displayName', normalizedQuery)
+        .limit(50)
+    ]);
 
-    if (error) {
+    if (emailResult.error || nameResult.error) {
       const err = new Error('SEARCH_FAILED');
       err.status = 500;
       throw err;
     }
-    return data;
+
+    const uniqueUsers = new Map();
+    [...(emailResult.data || []), ...(nameResult.data || [])].forEach((user) => {
+      uniqueUsers.set(user.userId, user);
+    });
+
+    return [...uniqueUsers.values()].sort((a, b) => {
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
   }
 
-  // Basic Flow #3-4 (UC-12): Reset password
+  // Basic Flow #3-4 (UC-12): Reset password and notify the affected user.
   static async resetPassword(targetUserId) {
     const { data: profile, error: profileError } = await supabase
-      .from('User').select('email').eq('userId', targetUserId).single();
+      .from('User')
+      .select('email')
+      .eq('userId', targetUserId)
+      .single();
+
     if (profileError || !profile) {
       const err = new Error('USER_NOT_FOUND');
       err.status = 404;
       throw err;
     }
 
-    const tempPassword = crypto.randomBytes(9).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+    const tempPassword = crypto
+      .randomBytes(12)
+      .toString('base64')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 14);
 
-    const { error: updateError } = await supabase.auth.admin.updateUserById(targetUserId, { password: tempPassword });
+    const { error: updateError } = await supabase.auth.admin.updateUserById(
+      targetUserId,
+      { password: tempPassword }
+    );
+
     if (updateError) {
       const err = new Error('RESET_PASSWORD_FAILED');
       err.status = 500;
@@ -49,10 +94,14 @@ class UserManagementService {
     await EmailService.sendPasswordReset(profile.email, tempPassword);
   }
 
-  // Basic Flow #3-4 (UC-12): Ban account
+  // Basic Flow #3-4 (UC-12): Ban account.
   static async banAccount(targetUserId) {
     const { data: profile, error: profileError } = await supabase
-      .from('User').select('email').eq('userId', targetUserId).single();
+      .from('User')
+      .select('email')
+      .eq('userId', targetUserId)
+      .single();
+
     if (profileError || !profile) {
       const err = new Error('USER_NOT_FOUND');
       err.status = 404;
@@ -70,21 +119,31 @@ class UserManagementService {
       throw err;
     }
 
-    // Revoke all active sessions immediately so the ban takes effect right away,
-    // instead of waiting for the JWT to expire naturally.
-    await supabase
+    // Revoke active application sessions immediately so the banned account
+    // cannot continue using an already-open browser session.
+    const { error: revokeError } = await supabase
       .from('UserSession')
       .update({ revokedAt: new Date() })
       .eq('userId', targetUserId)
       .is('revokedAt', null);
 
+    if (revokeError) {
+      const err = new Error('BAN_SESSION_REVOKE_FAILED');
+      err.status = 500;
+      throw err;
+    }
+
     await EmailService.sendAccountBanned(profile.email);
   }
 
-  // Basic Flow #3-4 (UC-12): Unban account
+  // Basic Flow #3-4 (UC-12): Unban account.
   static async unbanAccount(targetUserId) {
     const { data: profile, error: profileError } = await supabase
-      .from('User').select('email').eq('userId', targetUserId).single();
+      .from('User')
+      .select('email')
+      .eq('userId', targetUserId)
+      .single();
+
     if (profileError || !profile) {
       const err = new Error('USER_NOT_FOUND');
       err.status = 404;
@@ -105,16 +164,26 @@ class UserManagementService {
     await EmailService.sendAccountUnbanned(profile.email);
   }
 
-  // Basic Flow #3-4 (UC-12): Role assignment
+  // Basic Flow #3-4 (UC-12): Role assignment.
   static async assignRole(targetUserId, newRole) {
-    if (![UserRole.LEARNER, UserRole.EDUCATOR, UserRole.SYSTEM_ADMINISTRATOR].includes(newRole)) {
+    if (
+      ![
+        UserRole.LEARNER,
+        UserRole.EDUCATOR,
+        UserRole.SYSTEM_ADMINISTRATOR
+      ].includes(newRole)
+    ) {
       const err = new Error('INVALID_ROLE');
       err.status = 400;
       throw err;
     }
 
     const { data: profile, error: profileError } = await supabase
-      .from('User').select('email').eq('userId', targetUserId).single();
+      .from('User')
+      .select('email')
+      .eq('userId', targetUserId)
+      .single();
+
     if (profileError || !profile) {
       const err = new Error('USER_NOT_FOUND');
       err.status = 404;
@@ -135,25 +204,45 @@ class UserManagementService {
     await EmailService.sendRoleChanged(profile.email, newRole);
   }
 
-  // Alt Flow 1 (UC-12), step 1: request deletion -> 2FA code sent to the ADMIN's email
+  // Alternative Flow 1 (UC-12), step 1: request a 2FA code for deletion.
+  // The verification code is sent to the logged-in administrator, not the
+  // target account being deleted.
   static async requestAccountDeletion(adminUserId, adminEmail, targetUserId) {
     const { data: profile, error: profileError } = await supabase
-      .from('User').select('userId').eq('userId', targetUserId).single();
+      .from('User')
+      .select('userId')
+      .eq('userId', targetUserId)
+      .single();
+
     if (profileError || !profile) {
       const err = new Error('USER_NOT_FOUND');
       err.status = 404;
       throw err;
     }
 
-    await TwoFactorService.requestCode(adminUserId, adminEmail, 'DELETE_ACCOUNT', targetUserId);
+    await TwoFactorService.requestCode(
+      adminUserId,
+      adminEmail,
+      'DELETE_ACCOUNT',
+      targetUserId
+    );
   }
 
-  // Alt Flow 1 (UC-12), step 2: confirm deletion with the 2FA code
+  // Alternative Flow 1 (UC-12), step 2: verify 2FA and permanently delete.
   static async confirmAccountDeletion(adminUserId, targetUserId, code) {
-    await TwoFactorService.verifyCode(adminUserId, 'DELETE_ACCOUNT', targetUserId, code);
+    await TwoFactorService.verifyCode(
+      adminUserId,
+      'DELETE_ACCOUNT',
+      targetUserId,
+      code
+    );
 
     const { data: profile, error: profileError } = await supabase
-      .from('User').select('email').eq('userId', targetUserId).single();
+      .from('User')
+      .select('email')
+      .eq('userId', targetUserId)
+      .single();
+
     if (profileError || !profile) {
       const err = new Error('USER_NOT_FOUND');
       err.status = 404;
@@ -162,10 +251,27 @@ class UserManagementService {
 
     const targetEmail = profile.email;
 
-    // Deleting from auth.users cascades to "User" via ON DELETE CASCADE
-    const { error: deleteError } = await supabase.auth.admin.deleteUser(targetUserId);
-    if (deleteError) {
+    // Remove the Supabase Auth identity first so the deleted account can no
+    // longer authenticate. In deployments with an ON DELETE CASCADE this also
+    // removes the profile row.
+    const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(targetUserId);
+
+    if (deleteAuthError) {
       const err = new Error('DELETE_FAILED');
+      err.status = 500;
+      throw err;
+    }
+
+    // Keep this cleanup even when a database cascade exists. Deleting a row
+    // that is already gone is harmless, while it guarantees UI06 can no longer
+    // find the account if the deployment does not have the expected cascade.
+    const { error: deleteProfileError } = await supabase
+      .from('User')
+      .delete()
+      .eq('userId', targetUserId);
+
+    if (deleteProfileError) {
+      const err = new Error('DELETE_PROFILE_CLEANUP_FAILED');
       err.status = 500;
       throw err;
     }
@@ -183,6 +289,7 @@ class UserManagementService {
       err.status = 500;
       throw err;
     }
+
     return data ? data.length : 0;
   }
 }

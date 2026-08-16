@@ -5,14 +5,14 @@ import { useToast } from '../../contexts/ToastContext';
 
 const STATUS_ACTIONS = {
   OPEN: [
-    { status: 'RESOLVED', label: 'Resolve', className: 'text-blue-600 hover:underline' },
-    { status: 'CLOSED', label: 'Close', className: 'text-red-600 hover:underline' }
+    { status: 'RESOLVED', label: 'Resolve', className: 'text-blue-600 hover:underline font-bold' },
+    { status: 'CLOSED', label: 'Close', className: 'text-red-600 hover:underline font-bold' }
   ],
   RESOLVED: [
-    { status: 'OPEN', label: 'Reopen', className: 'text-green-600 hover:underline' }
+    { status: 'OPEN', label: 'Reopen', className: 'text-emerald-600 hover:underline font-bold' }
   ],
   CLOSED: [
-    { status: 'OPEN', label: 'Reopen', className: 'text-green-600 hover:underline' }
+    { status: 'OPEN', label: 'Reopen', className: 'text-emerald-600 hover:underline font-bold' }
   ]
 };
 
@@ -65,13 +65,10 @@ export default function SupportTicketsPage() {
       await fetchTickets();
 
       const resultMessage = response?.notificationSent === false
-        ? `Ticket updated to ${newStatus}, but the email notification could not be sent.`
+        ? `Ticket updated to ${newStatus}, but email notification failed to deliver.`
         : ({ Resolve: 'Ticket resolved successfully.', Close: 'Ticket closed successfully.', Reopen: 'Ticket reopened successfully.' }[action]);
 
-      showToast(
-        resultMessage,
-        response?.notificationSent === false ? 'warning' : 'success'
-      );
+      showToast(resultMessage, response?.notificationSent === false ? 'warning' : 'success');
     } catch (error) {
       showToast(`Update failed: ${error.message}`, 'error');
     }
@@ -88,25 +85,26 @@ export default function SupportTicketsPage() {
   });
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50">
-      <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0 overflow-hidden">
-        <h1 className="text-lg font-bold text-gray-800 truncate mr-4">
-          Support Tickets
-        </h1>
+    <div className="flex-1 flex flex-col h-full bg-gray-50/50 overflow-hidden">
+      {/* HEADER */}
+      <header className="min-h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 py-4 flex-shrink-0 gap-4">
+        <div>
+          <h1 className="text-xl font-black text-gray-900 tracking-tight">Support Tickets</h1>
+          <p className="text-xs text-gray-500 mt-0.5 font-medium">Manage user inquiries and issue resolutions.</p>
+        </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+        <div className="flex items-center gap-3">
           <input
             type="text"
             placeholder="Search tickets..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-32 sm:w-48 md:w-64 text-xs bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-blue-500 focus:bg-white transition-colors"
+            className="w-64 text-xs bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 outline-none focus:border-blue-600 focus:bg-white transition shadow-xs"
           />
-
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none focus:border-blue-500 cursor-pointer"
+            className="text-xs border border-gray-200 rounded-2xl px-4 py-2.5 bg-gray-50 font-bold text-gray-700 outline-none focus:border-blue-600 cursor-pointer shadow-xs"
           >
             <option value="ALL">All Status</option>
             <option value="OPEN">Open</option>
@@ -116,88 +114,60 @@ export default function SupportTicketsPage() {
         </div>
       </header>
 
-      <main className="p-6 overflow-y-auto">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      {/* CONTENT */}
+      <main className="flex-1 overflow-y-auto p-8">
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-gray-500 text-xs uppercase font-semibold tracking-wider">
+            <table className="w-full text-xs text-left whitespace-nowrap">
+              <thead className="bg-gray-50 text-gray-400 font-black uppercase tracking-wider">
                 <tr>
-                  <th className="px-6 py-4">TICKET CODE</th>
-                  <th className="px-6 py-4">REQUESTER</th>
-                  <th className="px-6 py-4">SUBJECT</th>
-                  <th className="px-6 py-4">DETAILS</th>
-                  <th className="px-6 py-4">STATUS</th>
-                  <th className="px-6 py-4 whitespace-nowrap">SUBMITTED DATE</th>
-                  <th className="px-6 py-4 whitespace-nowrap">LAST UPDATED</th>
-                  <th className="px-8 py-4 text-center whitespace-nowrap">ACTION</th>
+                  <th className="px-6 py-4">Ticket ID</th>
+                  <th className="px-6 py-4">Requester</th>
+                  <th className="px-6 py-4">Subject</th>
+                  <th className="px-6 py-4">Details</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Submitted Date</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-50 font-semibold text-gray-700">
                 {loading ? (
-                  <tr>
-                    <td colSpan="8" className="text-center text-gray-400 text-xs py-10">
-                      Loading tickets...
-                    </td>
-                  </tr>
+                  <tr><td colSpan="7" className="text-center py-10 text-gray-400 font-bold">Loading support tickets...</td></tr>
                 ) : filteredTickets.length === 0 ? (
-                  <tr>
-                    <td colSpan="8" className="text-center text-gray-400 text-xs py-10">
-                      No tickets found matching your criteria.
-                    </td>
-                  </tr>
+                  <tr><td colSpan="7" className="text-center py-10 text-gray-400 font-bold">No support tickets found.</td></tr>
                 ) : (
                   filteredTickets.map(ticket => (
-                    <tr key={ticket.ticketId} className="hover:bg-gray-50/50 transition-colors">
+                    <tr key={ticket.ticketId} className="hover:bg-gray-50/50 transition">
                       <td className="px-6 py-4">
-                        <span className="text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded uppercase tracking-wider">
+                        <span className="font-mono text-gray-600 bg-gray-100 px-2.5 py-1 rounded-lg text-[10px] font-bold">
                           #{ticket.ticketId.split('-')[0]}
                         </span>
                       </td>
-
                       <td className="px-6 py-4">
-                        <p className="font-bold text-gray-800 whitespace-nowrap">{ticket.User?.displayName || 'Unknown'}</p>
-                        <p className="text-[11px] text-gray-400">{ticket.User?.email || 'N/A'}</p>
+                        <p className="font-bold text-gray-900">{ticket.User?.displayName || 'Unknown'}</p>
+                        <p className="text-[10px] text-gray-400 font-medium">{ticket.User?.email || 'N/A'}</p>
                       </td>
-
-                      <td className="px-6 py-4 font-bold text-gray-800">
-                        {ticket.subject}
-                      </td>
-
-                      <td className="px-6 py-4 text-xs text-gray-500 max-w-xs truncate" title={ticket.description}>
-                        {ticket.description}
-                      </td>
-
+                      <td className="px-6 py-4 font-bold text-gray-900">{ticket.subject}</td>
+                      <td className="px-6 py-4 text-gray-500 max-w-xs truncate" title={ticket.description}>{ticket.description}</td>
                       <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${
-                          ticket.status === 'OPEN' ? 'bg-amber-100 text-amber-700' :
-                          ticket.status === 'RESOLVED' ? 'bg-green-100 text-green-700' :
-                          'bg-gray-100 text-gray-600'
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                          ticket.status === 'OPEN' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                          ticket.status === 'RESOLVED' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                          'bg-gray-100 text-gray-600 border border-gray-200'
                         }`}>
                           {ticket.status}
                         </span>
                       </td>
-
-                      <td className="px-6 py-4 text-[11px] font-medium text-gray-500 whitespace-nowrap">
-                        {new Date(ticket.createdAt).toLocaleString('en-GB', {
-                          day: '2-digit', month: '2-digit', year: 'numeric',
-                          hour: '2-digit', minute: '2-digit'
-                        })}
+                      <td className="px-6 py-4 text-gray-500">
+                        {new Date(ticket.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </td>
-
-                      <td className="px-6 py-4 text-[11px] font-medium text-gray-500 whitespace-nowrap">
-                        {new Date(ticket.updatedAt).toLocaleString('en-GB', {
-                          day: '2-digit', month: '2-digit', year: 'numeric',
-                          hour: '2-digit', minute: '2-digit'
-                        })}
-                      </td>
-
-                      <td className="px-8 py-4 text-center whitespace-nowrap">
-                        <div className="inline-flex items-center justify-center gap-4 min-w-[110px]">
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-3">
                           {(STATUS_ACTIONS[ticket.status] || []).map(action => (
                             <button
                               key={action.status}
                               onClick={() => handleUpdateStatus(ticket, action.status)}
-                              className={`text-xs font-bold ${action.className}`}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition ${action.status === 'RESOLVED' ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' : action.status === 'CLOSED' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
                             >
                               {action.label}
                             </button>

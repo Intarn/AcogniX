@@ -78,12 +78,18 @@ class EnrollmentController {
         req.user.userId
       );
 
+      const message = result.workspace?.provisioned === false
+        ? 'Enrollment approved successfully. AI Workspace access is still being prepared.'
+        : result.alreadyApproved
+          ? 'This enrollment was already approved. AI Workspace access has been refreshed.'
+          : 'Enrollment approved successfully.';
+
       return res.status(200).json({
-        message: result.workspace?.provisioned === false
-          ? 'Enrollment approved, but the AI Workspace integration is not complete.'
-          : 'Enrollment approved successfully.',
+        message,
+        alreadyApproved: Boolean(result.alreadyApproved),
+        workspaceReady: result.workspace?.provisioned !== false,
         enrollment: {
-          enrollmentId: result.enrollment.enrollmentId, 
+          enrollmentId: result.enrollment.enrollmentId,
           status: result.enrollment.status,
           approvedAt: result.enrollment.approvedAt
         }

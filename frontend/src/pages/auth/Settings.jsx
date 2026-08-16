@@ -1,32 +1,61 @@
 // frontend/src/pages/auth/Settings.jsx
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../contexts/ToastContext';
 import { useConfirm } from '../../contexts/ConfirmContext';
 import { getUserProfile, updateUserProfile, changePassword } from '../../services/profileService';
 
+const EMPTY_PROFILE = {
+  displayName: '',
+  email: '',
+  role: '',
+  status: '',
+  avatarUrl: '',
+  avatarFile: null,
+  avatarPreview: ''
+};
+
+function buildProfileState(profile = {}, user = {}) {
+  return {
+    displayName:
+      profile.displayName ||
+      user?.displayName ||
+      user?.name ||
+      user?.fullname ||
+      '',
+    email: profile.email || user?.email || '',
+    role: profile.role || user?.role || 'LEARNER',
+    status: profile.status || user?.status || 'ACTIVE',
+    avatarUrl: profile.avatarUrl || user?.avatarUrl || '',
+    avatarFile: null,
+    avatarPreview: ''
+  };
+}
+
+function formatStudyHours(value) {
+  const hours = Number(value || 0);
+  if (!Number.isFinite(hours) || hours <= 0) return '0 h';
+  return `${Number(hours.toFixed(2))} h`;
+}
+
 export default function Settings() {
-  // Chỉ khai báo useAuth 1 lần duy nhất
+  const navigate = useNavigate();
   const { user, updateUser, logout } = useAuth();
   const { showToast } = useToast();
   const { confirm } = useConfirm();
 
   const fileInputRef = useRef(null);
 
-  // Tab State: 'profile' | 'security' | 'notifications'
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-
-  // Form States
-  const [profileForm, setProfileForm] = useState({
-    displayName: '',
-    email: '',
-    role: '',
-    avatarUrl: '',
-    avatarFile: null,
-    avatarPreview: ''
-  });
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState(EMPTY_PROFILE);
+  const [originalProfile, setOriginalProfile] = useState(EMPTY_PROFILE);
+  const [learningSummary, setLearningSummary] = useState(null);
+  const [displayNameError, setDisplayNameError] = useState('');
+  const [avatarError, setAvatarError] = useState('');
 
   const [securityForm, setSecurityForm] = useState({
     currentPassword: '',
@@ -39,49 +68,69 @@ export default function Settings() {
     pushNotifications: false
   });
 
-  // Tải dữ liệu Profile từ Server khi vào trang
   useEffect(() => {
+    let cancelled = false;
+
     const fetchProfileData = async () => {
       try {
         setLoading(true);
         const res = await getUserProfile();
-        const p = res.profile || res;
+        if (cancelled) return;
 
-        setProfileForm({
-          displayName: p.displayName || user?.displayName || '',
-          email: p.email || user?.email || '',
-          role: p.role || user?.role || 'LEARNER',
-          avatarUrl: p.avatarUrl || user?.avatarUrl || '',
-          avatarFile: null,
-          avatarPreview: ''
-        });
+        const nextProfile = buildProfileState(res.profile || res, user);
+        setProfileForm(nextProfile);
+        setOriginalProfile(nextProfile);
+        setLearningSummary(res.learningSummary || null);
+        setIsEditingProfile(false);
+        setDisplayNameError('');
+        setAvatarError('');
       } catch (err) {
-        setProfileForm({
-          displayName: user?.displayName || user?.name || user?.fullname || '',
-          email: user?.email || '',
-          role: user?.role || 'LEARNER',
-          avatarUrl: user?.avatarUrl || '',
-          avatarFile: null,
-          avatarPreview: ''
-        });
+        if (cancelled) return;
+
+        const fallbackProfile = buildProfileState({}, user);
+        setProfileForm(fallbackProfile);
+        setOriginalProfile(fallbackProfile);
+        setLearningSummary(null);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchProfileData();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
-  // Xử lý chọn ảnh đại diện
+  const beginProfileEdit = () => {
+    setOriginalProfile({
+      ...profileForm,
+      avatarFile: null,
+      avatarPreview: ''
+    });
+    setDisplayNameError('');
+    setAvatarError('');
+    setIsEditingProfile(true);
+  };
+
   const handleAvatarChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      showToast('Kích thước ảnh đại diện không được vượt quá 5MB.', 'error');
+      const message = 'Avatar file size must not exceed 5 MB.';
+      setAvatarError(message);
+      setProfileForm((prev) => ({
+        ...prev,
+        avatarFile: null,
+        avatarPreview: ''
+      }));
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      showToast(message, 'error');
       return;
     }
 
+    setAvatarError('');
     setProfileForm((prev) => ({
       ...prev,
       avatarFile: file,
@@ -89,93 +138,132 @@ export default function Settings() {
     }));
   };
 
-  // Submit Tab Profile (chỉ khai báo DUY NHẤT 1 LẦN)
+  const handleCancelProfileEdit = () => {
+    if (profileForm.avatarPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(profileForm.avatarPreview);
+    }
+
+    setProfileForm({
+      ...originalProfile,
+      avatarFile: null,
+      avatarPreview: ''
+    });
+    setDisplayNameError('');
+    setAvatarError('');
+    setIsEditingProfile(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSaveProfile = async (e) => {
     e.preventDefault();
-    if (!profileForm.displayName.trim()) {
-      showToast('Họ và tên không được để trống.', 'warning');
+    if (!isEditingProfile) return;
+
+    const cleanDisplayName = profileForm.displayName.trim();
+    if (!cleanDisplayName) {
+      const message = 'Display name cannot be empty.';
+      setDisplayNameError(message);
+      showToast(message, 'error');
+      return;
+    }
+
+    if (avatarError) {
+      showToast(avatarError, 'error');
       return;
     }
 
     try {
       setSubmitting(true);
-      const res = await updateUserProfile(
-        profileForm.displayName.trim(),
-        profileForm.avatarFile
-      );
+      setDisplayNameError('');
 
-      const newAvatarUrl = res.profile?.avatarUrl || profileForm.avatarUrl;
-
-      showToast('Cập nhật thông tin cá nhân thành công!', 'success');
-      
-      setProfileForm((prev) => ({
-        ...prev,
-        avatarUrl: newAvatarUrl,
+      const res = await updateUserProfile(cleanDisplayName, profileForm.avatarFile);
+      const updated = res.profile || {};
+      const nextProfile = {
+        ...profileForm,
+        displayName: updated.displayName || cleanDisplayName,
+        email: updated.email || profileForm.email,
+        role: updated.role || profileForm.role,
+        status: updated.status || profileForm.status,
+        avatarUrl: updated.avatarUrl || profileForm.avatarUrl,
         avatarFile: null,
         avatarPreview: ''
-      }));
+      };
 
-      // Cập nhật AuthContext toàn cục
+      if (profileForm.avatarPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(profileForm.avatarPreview);
+      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+
+      setProfileForm(nextProfile);
+      setOriginalProfile(nextProfile);
+      setAvatarError('');
+      setIsEditingProfile(false);
+
       if (updateUser) {
         updateUser({
-          displayName: profileForm.displayName.trim(),
-          avatarUrl: newAvatarUrl
+          displayName: nextProfile.displayName,
+          avatarUrl: nextProfile.avatarUrl
         });
       }
+
+      showToast('Profile updated successfully.', 'success');
     } catch (err) {
-      showToast(err.message || 'Không thể cập nhật thông tin.', 'error');
+      const message = err.message || 'Unable to update profile. Please try again.';
+      if (/display name/i.test(message)) {
+        setDisplayNameError(message);
+      }
+      if (/5\s*MB|size/i.test(message)) {
+        setAvatarError(message);
+      }
+      showToast(message, 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Submit Tab Security
   const handleSaveSecurity = async (e) => {
     e.preventDefault();
     if (!securityForm.currentPassword || !securityForm.newPassword) {
-      showToast('Vui lòng nhập đầy đủ thông tin mật khẩu.', 'warning');
+      showToast('Please enter complete password information.', 'warning');
       return;
     }
 
     if (securityForm.newPassword !== securityForm.confirmPassword) {
-      showToast('Mật khẩu xác nhận không trùng khớp.', 'error');
+      showToast('Confirmation password does not match.', 'error');
       return;
     }
 
     try {
       setSubmitting(true);
       await changePassword(securityForm.currentPassword, securityForm.newPassword);
-      showToast('Đổi mật khẩu thành công!', 'success');
+      showToast('Password changed successfully!', 'success');
       setSecurityForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
-      showToast(err.message || 'Đổi mật khẩu thất bại.', 'error');
+      showToast(err.message || 'Failed to change password.', 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Submit Tab Notifications
   const handleSaveNotifications = async (e) => {
     e.preventDefault();
     try {
       setSubmitting(true);
       setTimeout(() => {
-        showToast('Đã lưu cấu hình thông báo!', 'success');
+        showToast('Notification settings saved!', 'success');
         setSubmitting(false);
       }, 300);
     } catch (err) {
-      showToast('Lưu cài đặt thất bại.', 'error');
+      showToast('Failed to save settings.', 'error');
       setSubmitting(false);
     }
   };
 
-  // Đăng xuất
   const handleLogout = async () => {
     const confirmed = await confirm({
-      title: 'Xác nhận Đăng Xuất',
-      message: 'Bạn có chắc chắn muốn đăng xuất tài khoản khỏi thiết bị này?',
-      confirmLabel: 'Đăng xuất',
-      cancelLabel: 'Hủy',
+      title: 'Confirm Logout',
+      message: 'Are you sure you want to log out your account from this device?',
+      confirmLabel: 'Log Out',
+      cancelLabel: 'Cancel',
       tone: 'danger'
     });
 
@@ -196,10 +284,12 @@ export default function Settings() {
       profileForm.displayName || 'User'
     )}&color=fff&background=3b82f6`;
 
+  const isLearner = String(profileForm.role || '').toUpperCase() === 'LEARNER';
+
   if (loading) {
     return (
       <main className="flex-1 p-8 bg-gray-50 flex items-center justify-center">
-        <p className="text-xs text-gray-500 font-semibold">Đang đồng bộ thông tin cài đặt...</p>
+        <p className="text-xs text-gray-500 font-semibold">Synchronizing settings information...</p>
       </main>
     );
   }
@@ -207,19 +297,14 @@ export default function Settings() {
   return (
     <main className="flex-1 p-6 lg:p-8 bg-gray-50 overflow-y-auto">
       <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Personal Settings</h1>
+          <h1 className="text-2xl font-bold text-gray-800">My Profile</h1>
           <p className="text-xs text-gray-500 mt-1">
-            Quản lý thông tin hồ sơ cá nhân, mật khẩu bảo mật và tùy chọn thông báo.
+            View your account information, update your profile, and configure account preferences.
           </p>
         </div>
 
-        {/* Card Tabs & Content */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          
-          {/* Tab Navigation */}
           <div className="flex border-b border-gray-100 px-6 pt-2 bg-white">
             <button
               type="button"
@@ -256,105 +341,196 @@ export default function Settings() {
             </button>
           </div>
 
-          {/* Tab Body */}
           <div className="p-6 lg:p-8">
-            
-            {/* TAB 1: PROFILE */}
             {activeTab === 'profile' && (
-              <form onSubmit={handleSaveProfile} className="space-y-6 max-w-xl">
-                
-                {/* Personal Info Frame */}
-                <div className="p-4 bg-gray-50/70 rounded-2xl border border-gray-100 flex items-center gap-4">
-                  <div className="relative group flex-shrink-0">
-                    <img
-                      src={displayAvatar}
-                      alt="Avatar"
-                      className="w-14 h-14 rounded-full object-cover shadow-sm border-2 border-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="absolute inset-0 bg-black/40 rounded-full text-white text-[9px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
-                    >
-                      Sửa ảnh
-                    </button>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <h3 className="text-xs font-bold text-gray-800 truncate">
-                        {profileForm.displayName || 'User'}
-                      </h3>
-                      <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded-full bg-blue-50 text-blue-600">
-                        {profileForm.role}
-                      </span>
+              <div className="space-y-6 max-w-2xl">
+                <form onSubmit={handleSaveProfile} noValidate className="space-y-6">
+                  <div className="p-4 bg-gray-50/70 rounded-2xl border border-gray-100 flex items-center gap-4">
+                    <div className="relative group flex-shrink-0">
+                      <img
+                        src={displayAvatar}
+                        alt={`${profileForm.displayName || 'User'} avatar`}
+                        className="w-14 h-14 rounded-full object-cover shadow-sm border-2 border-white"
+                      />
+                      {isEditingProfile && (
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="absolute inset-0 bg-black/40 rounded-full text-white text-[9px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                        >
+                          Edit Photo
+                        </button>
+                      )}
                     </div>
-                    <p className="text-[11px] text-gray-400 truncate">{profileForm.email}</p>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <h3 className="text-xs font-bold text-gray-800 truncate">
+                          {profileForm.displayName || 'User'}
+                        </h3>
+                        <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded-full bg-blue-50 text-blue-600">
+                          {String(profileForm.role || '').replace('_', ' ')}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 truncate">{profileForm.email}</p>
+                    </div>
+
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleAvatarChange}
+                      accept="image/*"
+                      className="hidden"
+                      disabled={!isEditingProfile}
+                    />
+
+                    {isEditingProfile ? (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+                      >
+                        Upload Photo
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={beginProfileEdit}
+                        className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+                      >
+                        Edit Profile
+                      </button>
+                    )}
                   </div>
 
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleAvatarChange}
-                    accept="image/*"
-                    className="hidden"
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
-                  >
-                    Tải ảnh lên
-                  </button>
-                </div>
-
-                {/* Form Fields */}
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Full Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={profileForm.displayName}
-                      onChange={(e) =>
-                        setProfileForm({ ...profileForm, displayName: e.target.value })
-                      }
-                      className="w-full text-xs border border-gray-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-blue-500 bg-gray-50/30 focus:bg-white transition-all text-gray-800"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      disabled
-                      value={profileForm.email}
-                      className="w-full text-xs border border-gray-200 rounded-xl px-3.5 py-2.5 bg-gray-100 text-gray-500 font-medium cursor-not-allowed outline-none"
-                    />
-                    <p className="text-[10px] text-gray-400 mt-1">
-                      Email đại diện tài khoản và không thể tự chỉnh sửa.
+                  {avatarError && (
+                    <p className="text-xs font-semibold text-red-600" role="alert">
+                      {avatarError}
                     </p>
-                  </div>
-                </div>
+                  )}
 
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-sm transition-colors disabled:opacity-50"
-                  >
-                    {submitting ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </form>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Full Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={profileForm.displayName}
+                        disabled={!isEditingProfile}
+                        aria-invalid={Boolean(displayNameError)}
+                        onChange={(e) => {
+                          setProfileForm({ ...profileForm, displayName: e.target.value });
+                          if (displayNameError) setDisplayNameError('');
+                        }}
+                        className={`w-full text-xs border rounded-xl px-3.5 py-2.5 outline-none transition-all text-gray-800 ${
+                          displayNameError
+                            ? 'border-red-500 bg-red-50/40 focus:border-red-500'
+                            : isEditingProfile
+                              ? 'border-gray-200 focus:border-blue-500 bg-gray-50/30 focus:bg-white'
+                              : 'border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed'
+                        }`}
+                      />
+                      {displayNameError && (
+                        <p className="text-[11px] font-semibold text-red-600 mt-1" role="alert">
+                          {displayNameError}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        disabled
+                        value={profileForm.email}
+                        className="w-full text-xs border border-gray-200 rounded-xl px-3.5 py-2.5 bg-gray-100 text-gray-500 font-medium cursor-not-allowed outline-none"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        Your account email cannot be self-edited.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Role</p>
+                        <p className="text-xs font-bold text-gray-800 mt-1">
+                          {String(profileForm.role || 'Member').replace('_', ' ')}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Account Status</p>
+                        <p className="text-xs font-bold text-gray-800 mt-1">
+                          {profileForm.status || 'ACTIVE'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {isEditingProfile && (
+                    <div className="pt-2 flex items-center gap-3">
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-sm transition-colors disabled:opacity-50"
+                      >
+                        {submitting ? 'Saving...' : 'Save Changes'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelProfileEdit}
+                        disabled={submitting}
+                        className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 font-bold text-xs px-6 py-2.5 rounded-xl transition-colors disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </form>
+
+                {isLearner && (
+                  <section className="rounded-2xl border border-blue-100 bg-blue-50/40 p-5" aria-label="Personal Learning Summary">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                      <div>
+                        <h2 className="text-sm font-black text-gray-900">Personal Learning Summary</h2>
+                        <p className="text-[11px] text-gray-500 mt-0.5">High-level all-time learning activity.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/learner/dashboard')}
+                        className="text-xs font-bold text-blue-600 hover:text-blue-700 self-start sm:self-auto"
+                      >
+                        View Detailed Statistics
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-white rounded-xl border border-blue-100 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Total Active Study Hours</p>
+                        <p className="text-lg font-black text-gray-900 mt-1">
+                          {formatStudyHours(learningSummary?.totalActiveStudyHours)}
+                        </p>
+                      </div>
+                      <div className="bg-white rounded-xl border border-blue-100 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Total AI Interactions</p>
+                        <p className="text-lg font-black text-gray-900 mt-1">
+                          {Number(learningSummary?.totalAiInteractions || 0)}
+                        </p>
+                      </div>
+                      <div className="bg-white rounded-xl border border-blue-100 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Total Flashcards Created</p>
+                        <p className="text-lg font-black text-gray-900 mt-1">
+                          {Number(learningSummary?.totalFlashcardsCreated || 0)}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+                )}
+              </div>
             )}
 
-            {/* TAB 2: SECURITY */}
             {activeTab === 'security' && (
               <form onSubmit={handleSaveSecurity} className="space-y-4 max-w-xl">
                 <div>
@@ -385,7 +561,7 @@ export default function Settings() {
                     onChange={(e) =>
                       setSecurityForm({ ...securityForm, newPassword: e.target.value })
                     }
-                    placeholder="Tối thiểu 6 ký tự..."
+                    placeholder="Minimum 6 characters..."
                     className="w-full text-xs border border-gray-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-blue-500 bg-gray-50/30 focus:bg-white transition-all text-gray-800"
                   />
                 </div>
@@ -402,7 +578,7 @@ export default function Settings() {
                     onChange={(e) =>
                       setSecurityForm({ ...securityForm, confirmPassword: e.target.value })
                     }
-                    placeholder="Xác nhận mật khẩu mới..."
+                    placeholder="Confirm new password..."
                     className="w-full text-xs border border-gray-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-blue-500 bg-gray-50/30 focus:bg-white transition-all text-gray-800"
                   />
                 </div>
@@ -419,16 +595,14 @@ export default function Settings() {
               </form>
             )}
 
-            {/* TAB 3: NOTIFICATIONS */}
             {activeTab === 'notifications' && (
               <form onSubmit={handleSaveNotifications} className="space-y-6 max-w-xl">
                 <div className="space-y-4">
-                  {/* Email Notifications */}
                   <div className="flex items-center justify-between p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
                     <div>
                       <h4 className="text-xs font-bold text-gray-800">Email Notifications</h4>
                       <p className="text-[11px] text-gray-400 mt-0.5">
-                        Nhận thông báo lớp học, thông báo bài tập qua Email.
+                        Receive class and assignment notifications via Email.
                       </p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -447,12 +621,11 @@ export default function Settings() {
                     </label>
                   </div>
 
-                  {/* Push Notifications */}
                   <div className="flex items-center justify-between p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
                     <div>
                       <h4 className="text-xs font-bold text-gray-800">Push Notifications</h4>
                       <p className="text-[11px] text-gray-400 mt-0.5">
-                        Nhận thông báo nổi trực tiếp trên giao diện trình duyệt.
+                        Receive floating notifications directly on the browser interface.
                       </p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -483,16 +656,14 @@ export default function Settings() {
                 </div>
               </form>
             )}
-
           </div>
         </div>
 
-        {/* Danger Zone */}
         <div className="bg-red-50/60 border border-red-100 rounded-2xl p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h3 className="text-sm font-bold text-red-700">Danger Zone</h3>
             <p className="text-xs text-red-500/80 mt-0.5">
-              Thoát phiên đăng nhập của tài khoản trên thiết bị này.
+              End the account login session on this device.
             </p>
           </div>
           <button
@@ -503,7 +674,6 @@ export default function Settings() {
             Log Out
           </button>
         </div>
-
       </div>
     </main>
   );

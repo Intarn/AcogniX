@@ -1,924 +1,270 @@
-import {
-  useEffect,
-  useState
-} from 'react';
+// frontend/src/pages/learner/CourseAssessments.jsx
+import { useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { getCourses } from '../../services/courseService';
+import { getLearnerAssessments } from '../../services/assessmentService';
+import { useToast } from '../../contexts/ToastContext';
 
-import {
-  Link,
-  useParams
-} from 'react-router-dom';
+function resolveFileUrl(rawUrl, defaultBucket = 'materials') {
+  if (!rawUrl) return '';
+  const trimmed = String(rawUrl).trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
 
-import {
-  getCourses
-} from '../../services/courseService';
-
-import {
-  getLearnerAssessments
-} from '../../services/assessmentService';
-
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+  const cleanPath = trimmed.replace(/^\/+/, '');
+  if (cleanPath.startsWith('materials/') || cleanPath.startsWith('announcements/') || cleanPath.startsWith('avatars/')) {
+    return `${supabaseUrl}/storage/v1/object/public/${cleanPath}`;
+  }
+  return `${supabaseUrl}/storage/v1/object/public/${defaultBucket}/${cleanPath}`;
+}
 
 function formatDateTime(value) {
-  if (!value) {
-    return 'Not set';
-  }
-
-  const date =
-    new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return 'Not set';
-  }
-
-  return date.toLocaleString(
-    'en-US',
-    {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    }
-  );
+  if (!value) return 'Not set';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not set';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
 }
 
-
-function getStatusClasses(status) {
+function getStatusBadge(status) {
   switch (status) {
     case 'IN_PROGRESS':
-      return `
-        bg-green-100
-        text-green-700
-      `;
-
+      return <span className="bg-emerald-100 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">Open</span>;
     case 'SCHEDULED':
-      return `
-        bg-blue-100
-        text-blue-700
-      `;
-
+      return <span className="bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">Scheduled</span>;
     case 'CLOSED':
-      return `
-        bg-gray-100
-        text-gray-600
-      `;
-
+      return <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">Closed</span>;
     default:
-      return `
-        bg-gray-100
-        text-gray-600
-      `;
+      return <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">{status}</span>;
   }
 }
-
-
-function getTypeClasses(type) {
-  if (type === 'QUIZ') {
-    return `
-      bg-violet-50
-      text-violet-700
-    `;
-  }
-
-  return `
-    bg-emerald-50
-    text-emerald-700
-  `;
-}
-
 
 export default function CourseAssessments() {
-  const {
-    courseId
-  } = useParams();
-
-
-  const [
-    course,
-    setCourse
-  ] = useState(null);
-
-
-  const [
-    assessments,
-    setAssessments
-  ] = useState([]);
-
-
-  const [
-    loading,
-    setLoading
-  ] = useState(true);
-
-
-  const [
-    loadError,
-    setLoadError
-  ] = useState('');
-
+  const { courseId } = useParams();
+  const { showToast } = useToast();
+  const [course, setCourse] = useState(null);
+  const [assessments, setAssessments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [downloadingId, setDownloadingId] = useState(null);
 
   useEffect(() => {
-    if (!courseId) {
-      setLoading(false);
-
-      setLoadError(
-        'Course ID is missing.'
-      );
-
-      return;
-    }
-
-
-    let cancelled =
-      false;
-
-
+    if (!courseId) return;
     async function loadPage() {
       try {
         setLoading(true);
-
         setLoadError('');
+        const [courseResult, assessmentResult] = await Promise.all([
+          getCourses(),
+          getLearnerAssessments()
+        ]);
 
+        const courseList = Array.isArray(courseResult?.courses) ? courseResult.courses : (Array.isArray(courseResult) ? courseResult : []);
+        const foundCourse = courseList.find((item) => String(item.courseId) === String(courseId)) || null;
+        if (!foundCourse) throw new Error('Class not found.');
 
-        const [
-          courseResult,
-          assessmentResult
-        ] =
-          await Promise.all([
-            getCourses(),
+        const allAssessments = Array.isArray(assessmentResult?.assessments) ? assessmentResult.assessments : (Array.isArray(assessmentResult) ? assessmentResult : []);
+        const courseAssessments = allAssessments
+          .filter((a) => String(a.courseId) === String(courseId))
+          .sort((a, b) => new Date(a.startTime || a.createdAt || 0).getTime() - new Date(b.startTime || b.createdAt || 0).getTime());
 
-            getLearnerAssessments()
-          ]);
-
-
-        const courseList =
-          Array.isArray(
-            courseResult?.courses
-          )
-            ? courseResult.courses
-            : [];
-
-
-        const foundCourse =
-          courseList.find(
-            (item) =>
-              String(
-                item.courseId
-              ) ===
-              String(
-                courseId
-              )
-          ) || null;
-
-
-        if (!foundCourse) {
-          throw new Error(
-            'Course not found or you do not have access to this course.'
-          );
-        }
-
-
-        const allAssessments =
-          Array.isArray(
-            assessmentResult
-              ?.assessments
-          )
-            ? assessmentResult
-                .assessments
-            : (
-                Array.isArray(
-                  assessmentResult
-                )
-                  ? assessmentResult
-                  : []
-              );
-
-
-        /*
-         * Only assessments belonging
-         * to this Course.
-         */
-        const courseAssessments =
-          allAssessments
-            .filter(
-              (assessment) =>
-                String(
-                  assessment.courseId
-                ) ===
-                String(
-                  courseId
-                )
-            )
-            .sort(
-              (
-                first,
-                second
-              ) =>
-                new Date(
-                  first.startTime ||
-                  first.createdAt ||
-                  0
-                ).getTime() -
-                new Date(
-                  second.startTime ||
-                  second.createdAt ||
-                  0
-                ).getTime()
-            );
-
-
-        if (cancelled) {
-          return;
-        }
-
-
-        setCourse(
-          foundCourse
-        );
-
-        setAssessments(
-          courseAssessments
-        );
-
+        setCourse(foundCourse);
+        setAssessments(courseAssessments);
       } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        console.error(
-          'Unable to load course assessments:',
-          error
-        );
-
-        setCourse(null);
-
-        setAssessments([]);
-
-        setLoadError(
-          error.message ||
-          'Unable to load assessments.'
-        );
-
+        setLoadError(error.message || 'Unable to load assessment list.');
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     }
-
-
     loadPage();
+  }, [courseId]);
 
+  const handleDownloadInstruction = async (e, rawUrl, fileName, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const resolvedUrl = resolveFileUrl(rawUrl);
+    if (!resolvedUrl) {
+      showToast('Instruction file unavailable.', 'warning');
+      return;
+    }
 
-    return () => {
-      cancelled = true;
-    };
+    try {
+      setDownloadingId(id);
+      const res = await fetch(resolvedUrl);
+      if (!res.ok) {
+        if (res.status === 404) {
+          showToast('Instruction file does not exist in storage (404 Not Found).', 'error');
+          return;
+        }
+        throw new Error(`File download error (Code: ${res.status})`);
+      }
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName || 'instruction-file';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+      showToast('Instruction file downloaded successfully!', 'success');
+    } catch (err) {
+      console.error('[Download Instruction Error]:', err);
+      showToast('Unable to download instruction file. Please contact the educator.', 'error');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
-  }, [
-    courseId
-  ]);
-
+  const handleOpenInstruction = (e, rawUrl) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const resolvedUrl = resolveFileUrl(rawUrl);
+    if (!resolvedUrl) {
+      showToast('Invalid file path.', 'warning');
+      return;
+    }
+    window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+  };
 
   if (loading) {
     return (
-      <div
-        className="
-          flex-1
-          flex
-          items-center
-          justify-center
-          p-8
-          bg-gray-50
-        "
-      >
-        <p className="text-sm text-gray-500">
-          Loading assessments...
-        </p>
-      </div>
+      <main className="flex-1 flex items-center justify-center p-8 bg-gray-50/50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-blue-600 border-t-transparent animate-spin"></div>
+          <p className="text-xs font-bold text-gray-500">Loading assessments...</p>
+        </div>
+      </main>
     );
   }
 
-
-  if (loadError) {
+  if (loadError || !course) {
     return (
-      <div
-        className="
-          flex-1
-          flex
-          flex-col
-          items-center
-          justify-center
-          p-8
-          bg-gray-50
-        "
-      >
-        <p className="text-sm text-red-500">
-          {loadError}
-        </p>
-
-        <Link
-          to="/learner/my-courses"
-          className="
-            mt-3
-            text-sm
-            font-semibold
-            text-blue-600
-            hover:underline
-          "
-        >
-          Back to My Courses
+      <main className="flex-1 flex flex-col items-center justify-center p-8 bg-gray-50/50">
+        <p className="text-sm font-bold text-red-500">{loadError}</p>
+        <Link to="/learner/my-courses" className="mt-3 text-xs font-bold text-blue-600 hover:underline">
+          ← Back to course list
         </Link>
-      </div>
+      </main>
     );
   }
-
-
-  if (!course) {
-    return null;
-  }
-
 
   return (
-    <>
-      {/* TOPBAR */}
-      <header
-        className="
-          min-h-16
-          bg-white
-          border-b
-          border-gray-100
-          flex
-          items-center
-          px-6
-          py-3
-        "
-      >
-        <div>
-          <div
-            className="
-              flex
-              items-center
-              gap-2
-              text-xs
-              text-gray-400
-              mb-1
-            "
-          >
-            <Link
-              to="/learner/my-courses"
-              className="hover:text-blue-600"
-            >
-              My Courses
-            </Link>
-
-            <span>/</span>
-
-            <Link
-              to={
-                `/learner/courses/${course.courseId}`
-              }
-              className="hover:text-blue-600"
-            >
-              {course.subjectName}
-            </Link>
-
-            <span>/</span>
-
-            <span>
-              Assessments
-            </span>
-          </div>
-
-
-          <h1
-            className="
-              text-lg
-              font-bold
-              text-gray-800
-            "
-          >
-            Assessments
-          </h1>
+    <main className="flex-1 p-8 overflow-y-auto space-y-8 bg-gray-50/50">
+      {/* BREADCRUMB & HEADER */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-xs text-gray-400 font-semibold">
+          <Link to="/learner/my-courses" className="hover:text-blue-600 transition-colors">My Courses</Link>
+          <span>/</span>
+          <Link to={`/learner/courses/${course.courseId}`} className="hover:text-blue-600 transition-colors">{course.subjectName}</Link>
+          <span>/</span>
+          <span className="text-gray-700 font-bold">Assessments & Evaluations</span>
         </div>
-      </header>
+        <h1 className="text-2xl font-black text-gray-900 tracking-tight">Assessments & Evaluations</h1>
+      </div>
 
-
-      {/* MAIN */}
-      <main
-        className="
-          flex-1
-          p-6
-          bg-gray-50
-          overflow-y-auto
-        "
-      >
-        <section
-          className="
-            bg-white
-            rounded-xl
-            border
-            border-gray-100
-            shadow-sm
-            overflow-hidden
-          "
-        >
-          <div
-            className="
-              px-6
-              py-4
-              border-b
-              border-gray-100
-            "
-          >
-            <h2
-              className="
-                text-base
-                font-bold
-                text-gray-800
-              "
-            >
-              Course Assessments
-            </h2>
-
-            <p
-              className="
-                text-xs
-                text-gray-400
-                mt-1
-              "
-            >
-              Official quizzes and assignments
-              for {course.subjectName}.
-            </p>
+      {/* ASSESSMENTS CONTAINER */}
+      <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xs">
+        {assessments.length === 0 ? (
+          <div className="py-16 text-center">
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl mb-3 font-bold">
+              📝
+            </div>
+            <p className="text-sm font-bold text-gray-700">No assessments in this course</p>
+            <p className="text-xs text-gray-400 mt-1">Quizzes or assignments from educators will appear here.</p>
           </div>
+        ) : (
+          <div className="space-y-3">
+            {assessments.map((assessment) => {
+              const isQuiz = assessment.type === 'QUIZ';
+              const isOpen = assessment.status === 'IN_PROGRESS';
+              const isClosed = assessment.status === 'CLOSED';
+              const allowsLate = Boolean(assessment.allowLateSubmission);
+              const canAttempt = isOpen || (isClosed && allowsLate);
+              const submissionStatus = assessment.submission?.status || null;
+              const hasSubmitted = ['SUBMITTED', 'PENDING_REVIEW', 'GRADED'].includes(submissionStatus);
+              const canReview = isClosed || hasSubmitted;
+              const isDownloading = downloadingId === assessment.assessmentId;
 
-
-          <div className="p-6">
-            {assessments.length === 0 ? (
-              <div
-                className="
-                  py-16
-                  text-center
-                "
-              >
+              return (
                 <div
-                  className="
-                    w-12
-                    h-12
-                    mx-auto
-                    rounded-full
-                    bg-violet-50
-                    flex
-                    items-center
-                    justify-center
-                    mb-3
-                  "
+                  key={assessment.assessmentId}
+                  className="border border-gray-100 rounded-2xl p-5 flex items-start justify-between gap-4 hover:border-indigo-200 hover:shadow-xs transition-all bg-white"
                 >
-                  📝
-                </div>
+                  <div className="flex items-start gap-4 min-w-0">
+                    <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0 text-xl">
+                      {isQuiz ? '⚡' : '📋'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm font-bold text-gray-900 truncate">{assessment.title}</h3>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${isQuiz ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {assessment.type}
+                        </span>
+                        {getStatusBadge(assessment.status)}
+                      </div>
+                      {assessment.description && (
+                        <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">{assessment.description}</p>
+                      )}
+                      <div className="flex items-center gap-4 mt-2 text-[11px] text-gray-400 font-semibold flex-wrap">
+                        <span>Max Points: <strong className="text-gray-700">{assessment.totalPoints ?? 10}</strong></span>
+                        <span>• Deadline: <strong className="text-gray-700">{formatDateTime(assessment.deadline)}</strong></span>
+                      </div>
 
-                <p
-                  className="
-                    text-sm
-                    font-semibold
-                    text-gray-600
-                  "
-                >
-                  No assessments are
-                  available for this course.
-                </p>
-
-                <p
-                  className="
-                    text-xs
-                    text-gray-400
-                    mt-1
-                  "
-                >
-                  Published assessments will
-                  appear here.
-                </p>
-              </div>
-
-            ) : (
-              <div className="space-y-3">
-                {assessments.map(
-                  (assessment) => {
-                    const isQuiz =
-                      assessment.type ===
-                      'QUIZ';
-
-                    const isAssignment =
-                      assessment.type ===
-                      'ASSIGNMENT';
-
-                    const isOpen =
-                      assessment.status ===
-                      'IN_PROGRESS';
-
-                    const isScheduled =
-                      assessment.status ===
-                      'SCHEDULED';
-
-                    const isClosed =
-                      assessment.status ===
-                      'CLOSED';
-                    
-                    const allowsLateSubmission =
-                        Boolean(
-                            assessment
-                                .allowLateSubmission
-                        );
-
-
-                    const isLateSubmissionPeriod =
-                        isClosed &&
-                        allowsLateSubmission;
-
-                    const canAttempt =
-                        isOpen ||
-                        isLateSubmissionPeriod;
-                      
-                    const submissionStatus =
-                      assessment.submission
-                        ?.status ||
-                      null;
-
-
-                    const submissionInProgress =
-                      submissionStatus ===
-                      'IN_PROGRESS';
-
-
-                    const hasFinalizedSubmission =
-                      [
-                        'SUBMITTED',
-                        'PENDING_REVIEW',
-                        'GRADED'
-                      ].includes(
-                        submissionStatus
-                      );
-
-
-                    /*
-                    * Assignment đã submit,
-                    * nhưng Assessment còn mở:
-                    * Learner vẫn được edit.
-                    */
-                    const assignmentSubmittedButEditable =
-                      isAssignment &&
-                      isOpen &&
-                      [
-                        'SUBMITTED',
-                        'PENDING_REVIEW'
-                      ].includes(
-                        submissionStatus
-                      );
-
-
-                    /*
-                    * Quiz submit là khóa ngay.
-                    */
-                    const quizFinalized =
-                      isQuiz &&
-                      hasFinalizedSubmission;
-
-
-                    /*
-                    * Review khi:
-                    *
-                    * - Assessment CLOSED
-                    * - Quiz đã finalize
-                    * - Submission đã GRADED
-                    */
-                    const assignmentFinalizedAfterDeadline =
-                        isAssignment &&
-                        isClosed &&
-                        [
-                            'SUBMITTED',
-                            'PENDING_REVIEW',
-                            'GRADED'
-                        ].includes(
-                            submissionStatus
-                        );
-
-
-                    const canReview =
-                        quizFinalized ||
-                        submissionStatus ===
-                            'GRADED' ||
-                        (
-                            isClosed &&
-                            !allowsLateSubmission
-                        ) ||
-                        assignmentFinalizedAfterDeadline;
-
-
-                    return (
-                      <article
-                        key={
-                          assessment.assessmentId
-                        }
-                        className="
-                          border
-                          border-gray-100
-                          rounded-xl
-                          p-5
-                          flex
-                          items-start
-                          justify-between
-                          gap-4
-                          hover:border-blue-200
-                          hover:shadow-sm
-                          transition
-                        "
-                      >
-                        <div
-                          className="
-                            flex
-                            items-start
-                            gap-4
-                            min-w-0
-                          "
-                        >
-                          <div
-                            className="
-                              w-11
-                              h-11
-                              rounded-xl
-                              bg-violet-50
-                              flex
-                              items-center
-                              justify-center
-                              flex-shrink-0
-                            "
+                      {/* INSTRUCTION FILE BUTTONS */}
+                      {assessment.instructionFileUrl && (
+                        <div className="flex items-center gap-3 mt-3">
+                          <button
+                            type="button"
+                            onClick={(e) => handleDownloadInstruction(e, assessment.instructionFileUrl, `Instruction-${assessment.title}`, assessment.assessmentId)}
+                            disabled={isDownloading}
+                            className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 hover:underline"
                           >
-                            📝
-                          </div>
-
-
-                          <div className="min-w-0">
-                            <div
-                              className="
-                                flex
-                                flex-wrap
-                                items-center
-                                gap-2
-                              "
-                            >
-                              <h3
-                                className="
-                                  text-sm
-                                  font-bold
-                                  text-gray-800
-                                "
-                              >
-                                {
-                                  assessment.title ||
-                                  'Untitled Assessment'
-                                }
-                              </h3>
-
-
-                              <span
-                                className={`
-                                  px-2
-                                  py-0.5
-                                  rounded-full
-                                  text-[10px]
-                                  font-semibold
-                                  ${getTypeClasses(
-                                    assessment.type
-                                  )}
-                                `}
-                              >
-                                {
-                                  assessment.type
-                                }
-                              </span>
-
-
-                              <span
-                                className={`
-                                  px-2
-                                  py-0.5
-                                  rounded-full
-                                  text-[10px]
-                                  font-semibold
-                                  ${getStatusClasses(
-                                    assessment.status
-                                  )}
-                                `}
-                              >
-                                {
-                                  assessment.status
-                                }
-                              </span>
-                            </div>
-
-
-                            {assessment.description && (
-                              <p
-                                className="
-                                  text-xs
-                                  text-gray-500
-                                  mt-2
-                                  line-clamp-2
-                                "
-                              >
-                                {
-                                  assessment.description
-                                }
-                              </p>
-                            )}
-
-
-                            <div
-                              className="
-                                flex
-                                flex-wrap
-                                gap-x-4
-                                gap-y-1
-                                mt-3
-                                text-[11px]
-                                text-gray-400
-                              "
-                            >
-                              <span>
-                                {
-                                  assessment.totalPoints ??
-                                  0
-                                }{' '}
-                                points
-                              </span>
-
-                              <span>
-                                Starts:{' '}
-                                {
-                                  formatDateTime(
-                                    assessment.startTime
-                                  )
-                                }
-                              </span>
-
-                              <span>
-                                Due:{' '}
-                                {
-                                  formatDateTime(
-                                    assessment.deadline
-                                  )
-                                }
-                              </span>
-                            </div>
-
-
-                            {assessment
-                              .instructionFileUrl && (
-                              <a
-                                href={
-                                  assessment
-                                    .instructionFileUrl
-                                }
-                                target="_blank"
-                                rel="noreferrer"
-                                className="
-                                  inline-block
-                                  mt-3
-                                  text-xs
-                                  font-semibold
-                                  text-blue-600
-                                  hover:underline
-                                "
-                              >
-                                View Instructions
-                              </a>
-                            )}
-                          </div>
+                            <span>{isDownloading ? '⏳' : '📥'}</span> {isDownloading ? 'Downloading...' : 'Download instruction file'}
+                          </button>
+                          <span className="text-gray-300">•</span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenInstruction(e, assessment.instructionFileUrl)}
+                            className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 hover:underline"
+                          >
+                            <span>👁️</span> View directly
+                          </button>
                         </div>
+                      )}
+                    </div>
+                  </div>
 
-
-                        {/* ACTION */}
-                        <div
-                          className="
-                            flex-shrink-0
-                          "
-                        >
-                          {/* Already submitted
-                              OR Assessment closed */}
-                          {canReview && (
-                            <Link
-                              to={
-                                `/learner/courses/${course.courseId}/assessments/${assessment.assessmentId}/review`
-                              }
-                              className="
-                                inline-flex
-                                items-center
-                                px-4
-                                py-2
-                                rounded-lg
-                                bg-gray-100
-                                text-gray-700
-                                text-xs
-                                font-semibold
-                                hover:bg-gray-200
-                                transition
-                              "
-                            >
-                              View Review
-                            </Link>
-                          )}
-
-
-                          {/* Not opened yet */}
-                          {!canReview &&
-                            isScheduled && (
-                            <span
-                              className="
-                                text-xs
-                                font-semibold
-                                text-gray-400
-                              "
-                            >
-                              Not Open Yet
-                            </span>
-                          )}
-
-
-                          {/* Open Quiz */}
-                          {!canReview &&
-                            canAttempt &&
-                            isQuiz && (
-                            <Link
-                              to={
-                                `/learner/quizzes?id=${assessment.assessmentId}`
-                              }
-                              className="
-                                inline-flex
-                                px-4
-                                py-2
-                                rounded-lg
-                                bg-blue-600
-                                text-white
-                                text-xs
-                                font-semibold
-                                hover:bg-blue-700
-                                transition
-                              "
-                            >
-                              {
-                                submissionInProgress
-                                  ? 'Continue Quiz'
-                                  : 'Open Quiz'
-                              }
-                            </Link>
-                          )}
-
-
-                          {/* Assignment */}
-                          {!canReview &&
-                            canAttempt &&
-                            isAssignment && (
-                            <Link
-                              to={
-                                `/learner/courses/${course.courseId}/assessments/${assessment.assessmentId}/assignment`
-                              }
-                              className="
-                                inline-flex
-                                px-4
-                                py-2
-                                rounded-lg
-                                bg-emerald-600
-                                text-white
-                                text-xs
-                                font-semibold
-                                hover:bg-emerald-700
-                                transition
-                              "
-                            >
-                              {
-                                 submissionInProgress
-                                  ? 'Continue Assignment'
-
-                                  : assignmentSubmittedButEditable
-                                    ? 'Edit Assignment'
-
-                                    : 'Open Assignment'
-                              }
-                            </Link>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  }
-                )}
-              </div>
-            )}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {canReview && (
+                      <Link
+                        to={`/learner/courses/${course.courseId}/assessments/${assessment.assessmentId}/review`}
+                        className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition"
+                      >
+                        Review Submission
+                      </Link>
+                    )}
+                    {!canReview && canAttempt && (
+                      <Link
+                        to={isQuiz ? `/learner/quizzes?id=${assessment.assessmentId}` : `/learner/courses/${course.courseId}/assessments/${assessment.assessmentId}/assignment`}
+                        className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs"
+                      >
+                        Start Now →
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </section>
-      </main>
-    </>
+        )}
+      </div>
+    </main>
   );
 }

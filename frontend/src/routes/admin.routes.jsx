@@ -1,3 +1,4 @@
+// frontend/src/routes/admin.routes.jsx
 import AdminLayout from '../layouts/AdminLayout';
 import ProtectedRoute from './ProtectedRoute';
 import DashboardPage from '../pages/admin/DashboardPage';
@@ -6,7 +7,6 @@ import AddUserPage from '../pages/admin/AddUserPage';
 import EditUserPage from '../pages/admin/EditUserPage';
 import CourseManagementPage from '../pages/admin/CourseManagementPage';
 import CourseDetailPage from '../pages/admin/CourseDetailPage';
-import CommunityManagementPage from '../pages/admin/CommunityManagementPage';
 import AnalyticsPage from '../pages/admin/AnalyticsPage';
 import SettingsPage from '../pages/admin/SettingsPage';
 import SupportTicketsPage from '../pages/admin/SupportTicketsPage';
@@ -26,7 +26,6 @@ export const adminRoutes = {
     { path: 'users/:userId/edit', element: <EditUserPage /> },
     { path: 'courses', element: <CourseManagementPage /> },
     { path: 'courses/:courseId', element: <CourseDetailPage /> },
-    { path: 'community', element: <CommunityManagementPage /> },
     { path: 'analytics', element: <AnalyticsPage /> },
     { path: 'settings', element: <SettingsPage /> },
     { path: 'tickets', element: <SupportTicketsPage /> }

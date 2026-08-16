@@ -1,4 +1,5 @@
-const { AssessmentStatus } = require('../enums/AssessmentEnums')
+// backend/entities/Assessment.js
+const { AssessmentStatus } = require('../enums/AssessmentEnums');
 
 class Assessment {
     constructor({
@@ -45,7 +46,6 @@ class Assessment {
         if (!this.startTime || !this.deadline) {
             throw new Error('ASSESSMENT_SCHEDULE_REQUIRED');
         }
-
         if (currentTime < this.startTime) {
             this.status = AssessmentStatus.SCHEDULED;
         }
@@ -71,37 +71,20 @@ class Assessment {
             currentTime <= this.deadline
         );
     }
-    canAcceptSubmission(
-        currentTime = new Date()
-    ) {
-        if (
-            !this.startTime ||
-            !this.deadline
-        ) {
+
+    canAcceptSubmission(currentTime = new Date()) {
+        if (!this.startTime || !this.deadline) {
             return false;
         }
-
-        if (
-            this.status ===
-            AssessmentStatus.DRAFT
-        ) {
+        if (this.status === AssessmentStatus.DRAFT) {
             return false;
         }
-
-        if (
-            currentTime <
-            this.startTime
-        ) {
+        if (currentTime < this.startTime) {
             return false;
         }
-
-        if (
-            currentTime <=
-            this.deadline
-        ) {
+        if (currentTime <= this.deadline) {
             return true;
         }
-
         return this.allowLateSubmission;
     }
 
@@ -112,16 +95,16 @@ class Assessment {
         ) {
             return false; 
         }
-
         if (
+            this.status !== AssessmentStatus.DRAFT &&
             this.startTime && 
             currentTime >= this.startTime
         ) {
-            return false;
+            return false; 
         }
-
+        // Bản nháp (DRAFT) luôn được phép chỉnh sửa và upload tệp
         return true; 
     }
 }
 
-module.exports = Assessment
+module.exports = Assessment;

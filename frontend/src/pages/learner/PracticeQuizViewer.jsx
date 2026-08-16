@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getSavedQuizzes } from '../../services/aiService';
+// frontend/src/pages/learner/PracticeQuizViewer.jsx
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { getSavedQuizzes, recordPracticeQuizAttempt } from '../../services/aiService';
 
 export default function PracticeQuizViewer() {
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
   const quizId = searchParams.get('quizId');
+  const quizName = searchParams.get('name') || 'AI Practice Quiz';
   
   const navigate = useNavigate();
   const [questions, setQuestions] = useState([]);
@@ -16,24 +18,48 @@ export default function PracticeQuizViewer() {
   const [isAnswered, setIsAnswered] = useState(false);
   const [score, setScore] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
+  const attemptRecordedRef = useRef(false);
 
   useEffect(() => {
     const loadQuiz = async () => {
-      if (!projectId || !quizId) return navigate('/learner/ai-quizzes');
+      if (!projectId || !quizId) {
+        navigate('/learner/ai-quizzes');
+        return;
+      }
       try {
+        setLoading(true);
         const res = await getSavedQuizzes(projectId);
-        const currentQuiz = res.data?.find(q => String(q.quizId || q.id) === String(quizId));
+        const currentQuiz = res?.data?.find(q => String(q.quizId || q.id) === String(quizId));
         if (currentQuiz) {
-          setQuestions(currentQuiz.Practice_Question || currentQuiz.questions || []);
+          const rawQuestions = currentQuiz.Practice_Question || currentQuiz.questions || [];
+          setQuestions(rawQuestions);
         }
       } catch (err) {
-        console.error("Lỗi lấy Quiz:", err);
+        console.error('[PracticeQuizViewer Error]:', err);
       } finally {
         setLoading(false);
       }
     };
     loadQuiz();
   }, [projectId, quizId, navigate]);
+
+  // UC04: Practice Quiz results must survive refresh and feed Personal Statistics.
+  useEffect(() => {
+    if (!isFinished || !projectId || !quizId || questions.length === 0 || attemptRecordedRef.current) {
+      return;
+    }
+
+    attemptRecordedRef.current = true;
+    recordPracticeQuizAttempt(projectId, quizId, {
+      score,
+      totalQuestions: questions.length,
+      quizName,
+      completedAt: new Date().toISOString()
+    }).catch((error) => {
+      console.error('[PracticeQuizViewer] Unable to record analytics result:', error);
+      attemptRecordedRef.current = false;
+    });
+  }, [isFinished, projectId, quizId, questions.length, score, quizName]);
 
   const handleSelect = (option) => {
     if (isAnswered) return;
@@ -44,7 +70,8 @@ export default function PracticeQuizViewer() {
     if (!selectedAnswer) return;
     setIsAnswered(true);
     const currentQ = questions[currentIndex];
-    if (selectedAnswer === currentQ.correctAnswer) {
+    const correctVal = currentQ.correctAnswer || currentQ.correctOption || currentQ.answer;
+    if (selectedAnswer === correctVal) {
       setScore(prev => prev + 1);
     }
   };
@@ -59,76 +86,172 @@ export default function PracticeQuizViewer() {
     }
   };
 
-  if (loading) return <div className="flex-1 p-8 text-center text-gray-500">Đang tải câu hỏi...</div>;
-  if (questions.length === 0) return <div className="flex-1 p-8 text-center text-red-500">Không tìm thấy câu hỏi nào.</div>;
+  const handleRestart = () => {
+    setCurrentIndex(0);
+    setSelectedAnswer(null);
+    setIsAnswered(false);
+    setScore(0);
+    setIsFinished(false);
+    attemptRecordedRef.current = false;
+  };
+
+  if (loading) {
+    return (
+      <main className="flex-1 flex items-center justify-center p-8 bg-gray-50/50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-blue-600 border-t-transparent animate-spin"></div>
+          <p className="text-xs font-bold text-gray-500">Loading quiz questions...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (questions.length === 0) {
+    return (
+      <main className="flex-1 flex flex-col items-center justify-center p-8 bg-gray-50/50">
+        <p className="text-sm font-bold text-gray-700">No questions found in this quiz.</p>
+        <Link to="/learner/ai-quizzes" className="mt-4 text-xs font-bold text-blue-600 hover:underline">
+          ← Back to quiz list
+        </Link>
+      </main>
+    );
+  }
 
   if (isFinished) {
+    const percentage = Math.round((score / questions.length) * 100);
     return (
-      <main className="flex-1 flex items-center justify-center p-6 bg-gray-50">
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center w-full max-w-md">
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Hoàn thành!</h2>
-          <p className="text-gray-500 mb-6">Kết quả tự luyện tập của bạn</p>
-          <div className="text-5xl font-black text-blue-600 mb-8">{score} / {questions.length}</div>
-          <button onClick={() => navigate('/learner/ai-quizzes')} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl">Quay lại danh sách</button>
+      <main className="flex-1 flex items-center justify-center p-6 bg-gray-50/50">
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 text-center w-full max-w-md space-y-6 animate-fadeIn">
+          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto text-3xl font-black shadow-xs">
+            🏆
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-gray-900">Practice Session Completed!</h2>
+            <p className="text-xs text-gray-500 mt-1">Your self-assessment results for "{quizName}".</p>
+          </div>
+
+          <div className="p-6 bg-blue-50/60 border border-blue-100 rounded-2xl space-y-1">
+            <span className="text-[10px] font-black text-blue-600 uppercase tracking-wider block">Score Achieved</span>
+            <div className="text-4xl font-black text-blue-700">{score} / {questions.length}</div>
+            <p className="text-xs font-bold text-blue-600">Accuracy: {percentage}%</p>
+          </div>
+
+          <div className="flex items-center justify-center gap-3 pt-4 border-t border-gray-100">
+            <button
+              onClick={handleRestart}
+              className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-2xl transition"
+            >
+              🔄 Retake This Quiz
+            </button>
+            <Link
+              to="/learner/ai-quizzes"
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-2xl shadow-md transition"
+            >
+              Back to List →
+            </Link>
+          </div>
         </div>
       </main>
     );
   }
 
   const currentQ = questions[currentIndex];
-  const options = currentQ.options || []; // Dữ liệu đã được backend parse sẵn từ optionsJson
+  const options = Array.isArray(currentQ.options) ? currentQ.options : [];
+  const correctVal = currentQ.correctAnswer || currentQ.correctOption || currentQ.answer;
 
   return (
-    <main className="flex-1 flex flex-col items-center p-8 bg-gray-50 overflow-y-auto">
-      <div className="w-full max-w-2xl">
-        <div className="flex justify-between items-center mb-6">
-          <button onClick={() => navigate('/learner/ai-quizzes')} className="text-xs font-bold text-gray-400 hover:text-blue-600">
-            &larr; Thoát
-          </button>
-          <span className="text-sm font-bold text-gray-500">Câu {currentIndex + 1} / {questions.length}</span>
+    <main className="flex-1 p-8 overflow-y-auto space-y-6 bg-gray-50/50 flex flex-col items-center">
+      <div className="w-full max-w-2xl space-y-6">
+        
+        {/* HEADER BAR */}
+        <div className="flex items-center justify-between">
+          <Link
+            to="/learner/ai-quizzes"
+            className="px-4 py-2 bg-white rounded-xl border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-100 transition shadow-xs"
+          >
+            ← Exit Quiz
+          </Link>
+          <div className="text-center">
+            <h2 className="text-sm font-black text-gray-900 truncate max-w-xs">{quizName}</h2>
+            <p className="text-[11px] text-gray-400 font-bold">Question {currentIndex + 1} / {questions.length}</p>
+          </div>
+          <span className="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
+            Correct: {score}
+          </span>
         </div>
 
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-          <h2 className="text-lg font-bold text-gray-800 mb-6">{currentQ.content || currentQ.question}</h2>
-          
+        {/* QUESTION CARD */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm space-y-6">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
+              Question {currentIndex + 1}
+            </span>
+            {isAnswered && (
+              <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${selectedAnswer === correctVal ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                {selectedAnswer === correctVal ? '✓ Correct' : '✕ Incorrect'}
+              </span>
+            )}
+          </div>
+
+          <h3 className="text-base font-black text-gray-900 leading-relaxed">
+            {currentQ.content || currentQ.question || 'Question content...'}
+          </h3>
+
+          {/* OPTIONS LIST */}
           <div className="space-y-3">
             {options.map((opt, idx) => {
               const isSelected = selectedAnswer === opt;
-              const isCorrect = isAnswered && opt === currentQ.correctAnswer;
-              const isWrong = isAnswered && isSelected && opt !== currentQ.correctAnswer;
-              
-              let style = "border-gray-200 hover:bg-gray-50 cursor-pointer";
-              if (isSelected) style = "border-blue-500 bg-blue-50";
-              if (isCorrect) style = "border-green-500 bg-green-50 font-bold text-green-700";
-              if (isWrong) style = "border-red-500 bg-red-50 text-red-700 line-through";
+              const isCorrect = isAnswered && opt === correctVal;
+              const isWrong = isAnswered && isSelected && opt !== correctVal;
+
+              let style = 'bg-gray-50/70 border-gray-200 text-gray-800 hover:bg-gray-100 hover:border-gray-300';
+              if (isSelected && !isAnswered) {
+                style = 'bg-blue-50 border-blue-500 text-blue-700 font-bold shadow-xs';
+              }
+              if (isCorrect) {
+                style = 'bg-emerald-50 border-emerald-500 text-emerald-800 font-bold';
+              }
+              if (isWrong) {
+                style = 'bg-red-50 border-red-400 text-red-700 font-bold';
+              }
 
               return (
-                <div key={idx} onClick={() => handleSelect(opt)} className={`p-4 rounded-xl border-2 transition-all ${style}`}>
-                  {opt}
-                </div>
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelect(opt)}
+                  className={`w-full text-left p-4 rounded-2xl border text-xs transition-all flex items-center justify-between ${style}`}
+                >
+                  <span>{opt}</span>
+                  {isCorrect && <span className="text-emerald-600 font-bold">✓ Correct Answer</span>}
+                </button>
               );
             })}
           </div>
 
-          <div className="mt-8 flex justify-end">
+          {/* ACTION BUTTON */}
+          <div className="pt-4 border-t border-gray-50 flex justify-end">
             {!isAnswered ? (
               <button 
+                type="button"
                 onClick={handleCheckAnswer}
                 disabled={!selectedAnswer}
-                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl disabled:opacity-50"
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50"
               >
-                Kiểm tra
+                Check Answer
               </button>
             ) : (
               <button 
+                type="button"
                 onClick={handleNext}
-                className="px-6 py-2.5 bg-gray-800 hover:bg-gray-900 text-white text-sm font-bold rounded-xl"
+                className="px-6 py-2.5 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-xl shadow-md transition"
               >
-                {currentIndex + 1 === questions.length ? 'Xem kết quả' : 'Câu tiếp theo'}
+                {currentIndex + 1 === questions.length ? 'View Summary Results →' : 'Next Question →'}
               </button>
             )}
           </div>
         </div>
+
       </div>
     </main>
   );

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { getTotalUsers, getActiveCoursesCount } from '../../services/adminService';
 import { getApiUsage, getSystemHealth } from '../../services/infrastructureService';
 import { getTicketsCount } from '../../services/supportService';
@@ -41,7 +42,6 @@ export default function DashboardPage() {
       });
     } catch (error) {
       console.error('Failed to fetch dashboard statistics:', error);
-      
       setStats({
         totalUsers: 0,
         activeCourses: 0,
@@ -56,59 +56,65 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden">
-      <header className="h-16 bg-white border-b border-gray-100 flex items-center px-6 flex-shrink-0">
-        <h1 className="text-lg font-bold text-gray-800">Admin Dashboard</h1>
+    <div className="flex-1 flex flex-col h-full bg-gray-50/50 overflow-hidden">
+      {/* HEADER */}
+      <header className="min-h-16 bg-white border-b border-gray-100 flex items-center px-8 flex-shrink-0">
+        <div>
+          <h1 className="text-xl font-black text-gray-900 tracking-tight">Admin Dashboard</h1>
+          <p className="text-xs text-gray-500 mt-0.5 font-medium">Platform overview and real-time infrastructure health.</p>
+        </div>
       </header>
-      <main className="p-6 overflow-y-auto space-y-6">
-        <div className="grid grid-cols-4 gap-6">
-          <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-            <p className="text-sm font-medium text-gray-500">Total Users</p>
-            <p className="text-3xl font-bold text-gray-800 mt-2">
-              {loading ? '...' : stats.totalUsers}
-            </p>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-            <p className="text-sm font-medium text-gray-500">Active Courses</p>
-            <p className="text-3xl font-bold text-gray-800 mt-2">
-              {loading ? '...' : stats.activeCourses}
-            </p>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-            <p className="text-sm font-medium text-gray-500">AI Tokens Used</p>
-            <p className="text-3xl font-bold text-gray-800 mt-2">
-              {loading ? '...' : stats.aiTokensUsed}
-            </p>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-            <p className="text-sm font-medium text-gray-500">Support Tickets</p>
-            <p className="text-3xl font-bold text-gray-800 mt-2">
-              {loading ? '...' : stats.supportTickets}
-            </p>
-          </div>
+
+      {/* CONTENT */}
+      <main className="p-8 overflow-y-auto space-y-8">
+        {/* KPI METRICS */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <MetricCard label="Total Users" value={stats.totalUsers} loading={loading} color="text-blue-600" bgColor="bg-blue-50" icon="👥" />
+          <MetricCard label="Active Courses" value={stats.activeCourses} loading={loading} color="text-emerald-600" bgColor="bg-emerald-50" icon="📚" />
+          <MetricCard label="AI Tokens Used" value={stats.aiTokensUsed} loading={loading} color="text-violet-600" bgColor="bg-violet-50" icon="⚡" />
+          <MetricCard label="Support Tickets" value={stats.supportTickets} loading={loading} color="text-amber-600" bgColor="bg-amber-50" icon="🎫" />
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-           <div className="flex items-center justify-between mb-3">
-             <h3 className="text-base font-bold text-gray-800">System Health</h3>
-             <span className={`text-sm font-bold ${stats.databaseStatus === 'ONLINE' ? 'text-emerald-600' : stats.databaseStatus === 'DEGRADED' ? 'text-amber-600' : stats.databaseStatus === 'OFFLINE' ? 'text-red-600' : 'text-gray-500'}`}>
-               {loading ? '...' : stats.databaseStatus}
-             </span>
-           </div>
-           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div className={`h-full ${stats.databaseStatus === 'ONLINE' ? 'bg-emerald-500 w-full' : stats.databaseStatus === 'DEGRADED' ? 'bg-amber-500 w-2/3' : stats.databaseStatus === 'OFFLINE' ? 'bg-red-500 w-1/4' : 'bg-gray-300 w-1/3'}`}></div>
-           </div>
-           <p className="text-xs text-gray-500 mt-2">
-             {stats.databaseStatus === 'ONLINE'
-               ? `Supabase is reachable${stats.databaseLatencyMs != null ? ` · ${stats.databaseLatencyMs} ms` : ''}.`
-               : stats.databaseStatus === 'DEGRADED'
-                 ? 'Supabase is reachable, but its health query reported an application/database problem.'
-                 : stats.databaseStatus === 'OFFLINE'
-                   ? 'Supabase could not be reached from the backend.'
-                   : 'Health information is currently unavailable.'}
-           </p>
-        </div>
+        {/* SYSTEM HEALTH CARD */}
+        <section className="bg-white rounded-3xl border border-gray-100 p-8 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-black text-gray-900">System Health & Database</h3>
+              <p className="text-xs text-gray-400 mt-0.5 font-medium">Supabase reachability status monitoring.</p>
+            </div>
+            <span className={`text-xs font-black uppercase px-3 py-1 rounded-full border ${stats.databaseStatus === 'ONLINE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : stats.databaseStatus === 'DEGRADED' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+              {loading ? 'Checking...' : stats.databaseStatus}
+            </span>
+          </div>
+
+          <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+            <div className={`h-full transition-all duration-500 ${stats.databaseStatus === 'ONLINE' ? 'bg-emerald-500 w-full' : stats.databaseStatus === 'DEGRADED' ? 'bg-amber-500 w-2/3' : 'bg-red-500 w-1/4'}`}></div>
+          </div>
+
+          <p className="text-xs text-gray-500 font-medium pt-1">
+            {stats.databaseStatus === 'ONLINE'
+              ? `Supabase is fully reachable${stats.databaseLatencyMs != null ? ` · Response latency: ${stats.databaseLatencyMs} ms` : ''}.`
+              : 'System checks indicate connectivity constraints or degraded performance.'}
+          </p>
+        </section>
       </main>
+    </div>
+  );
+}
+
+function MetricCard({ label, value, loading, color, bgColor, icon }) {
+  return (
+    <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-xs flex flex-col justify-between">
+      <div className="flex items-center justify-between">
+        <span className={`text-[10px] font-black uppercase ${color} ${bgColor} px-2.5 py-1 rounded-full`}>
+          {label}
+        </span>
+        <span className="text-xl">{icon}</span>
+      </div>
+      <div className="mt-4">
+        <span className="text-3xl font-black text-gray-900">{loading ? '...' : Number(value).toLocaleString()}</span>
+        <p className="text-[11px] text-gray-400 mt-0.5 font-medium">Updated live</p>
+      </div>
     </div>
   );
 }

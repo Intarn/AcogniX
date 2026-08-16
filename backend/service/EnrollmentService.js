@@ -50,7 +50,7 @@ class EnrollmentService {
       throw new AppError(
         409,
         'ENROLLMENT_REQUEST_PENDING',
-        'Your enrollment request is awaiting approval.'
+        'Your enrollment request is pending approval.'
       );
     }
 
@@ -332,44 +332,113 @@ class EnrollmentService {
       educatorId
     );
 
-    if (enrollment.status !== EnrollmentStatus.PENDING) {
+    if (course.status !== CourseStatus.ACTIVE) {
       throw new AppError(
         409,
-        'ENROLLMENT_NOT_PENDING',
-        'Only a pending enrollment request can be approved.'
+        'COURSE_ARCHIVED',
+        'This Course is archived and can no longer accept enrollment approvals.'
       );
     }
 
-    const { data, error } = await supabase
-      .from('Enrollment')
-      .update({
-        status: EnrollmentStatus.APPROVED,
-        approvedAt: new Date().toISOString(),
-        rejectedAt: null,
-        removedAt: null
-      })
-      .eq('enrollmentId', enrollmentId)
-      .select()
-      .single();
+    // Approval is intentionally idempotent. The previous implementation updated
+    // Enrollment to APPROVED before provisioning the Class Project. If Workspace
+    // provisioning was slow/failed, the UI still showed PENDING and a second click
+    // produced ENROLLMENT_NOT_PENDING even though the approval had already succeeded.
+    if (
+      enrollment.status !== EnrollmentStatus.PENDING &&
+      enrollment.status !== EnrollmentStatus.APPROVED
+    ) {
+      throw new AppError(
+        409,
+        'ENROLLMENT_ALREADY_PROCESSED',
+        'This enrollment request has already been processed.'
+      );
+    }
 
-    if (error) throw error;
+    let approvedEnrollment = enrollment;
+    let alreadyApproved = enrollment.status === EnrollmentStatus.APPROVED;
 
-    const workspace = await WorkspaceIntegrationService.provisionClassProject({
-      learnerId: data.learnerId,
-      courseId: data.courseId,
-      projectName: course.subjectName
-    });
+    if (!alreadyApproved) {
+      const { data, error } = await supabase
+        .from('Enrollment')
+        .update({
+          status: EnrollmentStatus.APPROVED,
+          approvedAt: new Date().toISOString(),
+          rejectedAt: null,
+          removedAt: null
+        })
+        .eq('enrollmentId', enrollmentId)
+        .eq('status', EnrollmentStatus.PENDING)
+        .select()
+        .maybeSingle();
 
-    const notification = await NotificationService.notifyEnrollmentDecision({
-      learnerId: data.learnerId,
-      courseId: data.courseId,
-      status: EnrollmentStatus.APPROVED
-    });
+      if (error) throw error;
+
+      // Another request may have approved the same enrollment while this request
+      // was waiting. Re-read instead of exposing a race-condition error to the UI.
+      if (!data) {
+        approvedEnrollment = await this._findEnrollmentById(enrollmentId);
+        if (approvedEnrollment.status !== EnrollmentStatus.APPROVED) {
+          throw new AppError(
+            409,
+            'ENROLLMENT_ALREADY_PROCESSED',
+            'This enrollment request has already been processed.'
+          );
+        }
+        alreadyApproved = true;
+      } else {
+        approvedEnrollment = data;
+      }
+    }
+
+    // Workspace integration must not roll back or hide a successful approval.
+    // It is safe to retry because provisionClassProject itself reuses an existing
+    // Class Project rather than creating duplicates.
+    let workspace;
+    try {
+      workspace = await WorkspaceIntegrationService.provisionClassProject({
+        learnerId: approvedEnrollment.learnerId,
+        courseId: approvedEnrollment.courseId,
+        projectName: course.subjectName
+      });
+      workspace = { ...workspace, provisioned: true };
+    } catch (workspaceError) {
+      console.error('[Enrollment] Workspace provisioning failed after approval:', workspaceError);
+      workspace = {
+        provisioned: false,
+        reason: 'WORKSPACE_PROVISION_FAILED'
+      };
+    }
+
+    // Notification failure is non-blocking as specified by the enrollment flow.
+    // Do not send the same approval notification again when this is only an
+    // idempotent retry of an already-approved record.
+    let notification = {
+      sent: false,
+      reason: alreadyApproved ? 'ALREADY_NOTIFIED_OR_PREVIOUSLY_PROCESSED' : 'NOT_ATTEMPTED'
+    };
+
+    if (!alreadyApproved) {
+      try {
+        notification = await NotificationService.notifyEnrollmentDecision({
+          learnerId: approvedEnrollment.learnerId,
+          courseId: approvedEnrollment.courseId,
+          status: EnrollmentStatus.APPROVED
+        });
+      } catch (notificationError) {
+        console.error('[Enrollment] Approval notification failed:', notificationError);
+        notification = {
+          sent: false,
+          reason: 'NOTIFICATION_FAILED'
+        };
+      }
+    }
 
     return {
-      enrollment: new Enrollment(data),
+      enrollment: new Enrollment(approvedEnrollment),
       workspace,
-      notification
+      notification,
+      alreadyApproved
     };
   }
 

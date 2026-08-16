@@ -1,22 +1,7 @@
-import {
-  useEffect,
-  useMemo,
-  useState
-} from 'react';
-
-import {
-  Link,
-  useParams
-} from 'react-router';
-
-import {
-  getCourses
-} from '../../features/classroom/courseApi';
-
-import {
-  getCourseMembers
-} from '../../features/classroom/enrollmentApi';
-
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { getCourses } from '../../features/classroom/courseApi';
+import { getCourseMembers } from '../../features/classroom/enrollmentApi';
 import {
   getAssessmentById,
   getAssessmentQuestions,
@@ -25,1738 +10,348 @@ import {
   gradeSubmission
 } from '../../features/assessment/assessmentApi';
 
-
 function formatDateTime(value) {
-  if (!value) {
-    return 'N/A';
-  }
-
-
-  const date =
-    new Date(value);
-
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return 'N/A';
-  }
-
-
-  return date.toLocaleString(
-    'en-US',
-    {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    }
-  );
+  if (!value) return 'N/A';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
 }
-
 
 function getInitials(name) {
-  if (!name) {
-    return '?';
-  }
-
-
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map(
-      (part) =>
-        part.charAt(0)
-    )
-    .join('')
-    .toUpperCase();
+  if (!name) return '?';
+  return name.trim().split(/\s+/).slice(0, 2).map((part) => part.charAt(0)).join('').toUpperCase();
 }
 
-
-function getStatusClasses(status) {
+function getStatusBadge(status) {
   switch (status) {
-    case 'IN_PROGRESS':
-      return `
-        bg-blue-100
-        text-blue-700
-      `;
-
-    case 'SUBMITTED':
-      return `
-        bg-violet-100
-        text-violet-700
-      `;
-
-    case 'PENDING_REVIEW':
-      return `
-        bg-amber-100
-        text-amber-700
-      `;
-
-    case 'GRADED':
-      return `
-        bg-green-100
-        text-green-700
-      `;
-
-    default:
-      return `
-        bg-gray-100
-        text-gray-600
-      `;
+    case 'IN_PROGRESS': return 'bg-blue-50 text-blue-700 border-blue-200';
+    case 'SUBMITTED': return 'bg-violet-50 text-violet-700 border-violet-200';
+    case 'PENDING_REVIEW': return 'bg-amber-50 text-amber-700 border-amber-200';
+    case 'GRADED': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    default: return 'bg-gray-50 text-gray-600 border-gray-200';
   }
 }
 
-function getFileNameFromUrl(
-  url,
-  index
-) {
-  if (!url) {
+function getFileNameFromUrl(url, index) {
+  if (!url) return `Submitted file ${index + 1}`;
+  try {
+    const cleanUrl = String(url).split('?')[0];
+    const storedFileName = cleanUrl.split('/').pop();
+    if (!storedFileName) return `Submitted file ${index + 1}`;
+    const decodedFileName = decodeURIComponent(storedFileName);
+    const separatorIndex = decodedFileName.indexOf('__');
+    if (separatorIndex !== -1) return decodedFileName.slice(separatorIndex + 2);
+    return decodedFileName || `Submitted file ${index + 1}`;
+  } catch {
     return `Submitted file ${index + 1}`;
   }
-
-
-  try {
-    const cleanUrl =
-      String(url)
-        .split('?')[0];
-
-
-    const storedFileName =
-      cleanUrl
-        .split('/')
-        .pop();
-
-
-    if (!storedFileName) {
-      return `Submitted file ${index + 1}`;
-    }
-
-
-    const decodedFileName =
-      decodeURIComponent(
-        storedFileName
-      );
-
-    const separatorIndex =
-      decodedFileName.indexOf('__');
-
-
-    if (
-      separatorIndex !== -1
-    ) {
-      return decodedFileName.slice(
-        separatorIndex + 2
-      );
-    }
-
-
-    /*
-     * File cũ không có "__"
-     * thì giữ nguyên tên.
-     */
-    return (
-      decodedFileName ||
-      `Submitted file ${index + 1}`
-    );
-
-  } catch {
-    return (
-      `Submitted file ${index + 1}`
-    );
-  }
 }
 
-function normalizeFile(
-  file,
-  index
-) {
-  if (
-    typeof file ===
-    'string'
-  ) {
-    return {
-      name:
-        getFileNameFromUrl(
-          file,
-          index
-        ),
-
-      url:
-        file
-    };
+function normalizeFile(file, index) {
+  if (typeof file === 'string') {
+    return { name: getFileNameFromUrl(file, index), url: file };
   }
-
-
   return {
     ...file,
-
-    name:
-      file?.name ||
-      file?.fileName ||
-      getFileNameFromUrl(
-        file?.url ||
-        file?.fileUrl,
-        index
-      ),
-
-    url:
-      file?.url ||
-      file?.fileUrl ||
-      ''
+    name: file?.name || file?.fileName || getFileNameFromUrl(file?.url || file?.fileUrl, index),
+    url: file?.url || file?.fileUrl || ''
   };
 }
 
-function normalizeSubmission(
-  submission
-) {
-  if (!submission) {
-    return null;
-  }
-
-
-  const directFiles =
-    Array.isArray(
-      submission.files
-    )
-      ? submission.files
-      : [];
-
-
-  const uploadedFileUrls =
-    Array.isArray(
-      submission.uploadedFileUrls
-    )
-      ? submission.uploadedFileUrls
-      : [];
-
-
-  const rawFiles =
-    directFiles.length > 0
-      ? directFiles
-      : uploadedFileUrls;
-
+function normalizeSubmission(submission) {
+  if (!submission) return null;
+  const directFiles = Array.isArray(submission.files) ? submission.files : [];
+  const uploadedFileUrls = Array.isArray(submission.uploadedFileUrls) ? submission.uploadedFileUrls : [];
+  const rawFiles = directFiles.length > 0 ? directFiles : uploadedFileUrls;
 
   return {
     ...submission,
-
-    /*
-     * Backend domain uses "late".
-     * Old frontend uses "isLate".
-     */
-    isLate:
-      submission.isLate ??
-      submission.late ??
-      false,
-
-    answers:
-      Array.isArray(
-        submission.answers
-      )
-        ? submission.answers
-        : [],
-
-    files:
-      rawFiles.map(
-        normalizeFile
-      )
+    isLate: submission.isLate ?? submission.late ?? false,
+    answers: Array.isArray(submission.answers) ? submission.answers : [],
+    files: rawFiles.map(normalizeFile)
   };
 }
 
 export default function AssessmentSubmissionsPage() {
-  const {
-    courseId:
-      routeCourseId,
+  const { courseId: routeCourseId, assessmentId: routeAssessmentId } = useParams();
+  const courseId = routeCourseId || null;
+  const assessmentId = routeAssessmentId || null;
 
-    assessmentId:
-      routeAssessmentId
-  } = useParams();
-
-
-  const courseId =
-    routeCourseId || null;
-
-
-  const assessmentId =
-    routeAssessmentId || null;
-
-  const [
-    course,
-    setCourse
-  ] = useState(null);
-
-
-  const [
-    assessment,
-    setAssessment
-  ] = useState(null);
-
-
-  const [
-    assessmentQuestions,
-    setAssessmentQuestions
-  ] = useState([]);
-
-
-  const [
-    learners,
-    setLearners
-  ] = useState([]);
-
-
-  const [
-    submissions,
-    setSubmissions
-  ] = useState([]);
-
-
-  const [
-    loading,
-    setLoading
-  ] = useState(true);
-
-
-  const [
-    loadError,
-    setLoadError
-  ] = useState('');
-
-
-  const [
-    openingSubmissionId,
-    setOpeningSubmissionId
-  ] = useState(null);
-
-
-  const [
-    savingGrade,
-    setSavingGrade
-  ] = useState(false);
-
-  const [
-    filter,
-    setFilter
-  ] = useState(
-    'ALL'
-  );
-
-
-  const [
-    selectedSubmission,
-    setSelectedSubmission
-  ] = useState(null);
-
-
-  const [
-    score,
-    setScore
-  ] = useState('');
-
-
-  const [
-    feedback,
-    setFeedback
-  ] = useState('');
-
-
-  const [
-    reviewError,
-    setReviewError
-  ] = useState('');
+  const [course, setCourse] = useState(null);
+  const [assessment, setAssessment] = useState(null);
+  const [assessmentQuestions, setAssessmentQuestions] = useState([]);
+  const [learners, setLearners] = useState([]);
+  const [submissions, setSubmissions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  
+  const [openingSubmissionId, setOpeningSubmissionId] = useState(null);
+  const [savingGrade, setSavingGrade] = useState(false);
+  const [filter, setFilter] = useState('ALL');
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
+  const [score, setScore] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [reviewError, setReviewError] = useState('');
 
   useEffect(() => {
-    if (
-      !courseId ||
-      !assessmentId
-    ) {
-      setCourse(null);
-      setAssessment(null);
-      setAssessmentQuestions([]);
-      setLearners([]);
-      setSubmissions([]);
-      setLoadError('');
-      setLoading(false);
-
-      return;
+    if (!courseId || !assessmentId) {
+      setLoading(false); return;
     }
-
-
     let cancelled = false;
-
 
     async function loadSubmissionsPage() {
       try {
-        setLoading(true);
-        setLoadError('');
-
-
-        const [
-          courseResult,
-          assessmentResult,
-          questionResult,
-          submissionResult,
-          memberResult
-        ] = await Promise.all([
+        setLoading(true); setLoadError('');
+        const [courseRes, assessRes, qRes, subRes, memberRes] = await Promise.all([
           getCourses(),
-
-          getAssessmentById(
-            assessmentId
-          ),
-
-          getAssessmentQuestions(
-            assessmentId
-          ),
-
-          getAssessmentSubmissions(
-            assessmentId
-          ),
-
-          getCourseMembers(
-            courseId
-          )
+          getAssessmentById(assessmentId),
+          getAssessmentQuestions(assessmentId),
+          getAssessmentSubmissions(assessmentId),
+          getCourseMembers(courseId)
         ]);
 
+        const courses = Array.isArray(courseRes?.courses) ? courseRes.courses : [];
+        const foundCourse = courses.find((item) => String(item.courseId) === String(courseId)) || null;
+        const loadedAssessment = assessRes?.assessment || assessRes || null;
+        const loadedQuestions = Array.isArray(qRes?.questions) ? qRes.questions : [];
+        const rawEntries = Array.isArray(subRes?.submissions) ? subRes.submissions : [];
+        const loadedSubmissions = rawEntries.map((entry) => normalizeSubmission(entry?.submission || entry)).filter(Boolean);
 
-        /*
-        * =========================
-        * COURSE
-        * =========================
-        */
-        const courses =
-          Array.isArray(
-            courseResult?.courses
-          )
-            ? courseResult.courses
-            : [];
+        const embeddedLearners = rawEntries.map((entry) => entry?.learner || entry?.user || null).filter(Boolean);
+        const memberRows = Array.isArray(memberRes?.members) ? memberRes.members : [];
+        const memberLearners = memberRows.map((m) => m?.learner || m?.user || null).filter(Boolean);
 
+        const learnerMap = new Map();
+        [...memberLearners, ...embeddedLearners].forEach((learner) => {
+          const lId = learner?.userId ?? learner?.id;
+          if (lId) learnerMap.set(String(lId), learner);
+        });
 
-        const foundCourse =
-          courses.find(
-            (item) =>
-              String(
-                item.courseId
-              ) ===
-              String(courseId)
-          ) || null;
-
-
-        /*
-        * =========================
-        * ASSESSMENT
-        * =========================
-        */
-        const loadedAssessment =
-          assessmentResult
-            ?.assessment ||
-          assessmentResult ||
-          null;
-
-
-        const validAssessment =
-          loadedAssessment &&
-          String(
-            loadedAssessment.courseId
-          ) ===
-          String(courseId)
-            ? loadedAssessment
-            : null;
-
-
-        /*
-        * =========================
-        * QUESTIONS
-        * =========================
-        */
-        const loadedQuestions =
-          Array.isArray(
-            questionResult?.questions
-          )
-            ? [
-                ...questionResult.questions
-              ].sort(
-                (
-                  first,
-                  second
-                ) =>
-                  Number(
-                    first.displayOrder ??
-                    first.orderIndex ??
-                    0
-                  ) -
-                  Number(
-                    second.displayOrder ??
-                    second.orderIndex ??
-                    0
-                  )
-              )
-            : [];
-
-
-        /*
-        * =========================
-        * SUBMISSIONS
-        * =========================
-        */
-        const rawEntries =
-          Array.isArray(
-            submissionResult
-              ?.submissions
-          )
-            ? submissionResult
-                .submissions
-            : [];
-
-
-        const loadedSubmissions =
-          rawEntries
-            .map(
-              (entry) =>
-                normalizeSubmission(
-                  entry?.submission ||
-                  entry
-                )
-            )
-            .filter(Boolean);
-
-
-        /*
-        * =========================
-        * LEARNERS
-        * =========================
-        *
-        * 1. Prefer Learners embedded
-        *    in submission API.
-        *
-        * 2. Fall back to enrollment
-        *    members API.
-        */
-        const embeddedLearners =
-          rawEntries
-            .map(
-              (entry) =>
-                entry?.learner ||
-                entry?.user ||
-                null
-            )
-            .filter(Boolean);
-
-
-        const memberRows =
-          Array.isArray(
-            memberResult?.members
-          )
-            ? memberResult.members
-            : [];
-
-
-        const memberLearners =
-          memberRows
-            .map(
-              (member) =>
-                member?.learner ||
-                member?.user ||
-                null
-            )
-            .filter(Boolean);
-
-
-        const learnerMap =
-          new Map();
-
-
-        [
-          ...memberLearners,
-          ...embeddedLearners
-        ].forEach(
-          (learner) => {
-            const learnerId =
-              learner?.userId ??
-              learner?.id;
-
-
-            if (learnerId) {
-              learnerMap.set(
-                String(learnerId),
-                learner
-              );
-            }
-          }
-        );
-
-
-        if (cancelled) {
-          return;
-        }
-
-
-        setCourse(
-          foundCourse
-        );
-
-
-        setAssessment(
-          validAssessment
-        );
-
-
-        setAssessmentQuestions(
-          loadedQuestions
-        );
-
-
-        setSubmissions(
-          loadedSubmissions
-        );
-
-
-        setLearners(
-          Array.from(
-            learnerMap.values()
-          )
-        );
+        if (cancelled) return;
+        setCourse(foundCourse);
+        setAssessment(loadedAssessment);
+        setAssessmentQuestions(loadedQuestions);
+        setSubmissions(loadedSubmissions);
+        setLearners(Array.from(learnerMap.values()));
       } catch (error) {
-        if (!cancelled) {
-          console.error(
-            'Unable to load assessment submissions:',
-            error
-          );
-
-
-          setCourse(null);
-          setAssessment(null);
-          setAssessmentQuestions([]);
-          setLearners([]);
-          setSubmissions([]);
-
-
-          setLoadError(
-            error.message ||
-            'Unable to load assessment submissions.'
-          );
-        }
+        if (!cancelled) setLoadError(error.message || 'Unable to load assessment submissions.');
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
-
-
     loadSubmissionsPage();
+    return () => { cancelled = true; };
+  }, [assessmentId, courseId]);
 
+  const assessmentSubmissions = useMemo(() => {
+    return submissions
+      .filter((s) => String(s.assessmentId) === String(assessmentId))
+      .sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0));
+  }, [submissions, assessmentId]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    assessmentId,
-    courseId
-  ]);
+  const rows = useMemo(() => {
+    return assessmentSubmissions.map((submission) => {
+      const learner = learners.find((user) => String(user.userId ?? user.id) === String(submission.learnerId));
+      return {
+        submission,
+        learner: learner || { userId: submission.learnerId, displayName: 'Unknown Learner', email: 'N/A', avatarUrl: null }
+      };
+    });
+  }, [assessmentSubmissions, learners]);
 
-
-  const assessmentSubmissions =
-    useMemo(() => {
-      return submissions
-        .filter(
-          (submission) =>
-            String(
-              submission.assessmentId
-            ) ===
-            String(assessmentId)
-        )
-        .sort(
-          (first, second) =>
-            new Date(
-              second.submittedAt ||
-              0
-            ).getTime() -
-            new Date(
-              first.submittedAt ||
-              0
-            ).getTime()
-        );
-    }, [
-      submissions,
-      assessmentId
-    ]);
-
-
-  const rows =
-    useMemo(() => {
-      return assessmentSubmissions.map(
-        (submission) => {
-          const learner =
-            learners.find(
-              (user) =>
-                String(
-                  user.userId ??
-                  user.id
-                ) ===
-                String(
-                  submission.learnerId
-                )
-            );
-
-
-          return {
-            submission,
-
-            learner:
-              learner || {
-                userId:
-                  submission.learnerId,
-
-                displayName:
-                  'Unknown Learner',
-
-                email:
-                  'N/A',
-
-                avatarUrl:
-                  null
-              }
-          };
-        }
-      );
-    }, [
-      assessmentSubmissions,
-      learners
-    ]);
-
-
-  const filteredRows =
-    useMemo(() => {
-      if (
-        filter ===
-        'ALL'
-      ) {
-        return rows;
-      }
-
-
-      return rows.filter(
-        ({ submission }) =>
-          submission.status ===
-          filter
-      );
-    }, [
-      rows,
-      filter
-    ]);
+  const filteredRows = useMemo(() => {
+    if (filter === 'ALL') return rows;
+    return rows.filter(({ submission }) => submission.status === filter);
+  }, [rows, filter]);
 
   if (loading) {
     return (
-      <div
-        className="
-          p-8
-          text-center
-        "
-      >
-        <p
-          className="
-            text-sm
-            text-gray-500
-          "
-        >
-          Loading submissions...
-        </p>
+      <div className="flex-1 flex items-center justify-center p-8 bg-gray-50/50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-blue-600 border-t-transparent animate-spin"></div>
+          <p className="text-xs font-bold text-gray-500">Loading submissions...</p>
+        </div>
       </div>
     );
   }
 
-
-  if (loadError) {
+  if (loadError || !course || !assessment) {
     return (
-      <div
-        className="
-          p-8
-          text-center
-        "
-      >
-        <p
-          className="
-            text-sm
-            text-red-500
-          "
-        >
-          {loadError}
-        </p>
-
-
-        <Link
-          to={
-            courseId
-              ? `/educator/courses/${courseId}/assessments`
-              : '/educator/courses'
-          }
-          className="
-            inline-block
-            mt-3
-            text-sm
-            font-semibold
-            text-blue-600
-            hover:underline
-          "
-        >
+      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-gray-50/50 space-y-4">
+        <p className="text-sm font-bold text-red-500">{loadError || 'Submissions not found.'}</p>
+        <Link to={`/educator/courses/${courseId}/assessments`} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition">
           Back to Assessments
         </Link>
       </div>
     );
   }
-  
-  if (!course) {
-    return (
-      <NotFoundState
-        title="Course Not Found"
-        backTo="/educator/courses"
-      />
-    );
-  }
 
+  const isArchived = course.status === 'ARCHIVED';
+  const pendingReviewCount = assessmentSubmissions.filter((s) => s.status === 'PENDING_REVIEW').length;
+  const gradedCount = assessmentSubmissions.filter((s) => s.status === 'GRADED').length;
+  const submittedCount = assessmentSubmissions.filter((s) => s.status === 'SUBMITTED').length;
 
-  if (!assessment) {
-    return (
-      <NotFoundState
-        title="Assessment Not Found"
-        backTo={
-          `/educator/courses/${course.courseId}/assessments`
-        }
-      />
-    );
-  }
-
-
-  const isArchived =
-    course.status ===
-    'ARCHIVED';
-
-
-  const pendingReviewCount =
-    assessmentSubmissions.filter(
-      (submission) =>
-        submission.status ===
-        'PENDING_REVIEW'
-    ).length;
-
-
-  const gradedCount =
-    assessmentSubmissions.filter(
-      (submission) =>
-        submission.status ===
-        'GRADED'
-    ).length;
-
-
-  const submittedCount =
-    assessmentSubmissions.filter(
-      (submission) =>
-        submission.status ===
-        'SUBMITTED'
-    ).length;
-
-
-  async function openSubmission(
-    submission
-  ) {
-    if (!submission) {
-      return;
-    }
-
-
+  async function openSubmission(submission) {
+    if (!submission) return;
     try {
-      setOpeningSubmissionId(
-        submission.submissionId
-      );
-
-
+      setOpeningSubmissionId(submission.submissionId);
       setReviewError('');
-
-
-      const result =
-        await getSubmissionById(
-          submission.submissionId
-        );
-
-
-      const detailSubmission =
-        result?.submission ||
-        result ||
-        {};
-
-
-      const mergedSubmission =
-        normalizeSubmission({
-          ...submission,
-          ...detailSubmission,
-
-          answers:
-            Array.isArray(
-              result?.answers
-            )
-              ? result.answers
-              : (
-                  Array.isArray(
-                    detailSubmission
-                      ?.answers
-                  )
-                    ? detailSubmission
-                        .answers
-                    : []
-                ),
-
-          files:
-            Array.isArray(
-              result?.files
-            )
-              ? result.files
-              : detailSubmission
-                  ?.files
-        });
-
-
-      setSelectedSubmission(
-        mergedSubmission
-      );
-
-
-      setScore(
-        mergedSubmission.score ??
-        ''
-      );
-
-
-      setFeedback(
-        mergedSubmission.feedback ??
-        ''
-      );
+      const result = await getSubmissionById(submission.submissionId);
+      const detailSubmission = result?.submission || result || {};
+      const merged = normalizeSubmission({
+        ...submission,
+        ...detailSubmission,
+        answers: Array.isArray(result?.answers) ? result.answers : (Array.isArray(detailSubmission?.answers) ? detailSubmission.answers : []),
+        files: Array.isArray(result?.files) ? result.files : detailSubmission?.files
+      });
+      setSelectedSubmission(merged);
+      setScore(merged.score ?? '');
+      setFeedback(merged.feedback ?? '');
     } catch (error) {
-      console.error(
-        'Unable to load submission detail:',
-        error
-      );
-
-
-      alert(
-        error.message ||
-        'Unable to load submission details.'
-      );
+      alert(error.message || 'Unable to load submission details.');
     } finally {
-      setOpeningSubmissionId(
-        null
-      );
+      setOpeningSubmissionId(null);
     }
   }
-
 
   function closeSubmission() {
-    setSelectedSubmission(
-      null
-    );
-
-    setScore('');
-
-    setFeedback('');
-
-    setReviewError('');
+    setSelectedSubmission(null); setScore(''); setFeedback(''); setReviewError('');
   }
 
-
   async function handleSaveGrade() {
-    if (
-      !selectedSubmission
-    ) {
+    if (!selectedSubmission) return;
+    const numericScore = Number(score);
+    if (!Number.isFinite(numericScore) || numericScore < 0 || numericScore > Number(assessment.totalPoints)) {
+      setReviewError(`Score must be between 0 and ${assessment.totalPoints}.`);
       return;
     }
-
-
-    if (
-      selectedSubmission.status !==
-      'PENDING_REVIEW'
-    ) {
-      setReviewError(
-        'Only submissions pending review can be manually graded.'
-      );
-
-      return;
-    }
-
-
-    const numericScore =
-      Number(score);
-
-
-    if (
-      !Number.isFinite(
-        numericScore
-      ) ||
-      numericScore < 0 ||
-      numericScore >
-        Number(
-          assessment.totalPoints
-        )
-    ) {
-      setReviewError(
-        `Score must be between 0 and ${assessment.totalPoints}.`
-      );
-
-      return;
-    }
-
 
     try {
       setSavingGrade(true);
       setReviewError('');
+      const result = await gradeSubmission(selectedSubmission.submissionId, numericScore, feedback.trim() || null);
+      const graded = normalizeSubmission({ ...selectedSubmission, ...(result?.submission || {}) });
 
-
-      const result =
-        await gradeSubmission(
-          selectedSubmission
-            .submissionId,
-          numericScore,
-          feedback.trim() ||
-            null
-        );
-
-
-      const gradedSubmission =
-        normalizeSubmission({
-          ...selectedSubmission,
-
-          ...(
-            result?.submission ||
-            {}
-          ),
-
-          /*
-          * Keep already loaded detail.
-          */
-          answers:
-            selectedSubmission
-              .answers,
-
-          files:
-            selectedSubmission
-              .files
-        });
-
-
-      setSubmissions(
-        (previous) =>
-          previous.map(
-            (submission) =>
-              String(
-                submission
-                  .submissionId
-              ) ===
-              String(
-                gradedSubmission
-                  .submissionId
-              )
-                ? {
-                    ...submission,
-                    ...gradedSubmission
-                  }
-                : submission
-          )
-      );
-
-
+      setSubmissions((prev) => prev.map((s) => String(s.submissionId) === String(graded.submissionId) ? { ...s, ...graded } : s));
       closeSubmission();
     } catch (error) {
-      console.error(
-        'Unable to grade submission:',
-        error
-      );
-
-
-      setReviewError(
-        error.message ||
-        'Unable to save grade.'
-      );
+      setReviewError(error.message || 'Unable to save grade.');
     } finally {
       setSavingGrade(false);
     }
   }
 
-
   return (
-    <>
-      {/* TOPBAR */}
-      <header
-        className="
-          min-h-16
-          bg-white
-          border-b
-          border-gray-100
-          flex
-          items-center
-          justify-between
-          gap-4
-          px-6
-          py-3
-          flex-shrink-0
-        "
-      >
+    <div className="flex-1 flex flex-col h-full bg-gray-50/50 overflow-hidden">
+      {/* HEADER */}
+      <header className="min-h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 py-4 flex-shrink-0">
         <div>
-          <div
-            className="
-              flex
-              items-center
-              gap-2
-              text-xs
-              text-gray-400
-              mb-1
-              flex-wrap
-            "
-          >
-            <Link
-              to="/educator/courses"
-              className="
-                hover:text-blue-600
-              "
-            >
-              My Courses
-            </Link>
-
-
+          <div className="flex items-center gap-2 text-xs font-semibold text-gray-400 mb-1">
+            <Link to="/educator/courses" className="hover:text-blue-600 transition">My Courses</Link>
             <span>/</span>
-
-
-            <Link
-              to={
-                `/educator/courses/${course.courseId}`
-              }
-              className="
-                hover:text-blue-600
-              "
-            >
-              {
-                course.subjectName
-              }
-            </Link>
-
-
+            <Link to={`/educator/courses/${course.courseId}`} className="hover:text-blue-600 transition">{course.subjectName}</Link>
             <span>/</span>
-
-
-            <Link
-              to={
-                `/educator/courses/${course.courseId}/assessments`
-              }
-              className="
-                hover:text-blue-600
-              "
-            >
-              Assessments
-            </Link>
-
-
+            <Link to={`/educator/courses/${course.courseId}/assessments`} className="hover:text-blue-600 transition">Assessments</Link>
             <span>/</span>
-
-
-            <Link
-              to={
-                `/educator/courses/${course.courseId}/assessments/${assessment.assessmentId}`
-              }
-              className="
-                hover:text-blue-600
-              "
-            >
-              {
-                assessment.title
-              }
-            </Link>
-
-
-            <span>/</span>
-
-
-            <span>
-              Submissions
-            </span>
+            <span className="text-gray-700">Submissions</span>
           </div>
-
-
-          <h1
-            className="
-              text-lg
-              font-bold
-              text-gray-800
-            "
-          >
-            Assessment Submissions
-          </h1>
+          <h1 className="text-xl font-black text-gray-900 tracking-tight">Assessment Submissions</h1>
         </div>
-
-
-        <Link
-          to={
-            `/educator/courses/${course.courseId}/assessments/${assessment.assessmentId}`
-          }
-          className="
-            text-xs
-            font-semibold
-            text-blue-600
-            bg-blue-50
-            hover:bg-blue-100
-            px-4
-            py-2
-            rounded-lg
-          "
-        >
-          View Assessment
+        <Link to={`/educator/courses/${course.courseId}/assessments/${assessment.assessmentId}`} className="bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-bold px-4 py-2.5 rounded-xl transition shadow-xs">
+          View Assessment Details
         </Link>
       </header>
 
-
-      {/* MAIN */}
-      <main
-        className="
-          flex-1
-          min-h-0
-          overflow-y-auto
-          p-6
-        "
-      >
+      {/* MAIN CONTENT */}
+      <main className="flex-1 overflow-y-auto p-8 space-y-6">
         {isArchived && (
-          <div
-            className="
-              bg-amber-50
-              border
-              border-amber-200
-              text-amber-800
-              text-sm
-              rounded-xl
-              px-4
-              py-3
-            "
-          >
-            This course is archived.
-            Submission data is available
-            for viewing only.
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded-2xl px-5 py-4">
+            This course is archived. Submission data is available for viewing only.
           </div>
         )}
 
-
-        {/* ASSESSMENT INFO */}
-        <section
-          className="
-            bg-white
-            rounded-xl
-            border
-            border-gray-100
-            shadow-sm
-            p-5
-          "
-        >
-          <div
-            className="
-              flex
-              items-start
-              justify-between
-              gap-5
-              flex-wrap
-            "
-          >
+        {/* ASSESSMENT INFO SUMMARY CARD */}
+        <section className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xs">
+          <div className="flex items-start justify-between gap-5 flex-wrap">
             <div>
-              <h2
-                className="
-                  text-base
-                  font-bold
-                  text-gray-800
-                "
-              >
-                {
-                  assessment.title
-                }
-              </h2>
-
-
-              <div
-                className="
-                  flex
-                  items-center
-                  gap-2
-                  mt-2
-                  flex-wrap
-                "
-              >
-                <span
-                  className="
-                    text-[10px]
-                    font-bold
-                    text-blue-700
-                    bg-blue-50
-                    rounded-full
-                    px-2.5
-                    py-1
-                  "
-                >
-                  {
-                    assessment.type
-                  }
-                </span>
-
-
-                <span
-                  className="
-                    text-xs
-                    text-gray-400
-                  "
-                >
-                  {
-                    assessment.totalPoints
-                  }{' '}
-                  points
-                </span>
+              <h2 className="text-lg font-black text-gray-900">{assessment.title}</h2>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-[10px] font-black text-blue-700 bg-blue-50 rounded-full px-3 py-1 uppercase">{assessment.type}</span>
+                <span className="text-xs font-semibold text-gray-400">Total Points: <strong className="text-gray-800">{assessment.totalPoints}</strong></span>
               </div>
             </div>
-
-
-            <div
-              className="
-                grid
-                grid-cols-2
-                md:grid-cols-4
-                gap-3
-              "
-            >
-              <MiniStat
-                label="Total"
-                value={
-                  assessmentSubmissions.length
-                }
-              />
-
-
-              <MiniStat
-                label="Submitted"
-                value={
-                  submittedCount
-                }
-              />
-
-
-              <MiniStat
-                label="Pending Review"
-                value={
-                  pendingReviewCount
-                }
-              />
-
-
-              <MiniStat
-                label="Graded"
-                value={
-                  gradedCount
-                }
-              />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <MiniStat label="Total" value={assessmentSubmissions.length} />
+              <MiniStat label="Submitted" value={submittedCount} />
+              <MiniStat label="Pending Review" value={pendingReviewCount} color="text-amber-600" />
+              <MiniStat label="Graded" value={gradedCount} color="text-emerald-600" />
             </div>
           </div>
         </section>
 
-
-        {/* FILTER */}
-        <div
-          className="
-            flex
-            items-center
-            gap-2
-            flex-wrap
-          "
-        >
-          <FilterButton
-            active={
-              filter ===
-              'ALL'
-            }
-            label="All"
-            count={
-              assessmentSubmissions.length
-            }
-            onClick={() =>
-              setFilter(
-                'ALL'
-              )
-            }
-          />
-          <FilterButton
-            active={
-              filter ===
-              'SUBMITTED'
-            }
-            label="Submitted"
-            count={
-              submittedCount
-            }
-            onClick={() =>
-              setFilter(
-                'SUBMITTED'
-              )
-            }
-          />
-
-          <FilterButton
-            active={
-              filter ===
-              'PENDING_REVIEW'
-            }
-            label="Pending Review"
-            count={
-              pendingReviewCount
-            }
-            onClick={() =>
-              setFilter(
-                'PENDING_REVIEW'
-              )
-            }
-          />
-
-
-          <FilterButton
-            active={
-              filter ===
-              'GRADED'
-            }
-            label="Graded"
-            count={
-              gradedCount
-            }
-            onClick={() =>
-              setFilter(
-                'GRADED'
-              )
-            }
-          />
+        {/* FILTERS */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <FilterButton active={filter === 'ALL'} label="All Submissions" count={assessmentSubmissions.length} onClick={() => setFilter('ALL')} />
+          <FilterButton active={filter === 'SUBMITTED'} label="Submitted" count={submittedCount} onClick={() => setFilter('SUBMITTED')} />
+          <FilterButton active={filter === 'PENDING_REVIEW'} label="Pending Review" count={pendingReviewCount} onClick={() => setFilter('PENDING_REVIEW')} />
+          <FilterButton active={filter === 'GRADED'} label="Graded" count={gradedCount} onClick={() => setFilter('GRADED')} />
         </div>
 
-
-        {/* TABLE */}
-        <section
-          className="
-            bg-white
-            rounded-xl
-            border
-            border-gray-100
-            shadow-sm
-            overflow-hidden
-          "
-        >
-          {filteredRows.length ===
-          0 ? (
-            <div
-              className="
-                py-14
-                px-6
-                text-center
-              "
-            >
-              <h3
-                className="
-                  text-sm
-                  font-bold
-                  text-gray-800
-                "
-              >
-                No submissions found
-              </h3>
-
-
-              <p
-                className="
-                  text-sm
-                  text-gray-500
-                  mt-2
-                "
-              >
-                There are no submissions
-                matching the selected
-                filter.
-              </p>
+        {/* SUBMISSIONS TABLE */}
+        <section className="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
+          {filteredRows.length === 0 ? (
+            <div className="py-20 text-center">
+              <p className="text-sm font-bold text-gray-600">No submissions found</p>
+              <p className="text-xs text-gray-400 mt-1 font-medium">There are no submissions matching the selected filter.</p>
             </div>
           ) : (
-            <div
-              className="
-                overflow-x-auto
-              "
-            >
-              <table
-                className="
-                  w-full
-                  min-w-[950px]
-                  text-sm
-                  text-left
-                "
-              >
-                <thead
-                  className="
-                    text-xs
-                    text-gray-500
-                    uppercase
-                    bg-gray-50/50
-                  "
-                >
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left whitespace-nowrap">
+                <thead className="bg-gray-50 text-gray-400 uppercase font-black tracking-wider">
                   <tr>
-                    <th
-                      className="
-                        px-5
-                        py-3
-                      "
-                    >
-                      Learner
-                    </th>
-
-
-                    <th
-                      className="
-                        px-5
-                        py-3
-                      "
-                    >
-                      Submitted
-                    </th>
-
-
-                    <th
-                      className="
-                        px-5
-                        py-3
-                      "
-                    >
-                      Timeliness
-                    </th>
-
-
-                    <th
-                      className="
-                        px-5
-                        py-3
-                      "
-                    >
-                      Status
-                    </th>
-
-
-                    <th
-                      className="
-                        px-5
-                        py-3
-                      "
-                    >
-                      Score
-                    </th>
-
-
-                    <th
-                      className="
-                        px-5
-                        py-3
-                        text-right
-                      "
-                    >
-                      Action
-                    </th>
+                    <th className="px-6 py-4">Learner</th>
+                    <th className="px-6 py-4">Submitted At</th>
+                    <th className="px-6 py-4">Timeliness</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4">Score</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
-
-
-                <tbody
-                  className="
-                    divide-y
-                    divide-gray-100
-                  "
-                >
-                  {filteredRows.map(
-                    ({
-                      submission,
-                      learner
-                    }) => (
-                      <tr
-                        key={
-                          submission
-                            .submissionId
-                        }
-                        className="
-                          hover:bg-gray-50/50
-                        "
-                      >
-                        <td
-                          className="
-                            px-5
-                            py-4
-                          "
+                <tbody className="divide-y divide-gray-50 font-semibold text-gray-700">
+                  {filteredRows.map(({ submission, learner }) => (
+                    <tr key={submission.submissionId} className="hover:bg-gray-50/50 transition">
+                      <td className="px-6 py-4"><LearnerIdentity learner={learner} /></td>
+                      <td className="px-6 py-4 text-gray-500">{formatDateTime(submission.submittedAt)}</td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${submission.isLate ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                          {submission.isLate ? 'Late' : 'On Time'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase border ${getStatusBadge(submission.status)}`}>
+                          {submission.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-black text-gray-900">
+                        {submission.score === null || submission.score === undefined ? '—' : `${submission.score} / ${assessment.totalPoints}`}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => openSubmission(submission)}
+                          disabled={String(openingSubmissionId) === String(submission.submissionId)}
+                          className={`px-4 py-2 font-bold rounded-xl transition shadow-xs ${submission.status === 'PENDING_REVIEW' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700' : 'bg-blue-50 hover:bg-blue-100 text-blue-600'}`}
                         >
-                          <LearnerIdentity
-                            learner={
-                              learner
-                            }
-                          />
-                        </td>
-
-
-                        <td
-                          className="
-                            px-5
-                            py-4
-                            text-xs
-                            text-gray-500
-                          "
-                        >
-                          {
-                            formatDateTime(
-                              submission
-                                .submittedAt
-                            )
-                          }
-                        </td>
-
-
-                        <td
-                          className="
-                            px-5
-                            py-4
-                          "
-                        >
-                          <span
-                            className={`
-                              inline-flex
-                              rounded-full
-                              px-2.5
-                              py-1
-                              text-[10px]
-                              font-bold
-
-                              ${
-                                submission.isLate
-                                  ? `
-                                    bg-red-100
-                                    text-red-700
-                                  `
-                                  : `
-                                    bg-green-100
-                                    text-green-700
-                                  `
-                              }
-                            `}
-                          >
-                            {
-                              submission.isLate
-                                ? 'LATE'
-                                : 'ON TIME'
-                            }
-                          </span>
-                        </td>
-
-
-                        <td
-                          className="
-                            px-5
-                            py-4
-                          "
-                        >
-                          <span
-                            className={`
-                              inline-flex
-                              rounded-full
-                              px-2.5
-                              py-1
-                              text-[10px]
-                              font-bold
-
-                              ${getStatusClasses(
-                                submission.status
-                              )}
-                            `}
-                          >
-                            {
-                              submission.status
-                            }
-                          </span>
-                        </td>
-
-
-                        <td
-                          className="
-                            px-5
-                            py-4
-                            font-semibold
-                            text-gray-700
-                          "
-                        >
-                          {
-                            submission.score ===
-                              null ||
-                            submission.score ===
-                              undefined
-                              ? '—'
-                              : `${submission.score} / ${assessment.totalPoints}`
-                          }
-                        </td>
-
-
-                        <td
-                          className="
-                            px-5
-                            py-4
-                          "
-                        >
-                          <div
-                            className="
-                              flex
-                              justify-end
-                            "
-                          >
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openSubmission(
-                                  submission
-                                )
-                              }
-                              disabled={
-                                String(
-                                  openingSubmissionId
-                                ) ===
-                                String(
-                                  submission.submissionId
-                                )
-                              }
-                              className="
-                                text-xs
-                                font-semibold
-                                text-blue-600
-                                bg-blue-50
-                                hover:bg-blue-100
-                                px-3
-                                py-2
-                                rounded-lg
-                              "
-                            >
-                              {
-                                String(
-                                  openingSubmissionId
-                                ) ===
-                                String(
-                                  submission.submissionId
-                                )
-                                  ? 'Loading...'
-                                  : (
-                                      submission.status ===
-                                      'PENDING_REVIEW'
-                                        ? 'Review'
-                                        : 'View'
-                                    )
-                              }
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  )}
+                          {String(openingSubmissionId) === String(submission.submissionId) ? 'Loading...' : submission.status === 'PENDING_REVIEW' ? 'Review & Grade' : 'View Submission'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1764,735 +359,139 @@ export default function AssessmentSubmissionsPage() {
         </section>
       </main>
 
-
-      {/* SUBMISSION REVIEW MODAL */}
+      {/* REVIEW & GRADING MODAL */}
       {selectedSubmission && (
         <SubmissionReviewModal
-          submission={
-            selectedSubmission
-          }
-          learner={
-            learners.find(
-              (user) =>
-                String(
-                  user.userId ??
-                  user.id
-                ) ===
-                String(
-                  selectedSubmission
-                    .learnerId
-                )
-            ) || {
-              displayName:
-                'Unknown Learner',
-
-              email:
-                'N/A'
-            }
-          }
-          assessment={
-            assessment
-          }
-          questions={
-            assessmentQuestions
-          }
-          score={
-            score
-          }
-          setScore={
-            setScore
-          }
-          feedback={
-            feedback
-          }
-          setFeedback={
-            setFeedback
-          }
-          error={
-            reviewError
-          }
-          savingGrade={
-            savingGrade
-          }
-          isArchived={
-            isArchived
-          }
-          onClose={
-            closeSubmission
-          }
-          onSave={
-            handleSaveGrade
-          }
+          submission={selectedSubmission}
+          learner={learners.find((user) => String(user.userId ?? user.id) === String(selectedSubmission.learnerId)) || { displayName: 'Unknown Learner', email: 'N/A' }}
+          assessment={assessment}
+          questions={assessmentQuestions}
+          score={score}
+          setScore={setScore}
+          feedback={feedback}
+          setFeedback={setFeedback}
+          error={reviewError}
+          savingGrade={savingGrade}
+          isArchived={isArchived}
+          onClose={closeSubmission}
+          onSave={handleSaveGrade}
         />
       )}
-    </>
+    </div>
   );
 }
 
-
 function SubmissionReviewModal({
-  submission,
-  learner,
-  assessment,
-  questions,
-  score,
-  setScore,
-  feedback,
-  setFeedback,
-  error,
-  savingGrade,
-  isArchived,
-  onClose,
-  onSave
+  submission, learner, assessment, questions, score, setScore, feedback, setFeedback, error, savingGrade, isArchived, onClose, onSave
 }) {
-  const canGrade =
-    !isArchived &&
-    !savingGrade &&
-    submission.status ===
-    'PENDING_REVIEW';
+  const canGrade = !isArchived && !savingGrade && submission.status === 'PENDING_REVIEW';
+  const answers = Array.isArray(submission.answers) ? submission.answers : [];
+  const files = Array.isArray(submission.files) ? submission.files : [];
 
-
-  const answers =
-    Array.isArray(
-      submission.answers
-    )
-      ? submission.answers
-      : [];
-
-  function findQuestionForAnswer(
-    answer,
-    index
-  ) {
-    const matchedQuestion =
-      questions.find(
-        (question) =>
-          String(
-            question.questionId
-          ) ===
-          String(
-            answer.questionId
-          )
-      );
-
-
-    return (
-      matchedQuestion ||
-      questions[index] ||
-      null
-    );
+  function findQuestionForAnswer(answer, index) {
+    return questions.find((q) => String(q.questionId) === String(answer.questionId)) || questions[index] || null;
   }
 
-  const files =
-    Array.isArray(
-      submission.files
-    )
-      ? submission.files
-      : [];
-
-
   return (
-    <div
-      className="
-        fixed
-        inset-0
-        z-50
-        bg-gray-900/50
-        flex
-        items-center
-        justify-center
-        p-4
-      "
-    >
-      <div
-        className="
-          bg-white
-          w-full
-          max-w-3xl
-          max-h-[90vh]
-          overflow-y-auto
-          rounded-xl
-          shadow-xl
-        "
-      >
-        {/* HEADER */}
-        <div
-          className="
-            px-6
-            py-4
-            border-b
-            border-gray-100
-            flex
-            items-center
-            justify-between
-            gap-4
-          "
-        >
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+      <div className="bg-white w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+        <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
           <div>
-            <h2
-              className="
-                text-lg
-                font-bold
-                text-gray-800
-              "
-            >
-              Submission Review
-            </h2>
-
-
-            <p
-              className="
-                text-xs
-                text-gray-400
-                mt-1
-              "
-            >
-              {
-                learner.displayName ||
-                learner.fullname ||
-                'Unknown Learner'
-              }
-            </p>
+            <h2 className="text-base font-black text-gray-900">Submission Review & Grading</h2>
+            <p className="text-xs text-gray-500 font-medium mt-0.5">{learner.displayName || learner.fullname || learner.email}</p>
           </div>
-
-
-          <button
-            type="button"
-            onClick={
-              onClose
-            }
-            className="
-              text-gray-400
-              hover:text-gray-700
-            "
-          >
-            ✕
-          </button>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white hover:bg-gray-100 text-gray-400 flex items-center justify-center text-sm shadow-sm">✕</button>
         </div>
 
-
-        <div
-          className="
-            p-6
-            space-y-6
-          "
-        >
-          {/* META */}
-          <div
-            className="
-              grid
-              grid-cols-1
-              sm:grid-cols-2
-              lg:grid-cols-4
-              gap-3
-            "
-          >
-            <InfoBox
-              label="Submitted"
-              value={
-                formatDateTime(
-                  submission
-                    .submittedAt
-                )
-              }
-            />
-
-
-            <InfoBox
-              label="Timeliness"
-              value={
-                submission.isLate
-                  ? 'LATE'
-                  : 'ON TIME'
-              }
-            />
-
-
-            <InfoBox
-              label="Status"
-              value={
-                submission.status
-              }
-            />
-
-
-            <InfoBox
-              label="Current Score"
-              value={
-                submission.score ===
-                  null ||
-                submission.score ===
-                  undefined
-                  ? 'Not graded'
-                  : `${submission.score} / ${assessment.totalPoints}`
-              }
-            />
+        <div className="p-6 space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <InfoBox label="Submitted At" value={formatDateTime(submission.submittedAt)} />
+            <InfoBox label="Timeliness" value={submission.isLate ? 'Late' : 'On Time'} />
+            <InfoBox label="Status" value={submission.status} />
+            <InfoBox label="Score" value={submission.score !== null && submission.score !== undefined ? `${submission.score} / ${assessment.totalPoints}` : 'Not Graded'} />
           </div>
 
-
           {/* ANSWERS */}
-          <section>
-            <h3
-              className="
-                text-sm
-                font-bold
-                text-gray-800
-              "
-            >
-              Answers
-            </h3>
-
-
-            {answers.length ===
-            0 ? (
-              <p
-                className="
-                  text-sm
-                  text-gray-500
-                  mt-3
-                "
-              >
-                No text answers are
-                available for this
-                submission.
-              </p>
+          <section className="space-y-3">
+            <h3 className="text-sm font-black text-gray-900">Learner Answers</h3>
+            {answers.length === 0 ? (
+              <p className="text-xs text-gray-400 italic">No text answers submitted.</p>
             ) : (
-              <div
-                className="
-                  mt-3
-                  space-y-3
-                "
-              >
-                {answers.map(
-                  (
-                    answer,
-                    index
-                  ) => {
-                    const question =
-                      findQuestionForAnswer(
-                        answer,
-                        index
-                      );
-
-
-                    return (
-                      <div
-                        key={
-                          answer.answerId ??
-                          index
-                        }
-                        className="
-                          bg-gray-50
-                          rounded-xl
-                          p-4
-                        "
-                      >
-                        <p
-                          className="
-                            text-xs
-                            font-semibold
-                            text-gray-400
-                          "
-                        >
-                          Question {
-                            index + 1
-                          }
-                        </p>
-
-
-                        {question?.content && (
-                          <p
-                            className="
-                              text-sm
-                              font-semibold
-                              text-gray-800
-                              leading-6
-                              mt-2
-                              whitespace-pre-wrap
-                            "
-                          >
-                            {
-                              question.content
-                            }
-                          </p>
-                        )}
-
-
-                        <p
-                          className="
-                            text-[10px]
-                            font-bold
-                            uppercase
-                            tracking-wider
-                            text-gray-400
-                            mt-4
-                          "
-                        >
-                          Learner Answer
-                        </p>
-
-
-                        <p
-                          className="
-                            text-sm
-                            text-gray-700
-                            leading-6
-                            mt-1
-                            whitespace-pre-wrap
-                          "
-                        >
-                          {
-                            answer.response ??
-                            answer.answerText ??
-                            answer.content ??
-                            answer
-                              .selectedOptionContent ??
-                            'No answer content.'
-                          }
-                        </p>
-                      </div>
-                    );
-                  }
-                )}
+              <div className="space-y-3">
+                {answers.map((answer, index) => {
+                  const q = findQuestionForAnswer(answer, index);
+                  return (
+                    <div key={answer.answerId ?? index} className="bg-gray-50/70 p-4 rounded-2xl border border-gray-100 space-y-2">
+                      <p className="text-[10px] font-black uppercase text-blue-600">Question {index + 1}</p>
+                      {q?.content && <p className="text-xs font-bold text-gray-800">{q.content}</p>}
+                      <p className="text-xs text-gray-700 bg-white p-3 rounded-xl border border-gray-200 mt-2 whitespace-pre-wrap">{answer.response ?? 'No answer provided.'}</p>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
 
-
           {/* FILES */}
-          {files.length >
-            0 && (
-            <section>
-              <h3
-                className="
-                  text-sm
-                  font-bold
-                  text-gray-800
-                "
-              >
-                Submitted Files
-              </h3>
-
-
-              <div
-                className="
-                  mt-3
-                  space-y-2
-                "
-              >
-                {files.map(
-                  (
-                    file,
-                    index
-                  ) => (
-                    <div
-                      key={
-                        `${file.name}-${index}`
-                      }
-                      className="
-                        bg-gray-50
-                        rounded-lg
-                        px-3
-                        py-3
-                        flex
-                        items-center
-                        justify-between
-                        gap-4
-                      "
-                    >
-                      {file.url ? (
-                        <a
-                          href={
-                            file.url
-                          }
-                          target="_blank"
-                          rel="noreferrer"
-                          className="
-                            text-sm
-                            text-blue-600
-                            font-semibold
-                            hover:underline
-                            truncate
-                          "
-                        >
-                          {
-                            file.name
-                          }
-                        </a>
-                      ) : (
-                        <span
-                          className="
-                            text-sm
-                            text-gray-600
-                            truncate
-                          "
-                        >
-                          {
-                            file.name
-                          }
-                        </span>
-                      )}
-
-
-                      <span
-                        className="
-                          text-[10px]
-                          font-bold
-                          text-gray-400
-                        "
-                      >
-                        FILE
-                      </span>
+          {files.length > 0 && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-black text-gray-900">Submitted Files</h3>
+              <div className="space-y-2">
+                {files.map((file, idx) => (
+                  <a key={idx} href={file.url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-3.5 bg-blue-50/50 hover:bg-blue-100/60 border border-blue-100 rounded-2xl transition group">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <span className="text-base">📎</span>
+                      <span className="text-xs font-bold text-gray-800 truncate">{file.name}</span>
                     </div>
-                  )
-                )}
+                    <span className="text-xs font-bold text-blue-600 group-hover:underline flex-shrink-0 ml-4">Download ↗</span>
+                  </a>
+                ))}
               </div>
             </section>
           )}
 
-
-          {/* GRADING */}
-          <section
-            className="
-              border-t
-              border-gray-100
-              pt-5
-            "
-          >
-            <h3
-              className="
-                text-sm
-                font-bold
-                text-gray-800
-              "
-            >
-              Grading
-            </h3>
-
-
+          {/* GRADING SECTION */}
+          <section className="border-t border-gray-100 pt-5 space-y-4">
+            <h3 className="text-sm font-black text-gray-900">Manual Grading & Feedback</h3>
             {!canGrade && (
-              <div
-                className="
-                  mt-3
-                  bg-gray-50
-                  rounded-lg
-                  px-3
-                  py-3
-                  text-xs
-                  text-gray-500
-                "
-              >
-                {isArchived
-                  ? 'This course is archived. Grading is read-only.'
-                  : 'This submission is not pending manual review.'}
+              <div className="p-3 bg-gray-50 rounded-xl text-xs text-gray-500 font-medium">
+                {isArchived ? 'Course is archived (read-only).' : 'This submission is already graded or not pending review.'}
               </div>
             )}
-
-
-            <div
-              className="
-                mt-4
-                grid
-                grid-cols-1
-                md:grid-cols-3
-                gap-4
-              "
-            >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label
-                  className="
-                    block
-                    text-sm
-                    font-semibold
-                    text-gray-700
-                  "
-                >
-                  Score
-                </label>
-
-
-                <div
-                  className="
-                    mt-2
-                    flex
-                    items-center
-                    gap-2
-                  "
-                >
-                  <input
-                    type="number"
-                    min="0"
-                    max={
-                      assessment.totalPoints
-                    }
-                    value={
-                      score
-                    }
-                    disabled={
-                      !canGrade
-                    }
-                    onChange={
-                      (event) =>
-                        setScore(
-                          event.target.value
-                        )
-                    }
-                    className="
-                      w-full
-                      rounded-lg
-                      border
-                      border-gray-200
-                      px-3
-                      py-2.5
-                      text-sm
-                      outline-none
-                      disabled:bg-gray-100
-                    "
-                  />
-
-
-                  <span
-                    className="
-                      text-xs
-                      text-gray-400
-                      whitespace-nowrap
-                    "
-                  >
-                    / {
-                      assessment.totalPoints
-                    }
-                  </span>
-                </div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">Score (Max: {assessment.totalPoints})</label>
+                <input
+                  type="number"
+                  min="0"
+                  max={assessment.totalPoints}
+                  value={score}
+                  disabled={!canGrade}
+                  onChange={(e) => setScore(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-xs font-bold outline-none focus:border-blue-500 bg-gray-50 disabled:bg-gray-100"
+                />
               </div>
-
-
-              <div
-                className="
-                  md:col-span-2
-                "
-              >
-                <label
-                  className="
-                    block
-                    text-sm
-                    font-semibold
-                    text-gray-700
-                  "
-                >
-                  Feedback
-                </label>
-
-
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">Feedback</label>
                 <textarea
-                  rows={4}
-                  value={
-                    feedback
-                  }
-                  disabled={
-                    !canGrade
-                  }
-                  onChange={
-                    (event) =>
-                      setFeedback(
-                        event.target.value
-                      )
-                  }
-                  placeholder="Provide feedback to the learner..."
-                  className="
-                    mt-2
-                    w-full
-                    rounded-lg
-                    border
-                    border-gray-200
-                    px-3
-                    py-2.5
-                    text-sm
-                    outline-none
-                    resize-y
-                    disabled:bg-gray-100
-                  "
+                  rows={3}
+                  value={feedback}
+                  disabled={!canGrade}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="Provide constructive feedback..."
+                  className="w-full rounded-xl border border-gray-200 p-3 text-xs outline-none focus:border-blue-500 bg-gray-50 disabled:bg-gray-100 resize-none leading-relaxed"
                 />
               </div>
             </div>
-
-
-            {error && (
-              <p
-                className="
-                  text-xs
-                  text-red-500
-                  mt-3
-                "
-              >
-                {error}
-              </p>
-            )}
+            {error && <p className="text-xs font-bold text-red-500">{error}</p>}
           </section>
         </div>
 
-
-        {/* ACTIONS */}
-        <div
-          className="
-            px-6
-            py-4
-            border-t
-            border-gray-100
-            flex
-            justify-end
-            gap-3
-          "
-        >
-          <button
-            type="button"
-            onClick={
-              onClose
-            }
-            className="
-              text-sm
-              font-semibold
-              text-gray-600
-              bg-gray-100
-              px-4
-              py-2
-              rounded-lg
-              hover:bg-gray-200
-            "
-          >
-            Close
-          </button>
-
-
-          {(
-            !isArchived &&
-            submission.status ===
-              'PENDING_REVIEW'
-          ) && (
-            <button
-              type="button"
-              onClick={
-                onSave
-              }
-              disabled={
-                savingGrade
-              }
-              className="
-                text-sm
-                font-semibold
-                text-white
-                bg-blue-600
-                hover:bg-blue-700
-                px-4
-                py-2
-                rounded-lg
-                disabled:opacity-50
-                disabled:cursor-not-allowed
-              "
-            >
-              {
-                savingGrade
-                  ? 'Saving...'
-                  : 'Save Grade'
-              }
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
+          <button onClick={onClose} className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-100 transition">Close</button>
+          {canGrade && (
+            <button onClick={onSave} disabled={savingGrade} className="px-6 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition disabled:opacity-50">
+              {savingGrade ? 'Saving Grade...' : 'Save Grade & Submit'}
             </button>
           )}
         </div>
@@ -2501,268 +500,51 @@ function SubmissionReviewModal({
   );
 }
 
-
-function LearnerIdentity({
-  learner
-}) {
-  const displayName =
-    learner.displayName ||
-    learner.fullname ||
-    'Unknown Learner';
-
-
+function LearnerIdentity({ learner }) {
+  const displayName = learner.displayName || learner.fullname || 'Unknown Learner';
   return (
-    <div
-      className="
-        flex
-        items-center
-        gap-3
-      "
-    >
+    <div className="flex items-center gap-3">
       {learner.avatarUrl ? (
-        <img
-          src={
-            learner.avatarUrl
-          }
-          alt={
-            displayName
-          }
-          className="
-            w-9
-            h-9
-            rounded-full
-            object-cover
-          "
-        />
+        <img src={learner.avatarUrl} alt={displayName} className="w-8 h-8 rounded-full object-cover border border-gray-200" />
       ) : (
-        <div
-          className="
-            w-9
-            h-9
-            rounded-full
-            bg-blue-100
-            text-blue-700
-            flex
-            items-center
-            justify-center
-            text-xs
-            font-bold
-          "
-        >
-          {
-            getInitials(
-              displayName
-            )
-          }
+        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-[10px] font-black border border-blue-100">
+          {getInitials(displayName)}
         </div>
       )}
-
-
-      <div>
-        <p
-          className="
-            text-sm
-            font-semibold
-            text-gray-800
-          "
-        >
-          {displayName}
-        </p>
-
-
-        <p
-          className="
-            text-xs
-            text-gray-400
-            mt-0.5
-          "
-        >
-          {
-            learner.email
-          }
-        </p>
+      <div className="min-w-0">
+        <p className="text-xs font-bold text-gray-900 truncate">{displayName}</p>
+        <p className="text-[10px] text-gray-400 font-medium truncate mt-0.5">{learner.email}</p>
       </div>
     </div>
   );
 }
 
-
-function MiniStat({
-  label,
-  value
-}) {
+function MiniStat({ label, value, color }) {
   return (
-    <div
-      className="
-        bg-gray-50
-        rounded-lg
-        px-3
-        py-2
-        min-w-[90px]
-      "
-    >
-      <p
-        className="
-          text-[10px]
-          uppercase
-          text-gray-400
-          font-semibold
-        "
-      >
-        {label}
-      </p>
-
-
-      <p
-        className="
-          text-lg
-          font-bold
-          text-gray-800
-          mt-1
-        "
-      >
-        {value}
-      </p>
+    <div className="bg-gray-50 rounded-2xl p-3 min-w-[85px] border border-gray-100">
+      <p className="text-[10px] uppercase font-black text-gray-400 tracking-wider">{label}</p>
+      <p className={`text-base font-black mt-1 ${color || 'text-gray-900'}`}>{value}</p>
     </div>
   );
 }
 
-
-function FilterButton({
-  active,
-  label,
-  count,
-  onClick
-}) {
+function FilterButton({ active, label, count, onClick }) {
   return (
     <button
       type="button"
-      onClick={
-        onClick
-      }
-      className={`
-        text-xs
-        font-semibold
-        px-3
-        py-2
-        rounded-lg
-        border
-
-        ${
-          active
-            ? `
-              border-blue-600
-              bg-blue-600
-              text-white
-            `
-            : `
-              border-gray-200
-              bg-white
-              text-gray-600
-              hover:bg-gray-50
-            `
-        }
-      `}
+      onClick={onClick}
+      className={`text-xs font-bold px-4 py-2.5 rounded-2xl border transition shadow-xs ${active ? 'border-blue-600 bg-blue-600 text-white shadow-blue-600/15' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
     >
       {label} ({count})
     </button>
   );
 }
 
-
-function InfoBox({
-  label,
-  value
-}) {
+function InfoBox({ label, value }) {
   return (
-    <div
-      className="
-        bg-gray-50
-        rounded-xl
-        p-3
-      "
-    >
-      <p
-        className="
-          text-[10px]
-          uppercase
-          font-semibold
-          text-gray-400
-        "
-      >
-        {label}
-      </p>
-
-
-      <p
-        className="
-          text-xs
-          font-semibold
-          text-gray-700
-          mt-1
-        "
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
-
-
-function NotFoundState({
-  title,
-  backTo
-}) {
-  return (
-    <div
-      className="
-        flex-1
-        flex
-        items-center
-        justify-center
-        p-6
-      "
-    >
-      <div
-        className="
-          bg-white
-          border
-          border-gray-100
-          rounded-xl
-          shadow-sm
-          p-8
-          text-center
-          max-w-md
-          w-full
-        "
-      >
-        <h1
-          className="
-            text-lg
-            font-bold
-            text-gray-800
-          "
-        >
-          {title}
-        </h1>
-
-
-        <Link
-          to={
-            backTo
-          }
-          className="
-            inline-block
-            mt-5
-            text-sm
-            font-semibold
-            text-blue-600
-            hover:underline
-          "
-        >
-          Go Back
-        </Link>
-      </div>
+    <div className="bg-gray-50 rounded-2xl p-3 border border-gray-100">
+      <p className="text-[10px] uppercase font-black text-gray-400 tracking-wider">{label}</p>
+      <p className="text-xs font-black text-gray-800 mt-1 truncate">{value}</p>
     </div>
   );
 }

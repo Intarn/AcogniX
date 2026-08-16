@@ -56,6 +56,33 @@ export function deleteCourseMaterial(
 }
 
 
+
+export async function getCourseMaterialFileBlob(materialId, { download = false } = {}) {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+  const token = localStorage.getItem('accessToken');
+  const response = await fetch(
+    `${API_BASE_URL}/courses/materials/${encodeURIComponent(materialId)}/file${download ? '?download=1' : ''}`,
+    {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    }
+  );
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    const error = new Error(data?.message || 'This file is no longer available.');
+    error.status = response.status;
+    error.code = data?.code;
+    throw error;
+  }
+
+  return {
+    blob: await response.blob(),
+    contentType: response.headers.get('content-type') || 'application/octet-stream',
+    contentDisposition: response.headers.get('content-disposition') || ''
+  };
+}
+
 // ==============================
 // ANNOUNCEMENTS
 // ==============================

@@ -73,9 +73,9 @@ export default function EducatorLayout() {
   return (
     <div className="flex h-screen w-full bg-gray-50 font-sans overflow-hidden text-gray-800">
       <EducatorSidebar />
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
         <Topbar user={userInfo} />
-        <Outlet context={{ user }} />
+        <Outlet />
       </div>
     </div>
   );

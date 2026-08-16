@@ -14,6 +14,7 @@ export function login(email, password) {
 export function signUp({
   email,
   password,
+  confirmPassword,
   displayName,
   role
 }) {
@@ -23,6 +24,7 @@ export function signUp({
     body: JSON.stringify({
       email,
       password,
+      confirmPassword,
       displayName,
       role
     })

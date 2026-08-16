@@ -1,5 +1,6 @@
+// frontend/src/pages/learner/Flashcards.jsx
 import { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { getSavedFlashcards } from '../../services/aiService';
 
 export default function Flashcards() {
@@ -7,131 +8,208 @@ export default function Flashcards() {
   const projectId = searchParams.get('projectId');
   const setId = searchParams.get('setId');
   const deckName = searchParams.get('name') || 'Flashcard Set';
-  
   const navigate = useNavigate();
+
   const [cards, setCards] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Nếu truy cập sai URL (thiếu ID), đá về trang tổng
   useEffect(() => {
-    if (!projectId || !setId) navigate('/learner/flashcards');
+    if (!projectId || !setId) {
+      navigate('/learner/flashcards');
+      return;
+    }
+
+    const loadCards = async () => {
+      try {
+        setLoading(true);
+        const res = await getSavedFlashcards(projectId);
+        const currentSet = res?.data?.find(
+          (set) => String(set.flashcardSetId || set.id) === String(setId)
+        );
+
+        if (currentSet) {
+          const rawCards = currentSet.Flashcard || currentSet.cards || [];
+          setCards(rawCards);
+          setCurrentIndex(0);
+          setShowAnswer(false);
+        } else {
+          setCards([]);
+        }
+      } catch (err) {
+        console.error('[Flashcard Study Load Error]:', err);
+        setCards([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCards();
   }, [projectId, setId, navigate]);
 
-  const loadCards = async () => {
-    if (!projectId || !setId) return;
-    try {
-      setLoading(true);
-      const res = await getSavedFlashcards(projectId);
-      // Tìm đúng bộ Flashcard Set mà người dùng vừa click vào
-      const currentSet = res.data?.find(s => String(s.flashcardSetId || s.id) === String(setId));
-      
-      if (currentSet) {
-        setCards(currentSet.Flashcard || currentSet.cards || []);
-        setCurrentIndex(0);
-        setShowAnswer(false);
-      }
-    } catch (err) {
-      console.error("Lỗi tải Flashcards:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadCards();
-  }, [projectId, setId]);
-
-  // Xử lý khi người dùng chọn mức độ
-  const handleReview = () => {
+  const handlePrevious = () => {
+    if (currentIndex <= 0) return;
+    setCurrentIndex((prev) => prev - 1);
     setShowAnswer(false);
-    if (currentIndex + 1 < cards.length) {
-      setCurrentIndex(prev => prev + 1);
-    } else {
-      alert("Tuyệt vời! Bạn đã học xong bộ thẻ này.");
-      navigate('/learner/flashcards');
-    }
   };
 
-  // Tránh lỗi khi thẻ chưa load kịp
+  const handleNext = () => {
+    if (currentIndex >= cards.length - 1) return;
+    setCurrentIndex((prev) => prev + 1);
+    setShowAnswer(false);
+  };
+
   const activeCard = cards[currentIndex] || {};
+  const displayFront =
+    activeCard.frontContent ||
+    activeCard.front ||
+    activeCard.Front ||
+    activeCard.term ||
+    activeCard.question ||
+    'Empty question card';
 
-  // Tự động rà quét mọi tên cột, BỔ SUNG frontContent và backContent
-  const frontContent = activeCard.frontContent || activeCard.front || activeCard.Front || activeCard.term || activeCard.question;
-  const backContent = activeCard.backContent || activeCard.back || activeCard.Back || activeCard.definition || activeCard.answer;
+  const displayBack =
+    activeCard.backContent ||
+    activeCard.back ||
+    activeCard.Back ||
+    activeCard.definition ||
+    activeCard.answer ||
+    'Back side content not found';
 
-  // Nếu vẫn không trúng tên cột nào, in thẳng chuỗi JSON ra màn hình để biết Backend trả về gì
-  const displayFront = frontContent || (Object.keys(activeCard).length > 0 ? JSON.stringify(activeCard) : "Thẻ rỗng");
-  const displayBack = backContent || "Không tìm thấy dữ liệu mặt sau";
+  if (loading) {
+    return (
+      <main className="flex-1 flex items-center justify-center p-8 bg-gray-50/50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin"></div>
+          <p className="text-xs font-bold text-gray-500">Preparing review deck...</p>
+        </div>
+      </main>
+    );
+  }
+
+  const progressPercent = cards.length > 0
+    ? Math.round(((currentIndex + 1) / cards.length) * 100)
+    : 0;
 
   return (
-    <main className="flex-1 p-8 bg-gray-50 flex flex-col items-center overflow-y-auto">
-      {/* Header */}
-      <div className="w-full max-w-4xl flex justify-between items-center mb-8 border-b border-gray-200 pb-4">
-        <div>
-          <button 
-            onClick={() => navigate('/learner/flashcards')} 
-            className="text-xs font-bold text-gray-400 hover:text-emerald-600 mb-1 inline-block transition-colors"
+    <main className="flex-1 p-8 overflow-y-auto space-y-6 bg-gray-50/50 flex flex-col items-center">
+      <div className="w-full max-w-2xl space-y-6">
+        <div className="flex items-center justify-between">
+          <Link
+            to="/learner/flashcards"
+            className="px-4 py-2 bg-white rounded-xl border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-100 transition shadow-xs"
           >
-            ← Quay lại Repository
-          </button>
-          <h1 className="text-xl font-bold text-gray-800">{deckName}</h1>
-        </div>
-      </div>
+            ← Exit Study Room
+          </Link>
 
-      {/* Vùng Lật Thẻ (Study Area) */}
-      {loading ? (
-        <div className="bg-white border border-gray-100 rounded-2xl p-16 text-center w-full max-w-2xl shadow-sm">
-          <p className="text-sm text-gray-500">Đang tải dữ liệu thẻ...</p>
-        </div>
-      ) : cards.length === 0 ? (
-        <div className="bg-white border border-gray-100 rounded-2xl p-16 text-center w-full max-w-2xl shadow-sm">
-          <p className="text-sm text-gray-500">Bộ thẻ này hiện đang trống hoặc không tồn tại.</p>
-        </div>
-      ) : (
-        <div className="w-full max-w-2xl mt-4">
-          <div className="flex justify-between text-xs font-bold text-gray-400 mb-3">
-            <span>Tiến trình học</span>
-            <span>{currentIndex + 1} / {cards.length}</span>
-          </div>
-          
-          <div className="w-full bg-gray-200 h-1.5 rounded-full mb-8 overflow-hidden">
-            <div className="bg-emerald-500 h-full transition-all duration-300" style={{ width: `${((currentIndex) / cards.length) * 100}%` }}></div>
+          <div className="text-center">
+            <h2 className="text-sm font-black text-gray-900 truncate max-w-xs">{deckName}</h2>
+            <p className="text-[11px] text-gray-400 font-bold">
+              {cards.length > 0 ? `Card ${currentIndex + 1} / ${cards.length}` : 'No cards'}
+            </p>
           </div>
 
-          <div className="relative aspect-[16/9] w-full perspective-1000">
-            {/* Mặt trước */}
-            <div className={`absolute inset-0 bg-white rounded-3xl shadow-sm border border-gray-100 p-10 flex flex-col justify-center items-center text-center transition-all duration-300 ${showAnswer ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
-              <h3 className="text-2xl font-bold text-gray-800 leading-relaxed overflow-y-auto">
-                {displayFront}
-              </h3>
-              <button 
-                onClick={() => setShowAnswer(true)} 
-                className="mt-10 text-sm font-bold text-emerald-600 bg-emerald-50 px-8 py-3 rounded-full hover:bg-emerald-100 transition-colors"
-              >
-                Hiện đáp án
-              </button>
+          <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
+            {progressPercent}%
+          </span>
+        </div>
+
+        <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+          <div
+            className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+            style={{ width: `${progressPercent}%` }}
+          ></div>
+        </div>
+
+        {cards.length === 0 ? (
+          <div className="bg-white border border-gray-100 rounded-3xl p-16 text-center shadow-xs">
+            <p className="text-xs font-bold text-gray-400">This deck is currently empty.</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div
+              onClick={() => setShowAnswer((prev) => !prev)}
+              className="w-full min-h-[340px] bg-white rounded-3xl border border-gray-100 shadow-md hover:shadow-lg transition-all p-8 flex flex-col justify-between cursor-pointer relative overflow-hidden group select-none"
+            >
+              <div className="flex items-center justify-between">
+                <span
+                  className={`text-[10px] font-black uppercase px-3 py-1 rounded-full tracking-wider ${
+                    showAnswer
+                      ? 'bg-amber-50 text-amber-700'
+                      : 'bg-emerald-50 text-emerald-700'
+                  }`}
+                >
+                  {showAnswer ? '💡 Back Side / Definition' : '❓ Front Side / Term'}
+                </span>
+                <span className="text-[11px] font-bold text-gray-400 group-hover:text-gray-600 transition-colors">
+                  Click to flip card ↻
+                </span>
+              </div>
+
+              <div className="my-auto py-6 text-center">
+                <h3
+                  className={`leading-relaxed whitespace-pre-wrap ${
+                    showAnswer
+                      ? 'text-gray-800 text-sm md:text-base font-semibold'
+                      : 'text-gray-900 text-xl md:text-2xl font-black'
+                  }`}
+                >
+                  {showAnswer ? displayBack : displayFront}
+                </h3>
+              </div>
+
+              <div className="text-center pt-4 border-t border-gray-50">
+                {!showAnswer ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setShowAnswer(true);
+                    }}
+                    className="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-6 py-2.5 rounded-full transition-colors inline-block"
+                  >
+                    Show Answer
+                  </button>
+                ) : (
+                  <p className="text-[11px] text-gray-400 font-semibold italic">
+                    Use Previous or Next to continue through the deck.
+                  </p>
+                )}
+              </div>
             </div>
 
-            {/* Mặt sau */}
-            <div className={`absolute inset-0 bg-white rounded-3xl shadow-md border-2 border-emerald-100 p-10 flex flex-col justify-between items-center text-center transition-all duration-300 ${showAnswer ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
-              <div className="flex-1 flex items-center justify-center overflow-hidden">
-                <p className="text-xl font-medium text-gray-700 leading-relaxed overflow-y-auto max-h-full w-full">
-                  {displayBack}
+            {showAnswer && (
+              <div className="grid grid-cols-2 gap-3 animate-fadeIn">
+                <button
+                  type="button"
+                  onClick={handlePrevious}
+                  disabled={currentIndex === 0}
+                  className="py-3 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 font-black text-xs rounded-2xl transition shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ← Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  disabled={currentIndex === cards.length - 1}
+                  className="py-3 bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-600 font-black text-xs rounded-2xl transition shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+
+            {showAnswer && currentIndex === cards.length - 1 && (
+              <div className="text-center bg-emerald-50 border border-emerald-100 rounded-2xl px-4 py-3">
+                <p className="text-xs font-bold text-emerald-700">
+                  You are viewing the last card in this deck.
                 </p>
               </div>
-              
-              <div className="w-full grid grid-cols-4 gap-3 mt-6 shrink-0">
-                <button onClick={handleReview} className="bg-red-50 text-red-600 font-bold py-3 rounded-xl hover:bg-red-100 text-sm transition-colors">Học lại</button>
-                <button onClick={handleReview} className="bg-orange-50 text-orange-600 font-bold py-3 rounded-xl hover:bg-orange-100 text-sm transition-colors">Khó</button>
-                <button onClick={handleReview} className="bg-green-50 text-green-600 font-bold py-3 rounded-xl hover:bg-green-100 text-sm transition-colors">Tốt</button>
-                <button onClick={handleReview} className="bg-blue-50 text-blue-600 font-bold py-3 rounded-xl hover:bg-blue-100 text-sm transition-colors">Rất Dễ</button>
-              </div>
-            </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </main>
   );
 }

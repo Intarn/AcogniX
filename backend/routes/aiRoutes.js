@@ -38,8 +38,10 @@ router.post('/chat', aiController.chat);
 router.get('/projects/:projectId/quizzes', aiController.getSavedQuizzes);
 router.get('/projects/:projectId/flashcards', aiController.getSavedFlashcards);
 router.get('/projects/:projectId/conversation', aiController.getConversationHistory);
+router.post('/projects/:projectId/quizzes/:quizId/attempts', aiController.recordPracticeQuizAttempt);
 
 // Delete route
 router.delete('/projects/:projectId/flashcards/:setId', aiController.deleteSavedFlashcardSet);
+router.delete('/projects/:projectId/quizzes/:quizId', aiController.deleteSavedQuiz);
 
 module.exports = router;

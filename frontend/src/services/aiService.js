@@ -85,3 +85,18 @@ export const deleteSavedFlashcardSet = async (projectId, setId) => {
     method: 'DELETE'
   });
 };
+
+
+
+export const recordPracticeQuizAttempt = async (projectId, quizId, result) => {
+  return await apiRequest(`/ai/projects/${projectId}/quizzes/${quizId}/attempts`, {
+    method: 'POST',
+    body: JSON.stringify(result)
+  });
+};
+
+export const deleteSavedQuiz = async (projectId, quizId) => {
+  return await apiRequest(`/ai/projects/${projectId}/quizzes/${quizId}`, {
+    method: 'DELETE'
+  });
+};
