@@ -75,5 +75,15 @@ router.post(
 );
 
 
+router.post(
+  '/:courseId/unarchive',
+  requireAuth,
+  authorize(
+    UserRole.EDUCATOR
+  ),
+  CourseController.unarchive
+);
+
+
 module.exports =
   router;

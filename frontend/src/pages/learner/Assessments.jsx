@@ -1,5 +1,5 @@
 // frontend/src/pages/learner/Assessments.jsx
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { getLearnerAssessments } from '../../services/assessmentService';
 import { getCourses } from '../../services/courseService';
@@ -55,9 +55,9 @@ export default function Assessments() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const navigate = useNavigate();
 
-  const fetchList = async () => {
+  const fetchList = useCallback(async ({ silent = false } = {}) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setErrorMsg(null);
       const [assessRes, courseRes] = await Promise.all([
         getLearnerAssessments(),
@@ -93,13 +93,36 @@ export default function Assessments() {
       setErrorMsg('Unable to load assessment list.');
       setAssessments([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchList();
-  }, []);
+
+    const refresh = () => fetchList({ silent: true });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Keep the learner view synchronized when an educator changes or deletes
+    // an assessment from another tab/device. This always refetches the API;
+    // no assessment is removed locally unless the backend no longer returns it.
+    const syncInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.clearInterval(syncInterval);
+    };
+  }, [fetchList]);
 
   const filteredAssessments = assessments
     .filter((asmt) => {
@@ -212,7 +235,7 @@ export default function Assessments() {
             const canAttempt = isOpen || (isClosed && allowsLate);
             const submissionStatus = asmt.submission?.status || null;
             const hasSubmitted = ['SUBMITTED', 'PENDING_REVIEW', 'GRADED'].includes(submissionStatus);
-            const canReview = isClosed || hasSubmitted;
+            const canReview = hasSubmitted || (isClosed && !allowsLate);
 
             return (
               <div

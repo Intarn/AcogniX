@@ -9,6 +9,26 @@ import {
 
 export const AuthContext = createContext(null);
 
+function normalizeAuthenticatedUser(profile = {}, fallback = {}) {
+  const displayName =
+    profile.displayName ||
+    profile.fullname ||
+    fallback.displayName ||
+    fallback.fullname ||
+    fallback.email?.split('@')[0] ||
+    '';
+
+  return {
+    ...fallback,
+    ...profile,
+    email: profile.email || fallback.email || '',
+    displayName,
+    fullname: displayName,
+    avatarUrl: profile.avatarUrl || fallback.avatarUrl || '',
+    role: String(profile.role || fallback.role || '').toLowerCase()
+  };
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -32,11 +52,7 @@ export function AuthProvider({ children }) {
         throw new Error('PROFILE_NOT_FOUND');
       }
 
-      const normalizedProfile = {
-        ...profile,
-        fullname: profile.displayName || profile.fullname || '',
-        role: String(profile.role || '').toLowerCase()
-      };
+      const normalizedProfile = normalizeAuthenticatedUser(profile);
 
       if (!normalizedProfile.role) {
         throw new Error('ROLE_NOT_FOUND');
@@ -81,12 +97,11 @@ export function AuthProvider({ children }) {
       }
 
       const userRole = String(rawRole).toLowerCase();
-
-      const userData = {
+      const loginUser = {
         ...(data?.user || {}),
         email: data?.user?.email || email,
         role: userRole,
-        fullname:
+        displayName:
           data?.user?.displayName ||
           data?.user?.fullname ||
           email?.split('@')[0] ||
@@ -95,15 +110,39 @@ export function AuthProvider({ children }) {
         redirectTo: data?.redirectTo || '/'
       };
 
+      // Store the token before requesting /profile because apiRequest reads the
+      // bearer token from localStorage. Hydrating the profile here gives every
+      // layout (Topbar + Sidebar) the same displayName/avatar on the very first
+      // render after login instead of waiting for a browser refresh.
       localStorage.setItem('accessToken', token);
+
+      let userData = normalizeAuthenticatedUser({}, loginUser);
+      try {
+        const profileResult = await getProfile();
+        const profile =
+          profileResult?.profile ||
+          profileResult?.user ||
+          profileResult;
+
+        if (profile) {
+          userData = normalizeAuthenticatedUser(profile, loginUser);
+        }
+      } catch (profileError) {
+        // Authentication already succeeded. Keep the valid login session and
+        // fall back to the login payload if profile hydration is temporarily
+        // unavailable.
+        console.warn('Unable to hydrate profile immediately after login:', profileError);
+      }
+
       localStorage.setItem('currentUser', JSON.stringify(userData));
       setUser(userData);
 
       return {
+        ...data,
         success: true,
-        role: userRole,
+        role: userData.role || userRole,
         userRole: rawRole,
-        ...data
+        user: userData
       };
     } catch (error) {
       // Preserve backend status/code/message so Login.jsx can display the

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getCourses } from '../../features/classroom/courseApi';
 import {
@@ -40,6 +40,10 @@ export default function CourseMembersPage() {
   const [actionTarget, setActionTarget] = useState(null);
   const [processingEnrollmentIds, setProcessingEnrollmentIds] = useState([]);
   const [actionNotice, setActionNotice] = useState(null);
+  const [actionSubmitting, setActionSubmitting] = useState(false);
+
+  const enrollmentActionInFlightRef = useRef(new Set());
+  const confirmActionInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!courseId) {
@@ -126,7 +130,10 @@ export default function CourseMembersPage() {
     if (isArchived) return;
 
     const enrollmentId = enrollment.enrollmentId;
-    if (processingEnrollmentIds.includes(enrollmentId)) return;
+    const actionKey = String(enrollmentId);
+    if (enrollmentActionInFlightRef.current.has(actionKey)) return;
+
+    enrollmentActionInFlightRef.current.add(actionKey);
 
     const learnerName = learner?.displayName || learner?.fullname || learner?.email || 'this Learner';
     const confirmed = await confirm({
@@ -136,9 +143,14 @@ export default function CourseMembersPage() {
       cancelLabel: 'Cancel',
       tone: 'success'
     });
-    if (!confirmed) return;
+    if (!confirmed) {
+      enrollmentActionInFlightRef.current.delete(actionKey);
+      return;
+    }
 
-    setProcessingEnrollmentIds((prev) => [...prev, enrollmentId]);
+    setProcessingEnrollmentIds((prev) =>
+      prev.some((id) => String(id) === actionKey) ? prev : [...prev, enrollmentId]
+    );
     setActionNotice({
       type: 'processing',
       message: `Approving ${learnerName}... Please wait while Course and AI Workspace access are prepared.`
@@ -183,7 +195,8 @@ export default function CourseMembersPage() {
         setActionNotice({ type: 'error', message });
       }
     } finally {
-      setProcessingEnrollmentIds((prev) => prev.filter((id) => String(id) !== String(enrollmentId)));
+      enrollmentActionInFlightRef.current.delete(actionKey);
+      setProcessingEnrollmentIds((prev) => prev.filter((id) => String(id) !== actionKey));
     }
   }
 
@@ -198,8 +211,16 @@ export default function CourseMembersPage() {
   }
 
   async function confirmAction() {
-    if (!actionTarget) return;
+    if (!actionTarget || confirmActionInFlightRef.current) return;
     const { type, enrollment: targetEnrollment } = actionTarget;
+
+    confirmActionInFlightRef.current = true;
+    setActionSubmitting(true);
+    setProcessingEnrollmentIds((prev) =>
+      prev.some((id) => String(id) === String(targetEnrollment.enrollmentId))
+        ? prev
+        : [...prev, targetEnrollment.enrollmentId]
+    );
 
     try {
       if (type === 'REJECT') {
@@ -214,6 +235,12 @@ export default function CourseMembersPage() {
       setActionTarget(null);
     } catch (error) {
       alert(error.message || 'Action failed.');
+    } finally {
+      confirmActionInFlightRef.current = false;
+      setActionSubmitting(false);
+      setProcessingEnrollmentIds((prev) =>
+        prev.filter((id) => String(id) !== String(targetEnrollment.enrollmentId))
+      );
     }
   }
 
@@ -313,13 +340,19 @@ export default function CourseMembersPage() {
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            disabled={isArchived || processingEnrollmentIds.includes(enrollment.enrollmentId)}
+                            disabled={isArchived || processingEnrollmentIds.some((id) => String(id) === String(enrollment.enrollmentId))}
                             onClick={() => handleApprove(enrollment, learner)}
                             className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl shadow-xs transition disabled:opacity-40 disabled:cursor-not-allowed min-w-[84px]"
                           >
-                            {processingEnrollmentIds.includes(enrollment.enrollmentId) ? 'Approving...' : 'Approve'}
+                            {processingEnrollmentIds.some((id) => String(id) === String(enrollment.enrollmentId)) ? 'Approving...' : 'Approve'}
                           </button>
-                          <button disabled={isArchived || processingEnrollmentIds.includes(enrollment.enrollmentId)} onClick={() => openRejectDialog(enrollment, learner)} className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl shadow-xs transition disabled:opacity-40 disabled:cursor-not-allowed">Reject</button>
+                          <button
+                            disabled={isArchived || processingEnrollmentIds.some((id) => String(id) === String(enrollment.enrollmentId))}
+                            onClick={() => openRejectDialog(enrollment, learner)}
+                            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl shadow-xs transition disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Reject
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -366,7 +399,13 @@ export default function CourseMembersPage() {
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Link to={`/educator/analytics?courseId=${course.courseId}`} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold rounded-xl shadow-xs transition">Analytics</Link>
-                          <button disabled={isArchived} onClick={() => openRemoveDialog(enrollment, learner)} className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl shadow-xs transition disabled:opacity-40">Remove</button>
+                          <button
+                            disabled={isArchived || processingEnrollmentIds.some((id) => String(id) === String(enrollment.enrollmentId))}
+                            onClick={() => openRemoveDialog(enrollment, learner)}
+                            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl shadow-xs transition disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Remove
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -395,9 +434,19 @@ export default function CourseMembersPage() {
               {actionTarget.learner.displayName || actionTarget.learner.email}
             </div>
             <div className="flex justify-center gap-3 mt-6">
-              <button onClick={() => setActionTarget(null)} className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition">Cancel</button>
-              <button onClick={confirmAction} className={`px-5 py-2.5 text-xs font-bold text-white rounded-xl shadow-md transition ${actionTarget.type === 'REMOVE' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
-                Confirm
+              <button
+                onClick={() => setActionTarget(null)}
+                disabled={actionSubmitting}
+                className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmAction}
+                disabled={actionSubmitting}
+                className={`px-5 py-2.5 text-xs font-bold text-white rounded-xl shadow-md transition disabled:opacity-50 ${actionTarget.type === 'REMOVE' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}
+              >
+                {actionSubmitting ? 'Processing...' : 'Confirm'}
               </button>
             </div>
           </div>

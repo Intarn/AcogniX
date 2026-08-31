@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { archiveCourse, getCourses } from '../../features/classroom/courseApi';
+import { archiveCourse, getCourses, unarchiveCourse } from '../../features/classroom/courseApi';
 import { useToast } from '../../contexts/ToastContext';
 
 export default function MyCoursesPage() {
@@ -11,23 +11,51 @@ export default function MyCoursesPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [archiveTarget, setArchiveTarget] = useState(null);
   const [archiving, setArchiving] = useState(false);
+  const [restoringCourseId, setRestoringCourseId] = useState(null);
+  const archiveInFlightRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    async function fetchCourses() {
+    let initialLoad = true;
+
+    async function fetchCourses({ silent = false } = {}) {
       try {
-        setLoading(true);
+        if (!silent && initialLoad) setLoading(true);
         const res = await getCourses();
         const list = Array.isArray(res?.courses) ? res.courses : Array.isArray(res) ? res : [];
-        if (!cancelled) setCourses(list);
+        if (!cancelled) {
+          setCourses(list);
+          initialLoad = false;
+        }
       } catch (err) {
-        showToast('Failed to load courses.', 'error');
+        if (!silent) showToast('Failed to load courses.', 'error');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !silent) setLoading(false);
       }
     }
+
+    const refreshSilently = () => fetchCourses({ silent: true });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    };
+
     fetchCourses();
-    return () => { cancelled = true; };
+
+    // Keep Educator course status synchronized with Admin archive/restore actions.
+    // Focus/visibility handles normal tab switching; the interval also covers
+    // cases where Admin and Educator are open in separate browser windows.
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const syncInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.clearInterval(syncInterval);
+    };
   }, []);
 
   const filteredCourses = courses.filter((c) => {
@@ -50,10 +78,12 @@ export default function MyCoursesPage() {
   }
 
   async function confirmArchive() {
-    if (!archiveTarget || archiving) return;
+    if (!archiveTarget || archiveInFlightRef.current) return;
+
+    archiveInFlightRef.current = true;
+    setArchiving(true);
 
     try {
-      setArchiving(true);
       const result = await archiveCourse(archiveTarget.courseId);
       const archivedCourse = result?.course || { ...archiveTarget, status: 'ARCHIVED' };
 
@@ -68,7 +98,28 @@ export default function MyCoursesPage() {
     } catch (error) {
       showToast(error?.message || 'Unable to archive course. Please try again.', 'error');
     } finally {
+      archiveInFlightRef.current = false;
       setArchiving(false);
+    }
+  }
+
+  async function handleUnarchive(course) {
+    if (!course || course.status !== 'ARCHIVED' || restoringCourseId) return;
+
+    try {
+      setRestoringCourseId(course.courseId);
+      const result = await unarchiveCourse(course.courseId);
+      const restoredCourse = result?.course || { ...course, status: 'ACTIVE' };
+      setCourses((current) => current.map((item) =>
+        String(item.courseId) === String(course.courseId)
+          ? { ...item, ...restoredCourse, status: 'ACTIVE' }
+          : item
+      ));
+      showToast(result?.message || 'Course has been restored.', 'success');
+    } catch (error) {
+      showToast(error?.message || 'Unable to restore course. Please try again.', 'error');
+    } finally {
+      setRestoringCourseId(null);
     }
   }
 
@@ -159,13 +210,31 @@ export default function MyCoursesPage() {
                         {isArchived ? 'View Archived' : 'View Details'}
                       </Link>
 
-                      {!isArchived && (
+                      {!isArchived ? (
                         <button
                           type="button"
                           onClick={() => requestArchive(course)}
                           className="px-4 py-2.5 rounded-2xl text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 transition shadow-xs"
                         >
                           Archive
+                        </button>
+                      ) : course.archivedByRole === 'SYSTEM_ADMINISTRATOR' ? (
+                        <button
+                          type="button"
+                          disabled
+                          title="Only a System Administrator can restore this course."
+                          className="px-4 py-2.5 rounded-2xl text-xs font-bold text-gray-400 bg-gray-100 cursor-not-allowed shadow-xs"
+                        >
+                          Admin Archived
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleUnarchive(course)}
+                          disabled={String(restoringCourseId) === String(course.courseId)}
+                          className="px-4 py-2.5 rounded-2xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition shadow-xs disabled:opacity-50"
+                        >
+                          {String(restoringCourseId) === String(course.courseId) ? 'Restoring...' : 'Restore'}
                         </button>
                       )}
                     </div>

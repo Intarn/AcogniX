@@ -86,8 +86,8 @@ export default function Sidebar({ user }) {
     }  ];
 
   return (
-    <aside className="w-72 h-full bg-white border-r border-gray-100 flex flex-col justify-between flex-shrink-0 shadow-sm z-10">
-      <div>
+    <aside className="w-72 h-full min-h-0 bg-white border-r border-gray-100 flex flex-col flex-shrink-0 shadow-sm z-10 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {/* BRAND HEADER */}
         <div className="p-7 border-b border-gray-100">
           <Logo />
@@ -151,7 +151,7 @@ export default function Sidebar({ user }) {
       </div>
 
       {/* FOOTER USER CARD */}
-      <div className="p-5 border-t border-gray-100 bg-gray-50/30">
+      <div className="p-5 border-t border-gray-100 bg-gray-50/30 flex-shrink-0">
         <div className="flex items-center gap-3.5">
           <img 
             src={avatarSrc} 

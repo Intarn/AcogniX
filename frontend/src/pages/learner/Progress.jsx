@@ -20,19 +20,36 @@ const formatPercent = (value) => {
   return `${Math.round(Number(value))}%`;
 };
 
+const getLocalDateInputValue = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function Progress() {
   const { user } = useAuth();
   const userEmail = user?.email || '';
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [timeRange, setTimeRange] = useState('Last 7 days');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [overview, setOverview] = useState(null);
+  const today = getLocalDateInputValue();
+  const isCustomRange = timeRange === 'Custom range';
+  const isCustomRangeComplete = Boolean(startDate && endDate);
+  const isCustomRangeValid = !isCustomRange || (
+    isCustomRangeComplete &&
+    startDate <= endDate &&
+    endDate <= today
+  );
 
   const fetchProgressData = async () => {
     try {
       setLoading(true);
       setErrorMsg('');
-      const data = await getProgressOverview(userEmail, timeRange);
+      const data = await getProgressOverview(userEmail, timeRange, startDate, endDate);
       setOverview(data);
     } catch (error) {
       console.error('[Progress Error]:', error);
@@ -44,9 +61,14 @@ export default function Progress() {
   };
 
   useEffect(() => {
+    if (isCustomRange && !isCustomRangeValid) {
+      setLoading(false);
+      return;
+    }
+
     fetchProgressData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userEmail, timeRange]);
+  }, [userEmail, timeRange, startDate, endDate]);
 
   if (loading) {
     return (
@@ -158,16 +180,79 @@ export default function Progress() {
           </p>
         </div>
 
-        <select
-          value={timeRange}
-          onChange={(event) => setTimeRange(event.target.value)}
-          className="bg-white text-xs font-bold text-gray-700 border border-gray-200 rounded-2xl px-4 py-2.5 outline-none focus:border-blue-600 shadow-xs cursor-pointer"
-        >
-          <option value="Last 7 days">Last 7 days</option>
-          <option value="Last 4 Weeks">Last 4 Weeks</option>
-          <option value="Last 30 days">Last 30 days</option>
-          <option value="All time">All time</option>
-        </select>
+        <div className="flex flex-col sm:items-end gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={timeRange}
+              onChange={(event) => {
+                const value = event.target.value;
+                setTimeRange(value);
+                setErrorMsg('');
+
+                if (value !== 'Custom range') {
+                  setStartDate('');
+                  setEndDate('');
+                }
+              }}
+              className="bg-white text-xs font-bold text-gray-700 border border-gray-200 rounded-2xl px-4 py-2.5 outline-none focus:border-blue-600 shadow-xs cursor-pointer"
+            >
+              <option value="Last 7 days">Last 7 days</option>
+              <option value="Last 4 Weeks">Last 4 Weeks</option>
+              <option value="Last 30 days">Last 30 days</option>
+              <option value="All time">All time</option>
+              <option value="Custom range">Custom range</option>
+            </select>
+
+            {isCustomRange && (
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-gray-500">From</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    max={endDate || today}
+                    onChange={(event) => {
+                      setStartDate(event.target.value);
+                      setErrorMsg('');
+                    }}
+                    className="bg-white text-xs font-bold text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-blue-600"
+                  />
+                </label>
+
+                <label className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-gray-500">To</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    min={startDate || undefined}
+                    max={today}
+                    onChange={(event) => {
+                      setEndDate(event.target.value);
+                      setErrorMsg('');
+                    }}
+                    className="bg-white text-xs font-bold text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-blue-600"
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+
+          {isCustomRange && !isCustomRangeComplete && (
+            <p className="text-[11px] font-semibold text-gray-400">
+              Select both From and To dates to load statistics.
+            </p>
+          )}
+          {isCustomRange && isCustomRangeComplete && startDate > endDate && (
+            <p className="text-[11px] font-semibold text-red-500">
+              From date cannot be later than To date.
+            </p>
+          )}
+          {isCustomRange && isCustomRangeComplete && endDate > today && (
+            <p className="text-[11px] font-semibold text-red-500">
+              To date cannot be later than today.
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-5">
@@ -242,13 +327,13 @@ export default function Progress() {
         </div>
 
         <div className="h-64 w-full pt-2">
-          {safeOverview.hasEnoughDataForTrend ? (
+          {chartLabels.length > 0 ? (
             <Bar data={chartConfig} options={chartOptions} />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-gray-100 rounded-2xl">
-              <p className="text-xs font-bold text-gray-700">Not enough data yet to show your progress trend.</p>
+              <p className="text-xs font-bold text-gray-700">No study activity found for this period.</p>
               <p className="text-[11px] text-gray-400 mt-1 max-w-sm">
-                Complete learning activity across at least two historical data points to view your trend.
+                Your study-time chart will appear when learning activity is recorded in the selected period.
               </p>
             </div>
           )}

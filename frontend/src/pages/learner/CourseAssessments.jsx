@@ -1,8 +1,9 @@
 // frontend/src/pages/learner/CourseAssessments.jsx
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getCourses } from '../../services/courseService';
 import { getLearnerAssessments } from '../../services/assessmentService';
+import { getAssessmentInstructionFileBlob } from '../../services/quizService';
 import { useToast } from '../../contexts/ToastContext';
 
 function resolveFileUrl(rawUrl, defaultBucket = 'materials') {
@@ -53,84 +54,204 @@ export default function CourseAssessments() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [downloadingId, setDownloadingId] = useState(null);
+  const [openingId, setOpeningId] = useState(null);
+  const instructionFileInFlightRef = useRef(new Set());
 
-  useEffect(() => {
+  const loadPage = useCallback(async ({ silent = false } = {}) => {
     if (!courseId) return;
-    async function loadPage() {
-      try {
-        setLoading(true);
-        setLoadError('');
-        const [courseResult, assessmentResult] = await Promise.all([
-          getCourses(),
-          getLearnerAssessments()
-        ]);
 
-        const courseList = Array.isArray(courseResult?.courses) ? courseResult.courses : (Array.isArray(courseResult) ? courseResult : []);
-        const foundCourse = courseList.find((item) => String(item.courseId) === String(courseId)) || null;
-        if (!foundCourse) throw new Error('Class not found.');
+    try {
+      if (!silent) setLoading(true);
+      setLoadError('');
 
-        const allAssessments = Array.isArray(assessmentResult?.assessments) ? assessmentResult.assessments : (Array.isArray(assessmentResult) ? assessmentResult : []);
-        const courseAssessments = allAssessments
-          .filter((a) => String(a.courseId) === String(courseId))
-          .sort((a, b) => new Date(a.startTime || a.createdAt || 0).getTime() - new Date(b.startTime || b.createdAt || 0).getTime());
+      const [courseResult, assessmentResult] = await Promise.all([
+        getCourses(),
+        getLearnerAssessments()
+      ]);
 
-        setCourse(foundCourse);
-        setAssessments(courseAssessments);
-      } catch (error) {
-        setLoadError(error.message || 'Unable to load assessment list.');
-      } finally {
-        setLoading(false);
-      }
+      const courseList = Array.isArray(courseResult?.courses)
+        ? courseResult.courses
+        : (Array.isArray(courseResult) ? courseResult : []);
+      const foundCourse = courseList.find(
+        (item) => String(item.courseId) === String(courseId)
+      ) || null;
+      if (!foundCourse) throw new Error('Class not found.');
+
+      const allAssessments = Array.isArray(assessmentResult?.assessments)
+        ? assessmentResult.assessments
+        : (Array.isArray(assessmentResult) ? assessmentResult : []);
+      const courseAssessments = allAssessments
+        .filter((a) => String(a.courseId) === String(courseId))
+        .sort(
+          (a, b) =>
+            new Date(a.startTime || a.createdAt || 0).getTime() -
+            new Date(b.startTime || b.createdAt || 0).getTime()
+        );
+
+      setCourse(foundCourse);
+      setAssessments(courseAssessments);
+    } catch (error) {
+      setLoadError(error.message || 'Unable to load assessment list.');
+    } finally {
+      if (!silent) setLoading(false);
     }
-    loadPage();
   }, [courseId]);
 
-  const handleDownloadInstruction = async (e, rawUrl, fileName, id) => {
+  useEffect(() => {
+    loadPage();
+
+    const refresh = () => loadPage({ silent: true });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Keep the learner view synchronized when an educator changes or deletes
+    // an assessment from another tab/device. This always refetches the API;
+    // no assessment is removed locally unless the backend no longer returns it.
+    const syncInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.clearInterval(syncInterval);
+    };
+  }, [loadPage]);
+
+  const handleDownloadInstruction = async (
+    e,
+    _rawUrl,
+    fileName,
+    id
+  ) => {
     e.preventDefault();
     e.stopPropagation();
-    const resolvedUrl = resolveFileUrl(rawUrl);
-    if (!resolvedUrl) {
-      showToast('Instruction file unavailable.', 'warning');
+
+    const key = String(id);
+    if (
+      !id ||
+      instructionFileInFlightRef.current.has(key)
+    ) {
       return;
     }
 
+    instructionFileInFlightRef.current.add(key);
+
     try {
       setDownloadingId(id);
-      const res = await fetch(resolvedUrl);
-      if (!res.ok) {
-        if (res.status === 404) {
-          showToast('Instruction file does not exist in storage (404 Not Found).', 'error');
-          return;
-        }
-        throw new Error(`File download error (Code: ${res.status})`);
-      }
-      const blob = await res.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
+
+      const { blob } =
+        await getAssessmentInstructionFileBlob(
+          id,
+          { download: true }
+        );
+
+      const blobUrl =
+        window.URL.createObjectURL(blob);
+
+      const link =
+        document.createElement('a');
+
       link.href = blobUrl;
-      link.download = fileName || 'instruction-file';
+      link.download =
+        fileName ||
+        'instruction-file';
+
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-      showToast('Instruction file downloaded successfully!', 'success');
-    } catch (err) {
-      console.error('[Download Instruction Error]:', err);
-      showToast('Unable to download instruction file. Please contact the educator.', 'error');
+      link.remove();
+
+      window.URL
+        .revokeObjectURL(blobUrl);
+
+      showToast(
+        'Instruction file downloaded successfully!',
+        'success'
+      );
+    } catch (error) {
+      showToast(
+        error.message ||
+        'Unable to download instruction file.',
+        'error'
+      );
     } finally {
+      instructionFileInFlightRef.current.delete(key);
       setDownloadingId(null);
     }
   };
 
-  const handleOpenInstruction = (e, rawUrl) => {
+  const handleOpenInstruction = async (
+    e,
+    _rawUrl,
+    id
+  ) => {
     e.preventDefault();
     e.stopPropagation();
-    const resolvedUrl = resolveFileUrl(rawUrl);
-    if (!resolvedUrl) {
-      showToast('Invalid file path.', 'warning');
+
+    const key = String(id);
+    if (
+      !id ||
+      instructionFileInFlightRef.current.has(key)
+    ) {
       return;
     }
-    window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+
+    instructionFileInFlightRef.current.add(key);
+
+    const previewWindow =
+      window.open('', '_blank');
+
+    if (!previewWindow) {
+      instructionFileInFlightRef.current.delete(key);
+      showToast(
+        'Unable to open the preview window. Please allow pop-ups for this site and try again.',
+        'warning'
+      );
+      return;
+    }
+
+    previewWindow.opener = null;
+
+    try {
+      setOpeningId(id);
+
+      const { blob } =
+        await getAssessmentInstructionFileBlob(
+          id
+        );
+
+      const blobUrl =
+        window.URL.createObjectURL(blob);
+
+      if (!previewWindow.closed) {
+        previewWindow.location.href = blobUrl;
+      }
+
+      window.setTimeout(
+        () =>
+          window.URL
+            .revokeObjectURL(blobUrl),
+        60_000
+      );
+    } catch (error) {
+      if (!previewWindow.closed) {
+        previewWindow.close();
+      }
+      showToast(
+        error.message ||
+        'Unable to open instruction file.',
+        'error'
+      );
+    } finally {
+      instructionFileInFlightRef.current.delete(key);
+      setOpeningId(null);
+    }
   };
 
   if (loading) {
@@ -189,8 +310,13 @@ export default function CourseAssessments() {
               const canAttempt = isOpen || (isClosed && allowsLate);
               const submissionStatus = assessment.submission?.status || null;
               const hasSubmitted = ['SUBMITTED', 'PENDING_REVIEW', 'GRADED'].includes(submissionStatus);
-              const canReview = isClosed || hasSubmitted;
-              const isDownloading = downloadingId === assessment.assessmentId;
+              const canReview = hasSubmitted || (isClosed && !allowsLate);
+              const isDownloading =
+                String(downloadingId) ===
+                String(assessment.assessmentId);
+              const isOpening =
+                String(openingId) ===
+                String(assessment.assessmentId);
 
               return (
                 <div
@@ -223,7 +349,7 @@ export default function CourseAssessments() {
                           <button
                             type="button"
                             onClick={(e) => handleDownloadInstruction(e, assessment.instructionFileUrl, `Instruction-${assessment.title}`, assessment.assessmentId)}
-                            disabled={isDownloading}
+                            disabled={isDownloading || isOpening}
                             className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 hover:underline"
                           >
                             <span>{isDownloading ? '⏳' : '📥'}</span> {isDownloading ? 'Downloading...' : 'Download instruction file'}
@@ -231,10 +357,16 @@ export default function CourseAssessments() {
                           <span className="text-gray-300">•</span>
                           <button
                             type="button"
-                            onClick={(e) => handleOpenInstruction(e, assessment.instructionFileUrl)}
-                            className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 hover:underline"
+                            onClick={(e) => handleOpenInstruction(
+                              e,
+                              assessment.instructionFileUrl,
+                              assessment.assessmentId
+                            )}
+                            disabled={isDownloading || isOpening}
+                            className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 hover:underline disabled:opacity-50"
                           >
-                            <span>👁️</span> View directly
+                            <span>👁️</span>
+                            {isOpening ? 'Opening...' : 'View directly'}
                           </button>
                         </div>
                       )}

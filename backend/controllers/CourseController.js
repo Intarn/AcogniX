@@ -66,6 +66,27 @@ class CourseController {
     }
   }
 
+  static async unarchive(req, res) {
+    const educatorId = req.user.userId;
+    const { courseId } = req.params;
+
+    try {
+      const course = await CourseService.unarchiveCourse(courseId, educatorId);
+      return res.status(200).json({ message: "Course has been restored.", course });
+    } catch (error) {
+      if (error.message === 'COURSE_NOT_FOUND_OR_NOT_OWNED') {
+        return res.status(404).json({ message: "Course not found." });
+      }
+      if (error.message === 'COURSE_NOT_ARCHIVED') {
+        return res.status(400).json({ message: "This course is not archived." });
+      }
+      if (error.message === 'COURSE_ARCHIVED_BY_ADMIN') {
+        return res.status(403).json({ message: "This course was archived by a System Administrator and can only be restored by an Administrator." });
+      }
+      return res.status(500).json({ message: "Unable to restore course. Please try again." });
+    }
+  }
+
   static async countActive(req, res) {
     try {
       const count = await CourseService.countActiveCourses();
@@ -91,11 +112,30 @@ class CourseController {
   static async adminArchiveCourse(req, res) {
     try {
       const { courseId } = req.params;
-      const course = await CourseService.adminArchiveCourse(courseId);
+      const adminId = req.user.userId;
+      const { reason } = req.body || {};
+      const course = await CourseService.adminArchiveCourse(courseId, adminId, reason);
       return res.status(200).json({ message: "Course has been archived.", course });
     } catch (error) {
       console.error("Error archiving course as Admin:", error);
       return res.status(500).json({ message: "Unable to archive course. Please try again." });
+    }
+  }
+
+  static async adminUnarchiveCourse(req, res) {
+    try {
+      const { courseId } = req.params;
+      const course = await CourseService.adminUnarchiveCourse(courseId);
+      return res.status(200).json({ message: "Course has been restored.", course });
+    } catch (error) {
+      console.error("Error restoring course as Admin:", error);
+      if (error.message === 'COURSE_NOT_FOUND') {
+        return res.status(404).json({ message: "Course not found." });
+      }
+      if (error.message === 'COURSE_NOT_ARCHIVED') {
+        return res.status(400).json({ message: "This course is not archived." });
+      }
+      return res.status(500).json({ message: "Unable to restore course. Please try again." });
     }
   }
 

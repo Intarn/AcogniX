@@ -1,5 +1,6 @@
 // backend/controllers/AnalyticsController.js
 const AnalyticsService = require('../service/AnalyticsService');
+const NotificationService = require('../service/NotificationService');
 
 function handleControllerError(error, res) {
   if (error.statusCode) {
@@ -24,11 +25,19 @@ class AnalyticsController {
     }
   }
 
-  // UC-04: Hỗ trợ lọc theo timeRange ('Last 7 days', 'Last 4 Weeks', 'Last 30 days', 'All time')
+  // UC-04: Supports predefined ranges and a learner-selected custom date range.
   static async getPersonalStats(req, res) {
     try {
       const timeRange = req.query.timeRange || 'Last 7 days';
-      const stats = await AnalyticsService.getPersonalStats(req.user.userId, timeRange);
+      const startDate = req.query.startDate || null;
+      const endDate = req.query.endDate || null;
+
+      const stats = await AnalyticsService.getPersonalStats(
+        req.user.userId,
+        timeRange,
+        startDate,
+        endDate
+      );
       return res.status(200).json(stats);
     } catch (error) {
       return handleControllerError(error, res);
@@ -36,10 +45,23 @@ class AnalyticsController {
   }
 
 
-  static async getWeeklyReportNotifications(req, res) {
+
+  static async getEducatorNotifications(req, res) {
     try {
-      const notifications = await AnalyticsService.listWeeklyReportNotifications(req.user.userId);
-      return res.status(200).json({ notifications });
+      const result = await NotificationService.getEducatorNotifications(req.user.userId);
+      return res.status(200).json(result);
+    } catch (error) {
+      return handleControllerError(error, res);
+    }
+  }
+
+  static async markEducatorNotificationRead(req, res) {
+    try {
+      const result = await NotificationService.markEducatorNotificationRead(
+        req.user.userId,
+        req.params.notificationId
+      );
+      return res.status(200).json(result);
     } catch (error) {
       return handleControllerError(error, res);
     }

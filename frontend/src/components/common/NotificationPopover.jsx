@@ -1,266 +1,205 @@
-// frontend/src/components/common/NotificationPopover.jsx
-import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
-import { getWeeklyReportNotifications } from '../../services/analyticsService';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  getEducatorNotifications,
+  markEducatorNotificationRead
+} from '../../services/analyticsService';
 
-// ==========================================
-// MOCK DATA: THÔNG BÁO THEO TỪNG VAI TRÒ
-// ==========================================
-const MOCK_NOTIFICATIONS = {
-  LEARNER: [
-    {
-      id: 'l1',
-      title: 'Thông báo lớp học mới',
-      message: 'Giảng viên đã đăng thông báo mới trong lớp Lập trình C++.',
-      type: 'ANNOUNCEMENT',
-      createdAt: new Date().toISOString(),
-      read: false,
-      link: '/learner/courses/c-101/announcements'
-    },
-    {
-      id: 'l2',
-      title: 'Bài kiểm tra đã xuất bản',
-      message: 'Quiz 01 - C++ Fundamentals đã sẵn sàng làm bài.',
-      type: 'ASSESSMENT',
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-      read: false,
-      link: '/learner/courses/c-101/assessments'
-    },
-    {
-      id: 'l3',
-      title: 'Tài liệu học tập mới',
-      message: 'Slide bài giảng chương 2 đã được cập nhật.',
-      type: 'MATERIAL',
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-      read: true,
-      link: '/learner/courses/c-101/materials'
-    },
-    {
-      id: 'l4',
-      title: 'Yêu cầu tham gia lớp được chấp nhận',
-      message: 'Bạn đã chính thức trở thành thành viên của lớp C++.',
-      type: 'ENROLLMENT',
-      createdAt: new Date(Date.now() - 172800000).toISOString(),
-      read: true,
-      link: '/learner/my-courses'
-    }
-  ],
-  EDUCATOR: [
-    {
-      id: 'e1',
-      title: 'Yêu cầu tham gia lớp học',
-      message: 'Trần Đăng Khoa vừa yêu cầu tham gia lớp "Lập trình C++".',
-      type: 'ENROLL_REQUEST',
-      createdAt: new Date().toISOString(),
-      read: false,
-      link: '/educator/courses/c-101/members'
-    }
-  ],
-  SYSTEM_ADMINISTRATOR: [
-    {
-      id: 'a1',
-      title: 'Cảnh báo hạn mức LLM API',
-      message: 'API Key của Gemini đã sử dụng 90% hạn mức trong ngày.',
-      type: 'SYSTEM_ALERT',
-      createdAt: new Date().toISOString(),
-      read: false,
-      link: '/admin/settings'
-    },
-    {
-      id: 'a2',
-      title: 'Có Ticket hỗ trợ mới',
-      message: 'Một giảng viên vừa gửi yêu cầu hỗ trợ hệ thống.',
-      type: 'TICKET',
-      createdAt: new Date(Date.now() - 7200000).toISOString(),
-      read: true,
-      link: '/admin/tickets'
-    }
-  ]
-};
+function formatNotificationTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString();
+}
 
 export default function NotificationPopover() {
-  const { user } = useAuth(); // Lấy thông tin user hiện tại
-  const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
+  const rootRef = useRef(null);
+  const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const popoverRef = useRef(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  // Keep the existing placeholder notifications for unrelated use cases, but
-  // UC11 weekly reports must come from the backend rather than mock data.
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadNotifications() {
-      if (!user?.role) {
-        setNotifications([]);
-        return;
+  const loadNotifications = useCallback(async ({ silent = false } = {}) => {
+    try {
+      if (!silent) setLoading(true);
+      const result = await getEducatorNotifications();
+      setNotifications(Array.isArray(result?.notifications) ? result.notifications : []);
+      setUnreadCount(Number(result?.unreadCount || 0));
+      setErrorMessage('');
+    } catch (error) {
+      console.error('Failed to load Educator notifications:', error);
+      if (!silent) {
+        setErrorMessage(error.message || 'Unable to load notifications.');
       }
-
-      const roleKey = String(user.role).toUpperCase();
-      const baseNotifications = MOCK_NOTIFICATIONS[roleKey] || [];
-
-      if (roleKey !== 'EDUCATOR') {
-        setNotifications(baseNotifications);
-        return;
-      }
-
-      setNotifications(baseNotifications);
-      try {
-        const response = await getWeeklyReportNotifications();
-        if (cancelled) return;
-        const weeklyNotifications = Array.isArray(response?.notifications)
-          ? response.notifications
-          : [];
-        setNotifications([...weeklyNotifications, ...baseNotifications]);
-      } catch (error) {
-        // Other notification types remain available even if the weekly-report
-        // endpoint is temporarily unavailable.
-        if (!cancelled) setNotifications(baseNotifications);
-      }
+    } finally {
+      if (!silent) setLoading(false);
     }
-
-    loadNotifications();
-    return () => { cancelled = true; };
-  }, [user]);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  // Đóng popover khi click ra ngoài
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  useEffect(() => {
+    loadNotifications();
+    const intervalId = window.setInterval(() => {
+      loadNotifications({ silent: true });
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  const handleToggle = () => {
+    setOpen((current) => {
+      const next = !current;
+      if (next) loadNotifications({ silent: true });
+      return next;
+    });
   };
 
-  const handleNotificationClick = (id) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    setIsOpen(false);
-  };
+  const handleNotificationClick = async (notification) => {
+    const targetUrl = notification?.targetUrl
+      || `/educator/analytics?courseId=${encodeURIComponent(String(notification?.courseId || ''))}&weekly=1`;
 
-  // Cấu hình Icon và Màu sắc cho TỪNG LOẠI THÔNG BÁO (Bao gồm cả Educator & Admin)
-  const getIconConfig = (type) => {
-    switch(type) {
-      // Learner Types
-      case 'ANNOUNCEMENT': return { icon: '📣', bg: 'bg-amber-100', text: 'text-amber-600' };
-      case 'ASSESSMENT': return { icon: '📝', bg: 'bg-blue-100', text: 'text-blue-600' };
-      case 'MATERIAL': return { icon: '📁', bg: 'bg-emerald-100', text: 'text-emerald-600' };
-      case 'ENROLLMENT': return { icon: '✅', bg: 'bg-green-100', text: 'text-green-600' };
-      
-      // Educator Types
-      case 'ENROLL_REQUEST': return { icon: '👤', bg: 'bg-blue-100', text: 'text-blue-600' };
-      case 'WEEKLY_REPORT': return { icon: '📊', bg: 'bg-purple-100', text: 'text-purple-600' };
-      
-      // Admin Types
-      case 'SYSTEM_ALERT': return { icon: '⚠️', bg: 'bg-red-100', text: 'text-red-600' };
-      case 'TICKET': return { icon: '🎫', bg: 'bg-orange-100', text: 'text-orange-600' };
-      
-      default: return { icon: '🔔', bg: 'bg-gray-100', text: 'text-gray-600' };
+    // Update the UI immediately, then persist the read state. Navigation must
+    // still work if marking the item read encounters a transient server error.
+    if (notification?.read !== true) {
+      setNotifications((current) => current.map((item) => (
+        item.id === notification.id ? { ...item, read: true } : item
+      )));
+      setUnreadCount((current) => Math.max(0, current - 1));
+
+      try {
+        const result = await markEducatorNotificationRead(notification.id);
+        if (Number.isFinite(Number(result?.unreadCount))) {
+          setUnreadCount(Number(result.unreadCount));
+        }
+      } catch (error) {
+        console.error('Failed to mark notification as read:', error);
+        loadNotifications({ silent: true });
+      }
     }
+
+    setOpen(false);
+    navigate(targetUrl);
   };
 
   return (
-    <div className="relative" ref={popoverRef}>
-      {/* NÚT CHUÔNG */}
+    <div className="relative" ref={rootRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`relative p-2 rounded-xl transition-all ${isOpen ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}
-        title="Notifications"
+        type="button"
+        onClick={handleToggle}
+        aria-label="Notifications"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="relative w-10 h-10 rounded-xl border border-gray-100 bg-white hover:bg-gray-50 flex items-center justify-center text-gray-500 hover:text-blue-600 transition-colors"
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+          />
         </svg>
 
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center border-2 border-white">
-            {unreadCount > 9 ? '9+' : unreadCount}
+          <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center ring-2 ring-white">
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
 
-      {/* POPOVER DROPDOWN PANEL */}
-      {isOpen && (
-        <div className="absolute right-0 mt-3 w-[340px] bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden flex flex-col">
-          
-          {/* HEADER POPOVER */}
-          <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-            <div className="flex items-center gap-2">
-              <h3 className="text-xs font-bold text-gray-800">Thông báo hệ thống</h3>
-              {unreadCount > 0 && (
-                <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  {unreadCount} mới
-                </span>
-              )}
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-gray-100 bg-white shadow-xl overflow-hidden z-50"
+        >
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-black text-gray-900">Notifications</p>
+              <p className="text-[10px] font-semibold text-gray-400 mt-0.5">
+                Weekly class-performance reports
+              </p>
             </div>
-
             {unreadCount > 0 && (
-              <button
-                onClick={markAllAsRead}
-                className="text-[10px] font-bold text-blue-600 hover:underline"
-              >
-                Đánh dấu đã đọc
-              </button>
+              <span className="text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-1 rounded-full">
+                {unreadCount} unread
+              </span>
             )}
           </div>
 
-          {/* LIST THÔNG BÁO */}
-          <div className="max-h-[400px] overflow-y-auto divide-y divide-gray-50">
-            {notifications.length === 0 ? (
-              <div className="p-8 text-center text-xs text-gray-400">
-                Không có thông báo nào.
+          <div className="max-h-96 overflow-y-auto">
+            {loading ? (
+              <div className="px-4 py-8 text-center text-xs font-semibold text-gray-400">
+                Loading notifications...
+              </div>
+            ) : errorMessage ? (
+              <div className="px-4 py-6">
+                <p className="text-xs font-bold text-red-600">{errorMessage}</p>
+                <button
+                  type="button"
+                  onClick={() => loadNotifications()}
+                  className="mt-3 text-xs font-black text-blue-600 hover:text-blue-700"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <p className="text-xs font-bold text-gray-500">No weekly-report notifications yet.</p>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  Generated reports will appear here automatically.
+                </p>
               </div>
             ) : (
-              notifications.map(item => {
-                const config = getIconConfig(item.type);
-                return (
-                  <Link
-                    key={item.id}
-                    to={item.link || '#'}
-                    onClick={() => handleNotificationClick(item.id)}
-                    className={`block p-4 transition-colors hover:bg-gray-50 ${!item.read ? 'bg-blue-50/20' : ''}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`w-9 h-9 rounded-full ${config.bg} ${config.text} flex items-center justify-center flex-shrink-0 text-sm font-bold`}>
-                        {config.icon}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className={`text-xs truncate ${!item.read ? 'font-bold text-gray-900' : 'font-semibold text-gray-700'}`}>
-                            {item.title}
-                          </p>
-                          {!item.read && (
-                            <span className="w-2 h-2 rounded-full bg-blue-600 flex-shrink-0" />
-                          )}
-                        </div>
-
-                        <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-relaxed">
-                          {item.message}
-                        </p>
-
-                        <span className="text-[9px] text-gray-400 mt-1.5 block font-semibold uppercase">
-                          {new Date(item.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
+              notifications.map((notification) => (
+                <button
+                  key={notification.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleNotificationClick(notification)}
+                  className={`w-full text-left px-4 py-3.5 border-b border-gray-50 last:border-b-0 transition-colors ${
+                    notification.read === true
+                      ? 'bg-white hover:bg-gray-50'
+                      : 'bg-blue-50/60 hover:bg-blue-50'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                      notification.read === true ? 'bg-gray-200' : 'bg-blue-600'
+                    }`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-black text-gray-900">
+                        {notification.title || 'Weekly class-performance report ready'}
+                      </p>
+                      <p className="text-[11px] font-semibold text-gray-600 mt-1 truncate">
+                        {notification.message || 'Class Performance Statistics'}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-1.5">
+                        {formatNotificationTime(notification.createdAt || notification.generatedAt)}
+                      </p>
                     </div>
-                  </Link>
-                );
-              })
+                    <span className="text-blue-500 text-sm font-black" aria-hidden="true">→</span>
+                  </div>
+                </button>
+              ))
             )}
-          </div>
-          
-          {/* FOOTER POPOVER */}
-          <div className="p-3 border-t border-gray-100 text-center bg-gray-50">
-            <Link to="#" className="text-[11px] font-bold text-gray-500 hover:text-gray-800 transition-colors">
-              Xem tất cả thông báo
-            </Link>
           </div>
         </div>
       )}

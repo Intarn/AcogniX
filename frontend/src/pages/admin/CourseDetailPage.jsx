@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getAdminCourseDetail, adminArchiveCourse } from '../../services/adminService';
+import { getAdminCourseDetail, adminArchiveCourse, adminUnarchiveCourse } from '../../services/adminService';
 import { useConfirm } from '../../contexts/ConfirmContext';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -12,24 +12,47 @@ export default function CourseDetailPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [isArchiving, setIsArchiving] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const { confirm } = useConfirm();
   const { showToast } = useToast();
 
-  useEffect(() => {
-    fetchCourseDetail();
-  }, [courseId]);
-
-  const fetchCourseDetail = async () => {
+  const fetchCourseDetail = async ({ silent = false } = {}) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const data = await getAdminCourseDetail(courseId);
       setCourse(data);
+      setErrorMsg(null);
     } catch (error) {
-      setErrorMsg(error.message || 'Failed to load course details.');
+      if (!silent) setErrorMsg(error.message || 'Failed to load course details.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
+
+  useEffect(() => {
+    let disposed = false;
+
+    const refreshSilently = () => {
+      if (!disposed) fetchCourseDetail({ silent: true });
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    };
+
+    fetchCourseDetail();
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const syncInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    }, 3000);
+
+    return () => {
+      disposed = true;
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.clearInterval(syncInterval);
+    };
+  }, [courseId]);
 
   const handleForceArchive = async () => {
     const confirmed = await confirm({
@@ -50,6 +73,28 @@ export default function CourseDetailPage() {
       showToast(`Failed to archive course: ${error.message}`, 'error');
     } finally {
       setIsArchiving(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    const confirmed = await confirm({
+      title: 'Restore Course?',
+      message: `Restore "${course.subjectName}" to ACTIVE status? Enrollment and course features will become available again.`,
+      confirmLabel: 'Restore Course',
+      cancelLabel: 'Cancel',
+      tone: 'default'
+    });
+    if (!confirmed) return;
+
+    try {
+      setIsRestoring(true);
+      const result = await adminUnarchiveCourse(courseId);
+      setCourse(result?.course || { ...course, status: 'ACTIVE' });
+      showToast(result?.message || 'Course restored successfully.', 'success');
+    } catch (error) {
+      showToast(`Failed to restore course: ${error.message}`, 'error');
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -94,9 +139,13 @@ export default function CourseDetailPage() {
             {isArchiving ? 'Archiving...' : 'Force Archive Course'}
           </button>
         ) : (
-          <span className="bg-gray-100 text-gray-600 text-xs font-bold px-4 py-2 rounded-xl border border-gray-200">
-            Archived
-          </span>
+          <button
+            onClick={handleRestore}
+            disabled={isRestoring}
+            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold px-4 py-2.5 rounded-xl border border-emerald-200 transition shadow-xs disabled:opacity-50"
+          >
+            {isRestoring ? 'Restoring...' : 'Restore Course'}
+          </button>
         )}
       </header>
 
@@ -115,6 +164,12 @@ export default function CourseDetailPage() {
             </span>
             <span className="text-xs text-gray-400 font-semibold">Enrollment Code: <strong className="text-gray-800">{course.enrollmentCode || 'N/A'}</strong></span>
           </div>
+          {course.status === 'ARCHIVED' && (
+            <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+              Archived by: <strong>{course.archivedByRole === 'SYSTEM_ADMINISTRATOR' ? 'System Administrator' : 'Educator'}</strong>
+              {course.archiveReason ? <> · Reason: <strong>{course.archiveReason}</strong></> : null}
+            </div>
+          )}
         </section>
 
         <section className="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">

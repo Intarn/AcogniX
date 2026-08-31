@@ -1,6 +1,7 @@
 // frontend/src/components/layout/Topbar.jsx
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import NotificationPopover from '../common/NotificationPopover';
 
 function TopbarAvatar({ user }) {
   const [imgError, setImgError] = useState(false);
@@ -34,6 +35,7 @@ export default function Topbar({ user }) {
   const menuRef = useRef(null);
   const displayName = user?.displayName || user?.fullname || user?.email?.split('@')[0] || 'User';
   const roleName = user?.role || 'Member';
+  const isEducator = roleName.toLowerCase().includes('educator');
 
   const settingsPath =
     roleName.toLowerCase().includes('admin') ? '/admin/settings' :
@@ -64,55 +66,59 @@ export default function Topbar({ user }) {
         </div>
       </div>
 
-      <div className="relative" ref={menuRef}>
-        <button
-          type="button"
-          onClick={() => setProfileMenuOpen((open) => !open)}
-          aria-haspopup="menu"
-          aria-expanded={profileMenuOpen}
-          className="flex items-center gap-3.5 p-2 rounded-2xl hover:bg-gray-50/80 transition-all border border-transparent hover:border-gray-100 group"
-        >
-          <TopbarAvatar user={user} />
-          <div className="text-left hidden md:block">
-            <p className="text-xs font-bold text-gray-900 leading-tight group-hover:text-blue-600 transition-colors">
-              {displayName}
-            </p>
-            <p className="text-[10px] text-gray-400 font-black uppercase tracking-wider mt-0.5">
-              {roleName.replace('_', ' ')}
-            </p>
-          </div>
-          <svg
-            className={`w-4 h-4 text-gray-400 transition-transform ml-1 hidden md:block ${profileMenuOpen ? 'rotate-90' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
+      <div className="flex items-center gap-3">
+        {isEducator && <NotificationPopover />}
 
-        {profileMenuOpen && (
-          <div
-            role="menu"
-            className="absolute right-0 mt-2 w-52 rounded-xl border border-gray-100 bg-white p-2 shadow-lg"
+        <div className="relative" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setProfileMenuOpen((open) => !open)}
+            aria-haspopup="menu"
+            aria-expanded={profileMenuOpen}
+            className="flex items-center gap-3.5 p-2 rounded-2xl hover:bg-gray-50/80 transition-all border border-transparent hover:border-gray-100 group"
           >
-            <div className="px-3 py-2 border-b border-gray-100 mb-1 md:hidden">
-              <p className="text-xs font-bold text-gray-900 truncate">{displayName}</p>
-              <p className="text-[10px] text-gray-400 font-black uppercase tracking-wide mt-0.5">
+            <TopbarAvatar user={user} />
+            <div className="text-left hidden md:block">
+              <p className="text-xs font-bold text-gray-900 leading-tight group-hover:text-blue-600 transition-colors">
+                {displayName}
+              </p>
+              <p className="text-[10px] text-gray-400 font-black uppercase tracking-wider mt-0.5">
                 {roleName.replace('_', ' ')}
               </p>
             </div>
-            <Link
-              to={settingsPath}
-              role="menuitem"
-              onClick={() => setProfileMenuOpen(false)}
-              className="flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+            <svg
+              className={`w-4 h-4 text-gray-400 transition-transform ml-1 hidden md:block ${profileMenuOpen ? 'rotate-90' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <span>My Profile</span>
-              <span aria-hidden="true">→</span>
-            </Link>
-          </div>
-        )}
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+
+          {profileMenuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 mt-2 w-52 rounded-xl border border-gray-100 bg-white p-2 shadow-lg"
+            >
+              <div className="px-3 py-2 border-b border-gray-100 mb-1 md:hidden">
+                <p className="text-xs font-bold text-gray-900 truncate">{displayName}</p>
+                <p className="text-[10px] text-gray-400 font-black uppercase tracking-wide mt-0.5">
+                  {roleName.replace('_', ' ')}
+                </p>
+              </div>
+              <Link
+                to={settingsPath}
+                role="menuitem"
+                onClick={() => setProfileMenuOpen(false)}
+                className="flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+              >
+                <span>My Profile</span>
+                <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

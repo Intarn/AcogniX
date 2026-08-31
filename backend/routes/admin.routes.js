@@ -26,6 +26,7 @@ router.post('/users/:userId/delete/confirm', UserManagementController.confirmDel
 router.get('/courses', CourseController.getAllForAdmin);
 router.get('/courses/:courseId', CourseController.getAdminCourseDetail);
 router.post('/courses/:courseId/archive', CourseController.adminArchiveCourse);
+router.post('/courses/:courseId/unarchive', CourseController.adminUnarchiveCourse);
 
 // Support Tickets Management (Admin)
 router.get('/tickets', SupportTicketController.adminListAll);

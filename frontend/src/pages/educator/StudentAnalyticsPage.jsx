@@ -1,5 +1,5 @@
 // frontend/src/pages/educator/StudentAnalyticsPage.jsx
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Chart as ChartJS,
@@ -368,6 +368,8 @@ export default function StudentAnalyticsPage() {
   const [errorMessage, setErrorMessage] = useState(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('excel');
+  const [exporting, setExporting] = useState(false);
+  const exportInFlightRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -382,7 +384,10 @@ export default function StudentAnalyticsPage() {
         if (!initialCourseId && list.length > 0) {
           const firstCourseId = String(list[0].courseId);
           setSelectedCourseId(firstCourseId);
-          setSearchParams({ courseId: firstCourseId }, { replace: true });
+          setSearchParams(
+            weeklyMode ? { courseId: firstCourseId, weekly: '1' } : { courseId: firstCourseId },
+            { replace: true }
+          );
         }
       } catch (err) {
         if (!cancelled) setErrorMessage('Failed to load courses.');
@@ -395,6 +400,13 @@ export default function StudentAnalyticsPage() {
     // initialCourseId is intentionally captured from the initial URL only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const urlCourseId = searchParams.get('courseId') || '';
+    if (urlCourseId && String(urlCourseId) !== String(selectedCourseId)) {
+      setSelectedCourseId(urlCourseId);
+    }
+  }, [searchParams, selectedCourseId]);
 
   useEffect(() => {
     if (!selectedCourseId) return;
@@ -438,21 +450,32 @@ export default function StudentAnalyticsPage() {
   const handleCourseChange = (event) => {
     const courseId = event.target.value;
     setSelectedCourseId(courseId);
-    setSearchParams({ courseId });
+    setSearchParams(weeklyMode ? { courseId, weekly: '1' } : { courseId });
   };
 
   const confirmExport = () => {
-    if (!analyticsData || !selectedCourse) return;
-    const rows = buildExportSections(analyticsData, selectedCourse, weeklyMetadata);
-    const safeCode = String(selectedCourse.courseCode || selectedCourse.courseId || 'course').replace(/[^A-Za-z0-9_-]/g, '_');
-    const prefix = weeklyMetadata ? 'Weekly_Class_Performance' : 'Class_Performance';
+    if (!analyticsData || !selectedCourse || exportInFlightRef.current) return;
 
-    if (exportFormat === 'excel') {
-      downloadBlob(createExcelBlob(rows), `${prefix}_${safeCode}.xlsx`);
-    } else {
-      downloadBlob(createPdfBlob(rows), `${prefix}_${safeCode}.pdf`);
+    exportInFlightRef.current = true;
+    setExporting(true);
+
+    try {
+      const rows = buildExportSections(analyticsData, selectedCourse, weeklyMetadata);
+      const safeCode = String(selectedCourse.courseCode || selectedCourse.courseId || 'course').replace(/[^A-Za-z0-9_-]/g, '_');
+      const prefix = weeklyMetadata ? 'Weekly_Class_Performance' : 'Class_Performance';
+
+      if (exportFormat === 'excel') {
+        downloadBlob(createExcelBlob(rows), `${prefix}_${safeCode}.xlsx`);
+      } else {
+        downloadBlob(createPdfBlob(rows), `${prefix}_${safeCode}.pdf`);
+      }
+      setExportDialogOpen(false);
+    } finally {
+      window.setTimeout(() => {
+        exportInFlightRef.current = false;
+        setExporting(false);
+      }, 300);
     }
-    setExportDialogOpen(false);
   };
 
   const safeCount = analyticsData?.performanceRatio?.safeCount ?? 0;
@@ -766,11 +789,21 @@ export default function StudentAnalyticsPage() {
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={() => setExportDialogOpen(false)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200">
+              <button
+                type="button"
+                onClick={() => setExportDialogOpen(false)}
+                disabled={exporting}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+              >
                 Cancel
               </button>
-              <button type="button" onClick={confirmExport} className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-gray-900 hover:bg-gray-800">
-                Confirm Export
+              <button
+                type="button"
+                onClick={confirmExport}
+                disabled={exporting}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-gray-900 hover:bg-gray-800 disabled:opacity-50"
+              >
+                {exporting ? 'Exporting...' : 'Confirm Export'}
               </button>
             </div>
           </div>

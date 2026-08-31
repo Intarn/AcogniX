@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getCourses } from '../../features/classroom/courseApi';
 import {
   getAssessmentById,
   getAssessmentQuestions,
-  getAssessmentSubmissions
+  getAssessmentSubmissions,
+  getAssessmentInstructionFileBlob
 } from '../../features/assessment/assessmentApi';
+import DocumentPreviewModal from '../../components/common/DocumentPreviewModal';
+import { getFileNameFromContentDisposition } from '../../utils/documentPreview';
 
 function formatDateTime(value) {
   if (!value) return 'Not set';
@@ -48,6 +51,9 @@ export default function AssessmentDetailPage() {
   const [assessment, setAssessment] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [submissions, setSubmissions] = useState([]);
+  const [instructionFileAction, setInstructionFileAction] = useState('');
+  const [instructionPreview, setInstructionPreview] = useState(null);
+  const instructionFileInFlightRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
@@ -117,6 +123,48 @@ export default function AssessmentDetailPage() {
 
   const courseArchived = course.status === 'ARCHIVED';
   const editable = !courseArchived && (assessment.status === 'DRAFT' || assessment.status === 'SCHEDULED');
+
+  async function handleInstructionFile(action) {
+    if (!assessmentId || instructionFileInFlightRef.current) return;
+
+    instructionFileInFlightRef.current = true;
+    setInstructionFileAction(action);
+
+    try {
+      const { blob, contentType, contentDisposition } =
+        await getAssessmentInstructionFileBlob(assessmentId, {
+          download: action === 'download'
+        });
+      const fallbackName =
+        assessment.instructionFileName ||
+        `Assessment-${assessmentId}-Instruction`;
+      const fileName = getFileNameFromContentDisposition(
+        contentDisposition,
+        fallbackName
+      );
+
+      if (action === 'download') {
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(blobUrl);
+      } else {
+        setInstructionPreview({ blob, contentType, fileName });
+      }
+    } catch (error) {
+      alert(
+        error.message ||
+        'Unable to access Assessment instruction file.'
+      );
+    } finally {
+      instructionFileInFlightRef.current = false;
+      setInstructionFileAction('');
+    }
+  }
 
   return (
     <div className="flex-1 flex flex-col h-full bg-gray-50/50 overflow-hidden">
@@ -203,9 +251,28 @@ export default function AssessmentDetailPage() {
                     <p className="text-[10px] font-black text-blue-700 uppercase tracking-wider">Instruction File</p>
                     <p className="text-xs font-bold text-gray-800 truncate mt-0.5">{assessment.instructionFileName || 'Assessment instruction file'}</p>
                   </div>
-                  <a href={assessment.instructionFileUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-blue-600 bg-white border border-blue-200 px-4 py-2 rounded-xl shadow-xs hover:bg-blue-50 transition flex-shrink-0">
-                    Open File ↗
-                  </a>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleInstructionFile('open')}
+                      disabled={Boolean(instructionFileAction)}
+                      className="text-xs font-bold text-blue-600 bg-white border border-blue-200 px-4 py-2 rounded-xl shadow-xs hover:bg-blue-50 disabled:opacity-50 transition"
+                    >
+                      {instructionFileAction === 'open'
+                        ? 'Opening...'
+                        : 'View'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleInstructionFile('download')}
+                      disabled={Boolean(instructionFileAction)}
+                      className="text-xs font-bold text-emerald-700 bg-white border border-emerald-200 px-4 py-2 rounded-xl shadow-xs hover:bg-emerald-50 disabled:opacity-50 transition"
+                    >
+                      {instructionFileAction === 'download'
+                        ? 'Downloading...'
+                        : 'Download'}
+                    </button>
+                  </div>
                 </div>
               )}
             </section>
@@ -279,6 +346,17 @@ export default function AssessmentDetailPage() {
           </div>
         </div>
       </main>
+
+      <DocumentPreviewModal
+        open={Boolean(instructionPreview)}
+        title={assessment?.title ? `${assessment.title} - Instruction File` : 'Instruction File'}
+        fileName={instructionPreview?.fileName}
+        blob={instructionPreview?.blob}
+        contentType={instructionPreview?.contentType}
+        onClose={() => setInstructionPreview(null)}
+        onDownload={() => handleInstructionFile('download')}
+        downloading={instructionFileAction === 'download'}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getCourses } from '../../features/classroom/courseApi';
 import {
@@ -52,6 +52,8 @@ export default function AssessmentsPage() {
   const [loadError, setLoadError] = useState('');
   const [assessmentToDelete, setAssessmentToDelete] = useState(null);
   const [blockedAssessment, setBlockedAssessment] = useState(null);
+  const [deletingAssessment, setDeletingAssessment] = useState(false);
+  const deleteAssessmentInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!courseId) {
@@ -124,13 +126,20 @@ export default function AssessmentsPage() {
   }
 
   async function confirmDelete() {
-    if (!assessmentToDelete) return;
+    if (!assessmentToDelete || deleteAssessmentInFlightRef.current) return;
+
+    deleteAssessmentInFlightRef.current = true;
+    setDeletingAssessment(true);
+
     try {
       await deleteAssessment(assessmentToDelete.assessmentId);
       setAssessments((prev) => prev.filter((a) => String(a.assessmentId) !== String(assessmentToDelete.assessmentId)));
       setAssessmentToDelete(null);
     } catch (error) {
       alert(error.message || 'Unable to delete assessment.');
+    } finally {
+      deleteAssessmentInFlightRef.current = false;
+      setDeletingAssessment(false);
     }
   }
 
@@ -301,8 +310,20 @@ export default function AssessmentsPage() {
             <p className="text-xs text-gray-500 mt-2 font-medium">Are you sure you want to delete this assessment? This action cannot be undone.</p>
             <div className="mt-4 p-3 bg-gray-50 rounded-xl text-xs font-bold text-gray-800 border border-gray-100 truncate">{assessmentToDelete.title}</div>
             <div className="flex justify-center gap-3 mt-6">
-              <button onClick={() => setAssessmentToDelete(null)} className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition">Cancel</button>
-              <button onClick={confirmDelete} className="px-5 py-2.5 text-xs font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 shadow-md transition">Yes, Delete</button>
+              <button
+                onClick={() => setAssessmentToDelete(null)}
+                disabled={deletingAssessment}
+                className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deletingAssessment}
+                className="px-5 py-2.5 text-xs font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 shadow-md transition disabled:opacity-50"
+              >
+                {deletingAssessment ? 'Deleting...' : 'Yes, Delete'}
+              </button>
             </div>
           </div>
         </div>

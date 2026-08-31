@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { createCourse, getCourses, updateCourse } from '../../features/classroom/courseApi';
 
@@ -13,6 +13,8 @@ export default function CourseBuilderPage() {
   const [status, setStatus] = useState('ACTIVE');
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const saveInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!isEditMode) return;
@@ -51,7 +53,12 @@ export default function CourseBuilderPage() {
   }
 
   async function handleSave() {
+    if (saveInFlightRef.current) return;
     if (!validateForm()) return;
+
+    saveInFlightRef.current = true;
+    setSaving(true);
+
     try {
       setFormError('');
       const payload = { subjectName: subjectName.trim(), courseCode: courseCode.trim(), description: description.trim() };
@@ -64,6 +71,9 @@ export default function CourseBuilderPage() {
       }
     } catch (error) {
       setFormError(error.message || 'Unable to save course.');
+    } finally {
+      saveInFlightRef.current = false;
+      setSaving(false);
     }
   }
 
@@ -85,8 +95,8 @@ export default function CourseBuilderPage() {
         </div>
         <div className="flex gap-3">
           <button onClick={handleCancel} className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition">Cancel</button>
-          <button onClick={handleSave} disabled={isArchived} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50">
-            {isEditMode ? 'Save Changes' : 'Create Course'}
+          <button onClick={handleSave} disabled={isArchived || saving} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50">
+            {saving ? (isEditMode ? 'Saving...' : 'Creating...') : (isEditMode ? 'Save Changes' : 'Create Course')}
           </button>
         </div>
       </header>

@@ -31,6 +31,12 @@ router.delete(
   CourseContentController.deleteMaterial
 );
 
+router.patch(
+  '/:courseId/materials/reorder',
+  authorize(UserRole.EDUCATOR),
+  CourseContentController.reorderMaterials
+);
+
 router.delete(
   '/announcements/:announcementId',
   authorize(UserRole.EDUCATOR),
@@ -48,7 +54,7 @@ router.post(
 // UC-16: View Materials and Announcements
 router.get(
   '/materials/:materialId/file',
-  authorize(UserRole.LEARNER),
+  authorize(UserRole.LEARNER, UserRole.EDUCATOR),
   CourseContentController.getMaterialFile
 );
 

@@ -278,6 +278,32 @@ class WorkspaceIntegrationService {
     return { archived: true, projectIds };
   }
 
+  /** Restore Class Projects when a Course is restored. */
+  static async unarchiveClassProjects(courseId) {
+    if (!courseId) return { restored: false, projectIds: [] };
+
+    const { data: projects, error: lookupError } = await supabase
+      .from('AI_Project')
+      .select('projectId')
+      .eq('courseId', courseId)
+      .eq('type', 'CLASS')
+      .eq('status', 'ARCHIVED');
+
+    if (lookupError) throw lookupError;
+    if (!projects || projects.length === 0) {
+      return { restored: true, projectIds: [] };
+    }
+
+    const projectIds = projects.map((project) => project.projectId);
+    const { error: updateError } = await supabase
+      .from('AI_Project')
+      .update({ status: 'ACTIVE' })
+      .in('projectId', projectIds);
+
+    if (updateError) throw updateError;
+    return { restored: true, projectIds };
+  }
+
   static async syncMaterialToClassProjects(courseId, courseMaterial) {
     try {
       const { data: projects } = await supabase
@@ -359,6 +385,158 @@ class WorkspaceIntegrationService {
     return null;
   }
 
+  static _getMaterialsStoragePath(sourceUrl) {
+    const rawUrl = String(sourceUrl || '').trim();
+    if (!rawUrl) return '';
+
+    try {
+      if (/^https?:\/\//i.test(rawUrl)) {
+        const parsedUrl = new URL(rawUrl);
+        const decodedPath = decodeURIComponent(parsedUrl.pathname);
+        const marker = '/materials/';
+        const markerIndex = decodedPath.indexOf(marker);
+
+        if (markerIndex >= 0) {
+          return decodedPath
+            .slice(markerIndex + marker.length)
+            .replace(/^\/+/, '')
+            .trim();
+        }
+
+        return '';
+      }
+
+      let filePath = decodeURIComponent(rawUrl.split('?')[0]);
+      if (filePath.startsWith('materials/')) {
+        filePath = filePath.slice('materials/'.length);
+      }
+
+      return filePath.replace(/^\/+/, '').trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static async _downloadLearningMaterial(material) {
+    const sourceUrl = String(material?.sourceUrl || '').trim();
+    if (!sourceUrl) {
+      throw new Error('Learning Material does not have a source URL.');
+    }
+
+    // Learning Materials stored in the project's Supabase "materials" bucket
+    // must be downloaded with the server-side Storage client. Opening the
+    // public/signed URL directly can fail when the bucket is private or when a
+    // previously issued signed URL has expired.
+    const storagePath = this._getMaterialsStoragePath(sourceUrl);
+
+    if (storagePath) {
+      const { data: downloaded, error: downloadError } = await supabase.storage
+        .from('materials')
+        .download(storagePath);
+
+      if (downloadError || !downloaded) {
+        throw downloadError || new Error('Unable to download Learning Material from Storage.');
+      }
+
+      if (Buffer.isBuffer(downloaded)) {
+        return downloaded;
+      }
+
+      if (typeof downloaded.arrayBuffer === 'function') {
+        return Buffer.from(await downloaded.arrayBuffer());
+      }
+
+      if (downloaded instanceof ArrayBuffer) {
+        return Buffer.from(downloaded);
+      }
+
+      return Buffer.from(downloaded);
+    }
+
+    // Keep support for external URLs that are not stored in Supabase.
+    const response = await axios.get(sourceUrl, {
+      responseType: 'arraybuffer',
+      timeout: 30000
+    });
+
+    return Buffer.from(response.data);
+  }
+
+  static _classifyMaterialProcessingFailure(material, error, fileBuffer = null, mimeType = '') {
+    const title = String(material?.title || 'Selected Learning Material').trim();
+    const message = String(error?.message || '').trim();
+    const normalized = message.toLowerCase();
+
+    const isPdf = mimeType === 'application/pdf';
+    const isDocx =
+      mimeType ===
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+    if (
+      isPdf &&
+      fileBuffer &&
+      Buffer.isBuffer(fileBuffer) &&
+      fileBuffer.includes(Buffer.from('/Encrypt'))
+    ) {
+      return {
+        code: 'DOCUMENT_PASSWORD_PROTECTED',
+        message: `"${title}" is password-protected or encrypted and cannot be processed. Remove the password and upload an unencrypted PDF.`
+      };
+    }
+
+    if (
+      /password|password-protected|encrypted|encryption|decrypt/.test(normalized)
+    ) {
+      return {
+        code: 'DOCUMENT_PASSWORD_PROTECTED',
+        message: `"${title}" is password-protected or encrypted and cannot be processed. Remove the password and upload an unencrypted copy.`
+      };
+    }
+
+    if (
+      /corrupt|corrupted|damaged|malformed|cannot decode|unable to decode|decode error|parse error|cannot parse|invalid pdf|invalid docx|bad zip|central directory|end[- ]of[- ]file|xref/.test(
+        normalized
+      )
+    ) {
+      return {
+        code: 'DOCUMENT_CORRUPTED',
+        message: `"${title}" appears to be corrupted or invalid and cannot be processed. Upload a valid readable copy of the file.`
+      };
+    }
+
+    if (
+      isPdf &&
+      fileBuffer &&
+      Buffer.isBuffer(fileBuffer) &&
+      !fileBuffer.subarray(0, 5).equals(Buffer.from('%PDF-'))
+    ) {
+      return {
+        code: 'DOCUMENT_CORRUPTED',
+        message: `"${title}" is not a valid readable PDF file. Upload a valid PDF copy.`
+      };
+    }
+
+    if (
+      isDocx &&
+      fileBuffer &&
+      Buffer.isBuffer(fileBuffer) &&
+      !fileBuffer.subarray(0, 2).equals(Buffer.from('PK'))
+    ) {
+      return {
+        code: 'DOCUMENT_CORRUPTED',
+        message: `"${title}" is not a valid readable DOCX file. Upload a valid DOCX copy.`
+      };
+    }
+
+    return {
+      code: error?.code || 'DOCUMENT_PROCESSING_FAILED',
+      message:
+        message && message !== 'The AI service returned an error.'
+          ? `"${title}" could not be processed: ${message}`
+          : `"${title}" does not contain readable content that can be processed.`
+    };
+  }
+
   static _buildExtractionFileName(material) {
     try {
       const pathname = new URL(material.sourceUrl).pathname;
@@ -426,6 +604,7 @@ class WorkspaceIntegrationService {
 
     const ready = new Set((completedDocs || []).map((row) => String(row.materialId)));
     const failed = [];
+    const processingFailures = [];
 
     for (const material of materials || []) {
       const materialId = String(material.materialId);
@@ -434,15 +613,40 @@ class WorkspaceIntegrationService {
       const mimeType = this._normalizeMimeType(material.fileType, material.sourceUrl);
       if (!material.sourceUrl || !mimeType) {
         failed.push(materialId);
+        processingFailures.push({
+          materialId,
+          code: 'DOCUMENT_PROCESSING_FAILED',
+          message: `"${material.title || 'Selected Learning Material'}" does not have a supported readable file resource.`
+        });
         continue;
       }
 
+      let fileBuffer = null;
+
       try {
-        const download = await axios.get(material.sourceUrl, {
-          responseType: 'arraybuffer',
-          timeout: 30000
-        });
-        const fileBuffer = Buffer.from(download.data);
+        fileBuffer = await this._downloadLearningMaterial(material);
+        if (!fileBuffer || fileBuffer.length === 0) {
+          throw new Error('Downloaded Learning Material is empty.');
+        }
+
+        const preliminaryFailure = this._classifyMaterialProcessingFailure(
+          material,
+          null,
+          fileBuffer,
+          mimeType
+        );
+
+        if (
+          preliminaryFailure.code === 'DOCUMENT_PASSWORD_PROTECTED' ||
+          preliminaryFailure.code === 'DOCUMENT_CORRUPTED'
+        ) {
+          throw new AppError(
+            422,
+            preliminaryFailure.code,
+            preliminaryFailure.message
+          );
+        }
+
         const fileName = this._buildExtractionFileName(material);
 
         await AIServiceClient.extractDocument(
@@ -454,14 +658,59 @@ class WorkspaceIntegrationService {
         ready.add(materialId);
       } catch (error) {
         failed.push(materialId);
+
+        const classified = this._classifyMaterialProcessingFailure(
+          material,
+          error,
+          fileBuffer,
+          mimeType
+        );
+
+        processingFailures.push({
+          materialId,
+          ...classified
+        });
+
         console.error(
           `[WorkspaceIntegration] Failed to prepare material ${material.materialId} for AI:`,
-          error?.message || error
+          classified.message
         );
       }
     }
 
     if (ready.size === 0) {
+      const passwordProtectedFailure = processingFailures.find(
+        (failure) => failure.code === 'DOCUMENT_PASSWORD_PROTECTED'
+      );
+
+      if (passwordProtectedFailure) {
+        throw new AppError(
+          422,
+          passwordProtectedFailure.code,
+          passwordProtectedFailure.message
+        );
+      }
+
+      const corruptedFailure = processingFailures.find(
+        (failure) => failure.code === 'DOCUMENT_CORRUPTED'
+      );
+
+      if (corruptedFailure) {
+        throw new AppError(
+          422,
+          corruptedFailure.code,
+          corruptedFailure.message
+        );
+      }
+
+      if (processingFailures.length === 1) {
+        throw new AppError(
+          422,
+          processingFailures[0].code || 'DOCUMENT_PROCESSING_FAILED',
+          processingFailures[0].message
+        );
+      }
+
       throw new AppError(
         422,
         'NO_READABLE_CONTENT',

@@ -24,9 +24,12 @@ export async function apiRequest(
     headers.Authorization = `Bearer ${token}`;
   }
 
+  const method = String(options.method || 'GET').toUpperCase();
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
-    headers
+    headers,
+    ...(method === 'GET' ? { cache: 'no-store' } : {})
   });
 
   const data = await response.json().catch(() => null);

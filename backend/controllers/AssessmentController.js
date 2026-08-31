@@ -1,4 +1,5 @@
 const AssessmentService = require('../service/AssessmentService');
+const { UserRole } = require('../enums/AuthEnums');
 
 function handleControllerError(error, res) {
     if (error.statusCode) {
@@ -351,6 +352,55 @@ class AssessmentController {
                 assessmentId: assessment.assessmentId, 
                 instructionFileUrl: assessment.instructionFileUrl
             });
+        } catch (error) {
+            return handleControllerError(error, res);
+        }
+    }
+
+    static async getInstructionFile(req, res) {
+        try {
+            const result = req.user.role === UserRole.EDUCATOR
+                ? await AssessmentService.getInstructionFileForEducator(
+                    req.params.assessmentId,
+                    req.user.userId
+                )
+                : await AssessmentService.getInstructionFileForLearner(
+                    req.params.assessmentId,
+                    req.user.userId
+                );
+
+            const disposition =
+                req.query.download === '1'
+                    ? 'attachment'
+                    : 'inline';
+
+            const originalFileName = String(
+                result.fileName || 'assessment-instruction'
+            ).replace(/[\r\n]/g, ' ').trim() || 'assessment-instruction';
+            const safeFileName = originalFileName
+                .replace(/[^\x20-\x7E]|["]/g, '_');
+            const encodedFileName = encodeURIComponent(originalFileName);
+
+            res.setHeader(
+                'Content-Type',
+                result.mimeType || 'application/octet-stream'
+            );
+            res.setHeader(
+                'Content-Length',
+                result.buffer.length
+            );
+            res.setHeader(
+                'Content-Disposition',
+                `${disposition}; filename="${safeFileName}"; filename*=UTF-8''${encodedFileName}`
+            );
+            res.setHeader(
+                'X-Content-Type-Options',
+                'nosniff'
+            );
+
+            return res
+                .status(200)
+                .send(result.buffer);
         } catch (error) {
             return handleControllerError(error, res);
         }

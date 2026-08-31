@@ -48,6 +48,11 @@ export default function CourseAnnouncementsPage() {
   const [newBody, setNewBody] = useState('');
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingAnnouncementIds, setDeletingAnnouncementIds] = useState([]);
+  const [downloadingAttachmentKey, setDownloadingAttachmentKey] = useState(null);
+  const createAnnouncementInFlightRef = useRef(false);
+  const deleteAnnouncementInFlightRef = useRef(new Set());
+  const downloadAttachmentInFlightRef = useRef(new Set());
 
   // Validation Error States (UC17-UI03 & UC17-UI04)
   const [titleError, setTitleError] = useState(false);
@@ -127,6 +132,7 @@ export default function CourseAnnouncementsPage() {
   // UC17 Basic Flow & Validation
   const handleCreateAnnouncement = async (e) => {
     e.preventDefault();
+    if (createAnnouncementInFlightRef.current) return;
     const isTitleEmpty = !newTitle.trim();
     const isBodyEmpty = !newBody.trim();
 
@@ -137,6 +143,7 @@ export default function CourseAnnouncementsPage() {
       return;
     }
 
+    createAnnouncementInFlightRef.current = true;
     try {
       setSubmitting(true);
       const formData = new FormData();
@@ -164,12 +171,17 @@ export default function CourseAnnouncementsPage() {
     } catch (error) {
       showToast(error.message || 'Failed to post announcement.', 'error');
     } finally {
+      createAnnouncementInFlightRef.current = false;
       setSubmitting(false);
     }
   };
 
   const handleDeleteAnnouncement = async (e, announcementId, announcementTitle) => {
     e.stopPropagation();
+    const key = String(announcementId);
+    if (deleteAnnouncementInFlightRef.current.has(key)) return;
+    deleteAnnouncementInFlightRef.current.add(key);
+
     const isConfirmed = await confirm({
       title: 'Delete Announcement',
       message: `Are you sure you want to delete "${announcementTitle || 'this announcement'}"?`,
@@ -177,15 +189,58 @@ export default function CourseAnnouncementsPage() {
       cancelLabel: 'Cancel',
       tone: 'danger'
     });
-    if (!isConfirmed) return;
+    if (!isConfirmed) {
+      deleteAnnouncementInFlightRef.current.delete(key);
+      return;
+    }
 
     try {
+      setDeletingAnnouncementIds((prev) => [...prev, announcementId]);
       await apiRequest(`/courses/announcements/${announcementId}`, { method: 'DELETE' });
       showToast('Announcement deleted successfully!', 'success');
       if (selectedAnnouncement?.announcementId === announcementId) setSelectedAnnouncement(null);
       setAnnouncements((prev) => prev.filter((item) => item.announcementId !== announcementId));
     } catch (error) {
       showToast(error.message || 'Failed to delete announcement.', 'error');
+    } finally {
+      deleteAnnouncementInFlightRef.current.delete(key);
+      setDeletingAnnouncementIds((prev) => prev.filter((id) => String(id) !== key));
+    }
+  };
+
+  const handleDownloadAttachment = async (e, url, fileName, attachmentKey) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const key = String(attachmentKey);
+    if (downloadAttachmentInFlightRef.current.has(key)) return;
+
+    downloadAttachmentInFlightRef.current.add(key);
+    setDownloadingAttachmentKey(key);
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error('Unable to download the attachment.');
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = objectUrl;
+      link.download = fileName || 'announcement-attachment';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.URL.revokeObjectURL(objectUrl);
+      showToast('Attachment downloaded successfully!', 'success');
+    } catch (error) {
+      showToast(error.message || 'Unable to download the attachment.', 'error');
+    } finally {
+      downloadAttachmentInFlightRef.current.delete(key);
+      setDownloadingAttachmentKey((current) => (current === key ? null : current));
     }
   };
 
@@ -277,6 +332,7 @@ export default function CourseAnnouncementsPage() {
                       </div>
                       <button
                         type="button"
+                        disabled={deletingAnnouncementIds.some((id) => String(id) === String(item.announcementId))}
                         onClick={(e) => handleDeleteAnnouncement(e, item.announcementId, item.title)}
                         className="absolute top-4 right-4 p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
                         title="Delete announcement"
@@ -319,13 +375,34 @@ export default function CourseAnnouncementsPage() {
                     {selectedAnnouncement.attachmentUrls.map((url, index) => {
                       const fileName = getFileNameFromUrl(url, index);
                       return (
-                        <a key={index} href={url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-3.5 bg-blue-50/50 hover:bg-blue-100/60 border border-blue-100 rounded-2xl transition group">
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={(e) =>
+                            handleDownloadAttachment(
+                              e,
+                              url,
+                              fileName,
+                              `${selectedAnnouncement.announcementId}:${index}`
+                            )
+                          }
+                          disabled={
+                            downloadingAttachmentKey ===
+                            `${selectedAnnouncement.announcementId}:${index}`
+                          }
+                          className="w-full flex items-center justify-between p-3.5 bg-blue-50/50 hover:bg-blue-100/60 border border-blue-100 rounded-2xl transition group disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
                           <div className="flex items-center gap-3 overflow-hidden">
                             <span className="text-base">📄</span>
                             <span className="text-xs font-bold text-gray-800 truncate">{fileName}</span>
                           </div>
-                          <span className="text-xs font-bold text-blue-600 group-hover:underline flex-shrink-0 ml-4">Download ↗</span>
-                        </a>
+                          <span className="text-xs font-bold text-blue-600 group-hover:underline flex-shrink-0 ml-4">
+                            {downloadingAttachmentKey ===
+                            `${selectedAnnouncement.announcementId}:${index}`
+                              ? 'Downloading...'
+                              : 'Download'}
+                          </span>
+                        </button>
                       );
                     })}
                   </div>
@@ -334,7 +411,7 @@ export default function CourseAnnouncementsPage() {
             </div>
 
             <div className="p-4 px-6 border-t border-gray-100 bg-gray-50/50 flex justify-between items-center">
-              <button onClick={(e) => handleDeleteAnnouncement(e, selectedAnnouncement.announcementId, selectedAnnouncement.title)} className="text-xs font-bold text-red-600 hover:bg-red-50 px-4 py-2 rounded-xl transition">
+              <button disabled={deletingAnnouncementIds.some((id) => String(id) === String(selectedAnnouncement.announcementId))} onClick={(e) => handleDeleteAnnouncement(e, selectedAnnouncement.announcementId, selectedAnnouncement.title)} className="text-xs font-bold text-red-600 hover:bg-red-50 px-4 py-2 rounded-xl transition disabled:opacity-50">
                 Delete Post
               </button>
               <button onClick={() => setSelectedAnnouncement(null)} className="px-6 py-2.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold rounded-xl transition shadow-xs">
@@ -433,7 +510,7 @@ export default function CourseAnnouncementsPage() {
                   Cancel
                 </button>
                 <button type="submit" disabled={submitting} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50">
-                  {submitting ? 'Posting...' : 'Publish Announcement'}
+                  {submitting ? 'Posting...' : 'Post Announcement'}
                 </button>
               </div>
             </form>

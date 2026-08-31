@@ -3,6 +3,21 @@ const AIHistoryService = require('../service/AIHistoryService');
 const WorkspaceService = require('../service/WorkspaceService');
 const WorkspaceIntegrationService = require('../service/WorkspaceIntegrationService');
 
+const MAX_GENERATION_COUNT = 50;
+
+function validateGenerationCount(value, fieldName, defaultValue) {
+    const count = value === undefined || value === null || value === '' ? defaultValue : Number(value);
+
+    if (!Number.isInteger(count) || count < 1 || count > MAX_GENERATION_COUNT) {
+        const error = new Error(`${fieldName} must be an integer between 1 and ${MAX_GENERATION_COUNT}.`);
+        error.statusCode = 400;
+        error.code = 'INVALID_GENERATION_COUNT';
+        throw error;
+    }
+
+    return count;
+}
+
 function handleControllerError(error, res) {
     if (error.statusCode) {
         return res.status(error.statusCode).json({ code: error.code, message: error.message });
@@ -38,12 +53,13 @@ const generateQuiz = async (req, res) => {
         if (!projectId) {
             return res.status(400).json({ code: 'MISSING_PROJECT_ID', message: 'Missing projectId.' });
         }
+        const safeQuestionCount = validateGenerationCount(questionCount, 'questionCount', 5);
         await WorkspaceService.assertProjectWritable(projectId, req.user.userId, materialIds || []);
         const prepared = await WorkspaceIntegrationService.ensureMaterialsProcessed(projectId, materialIds || []);
         const result = await AIServiceClient.generateQuiz(
             projectId,
             prepared.readyMaterialIds,
-            questionCount || 5,
+            safeQuestionCount,
             difficulty || 'medium'
         );
         return res.status(200).json({ message: 'Quizzes generated!', data: result.questions, quizId: result.quizId });
@@ -58,12 +74,13 @@ const generateFlashcards = async (req, res) => {
         if (!projectId) {
             return res.status(400).json({ code: 'MISSING_PROJECT_ID', message: 'Missing projectId.' });
         }
+        const safeFlashcardCount = validateGenerationCount(flashcardCount, 'flashcardCount', 10);
         await WorkspaceService.assertProjectWritable(projectId, req.user.userId, materialIds || []);
         const prepared = await WorkspaceIntegrationService.ensureMaterialsProcessed(projectId, materialIds || []);
         const result = await AIServiceClient.generateFlashcards(
             projectId,
             prepared.readyMaterialIds,
-            flashcardCount || 10,
+            safeFlashcardCount,
             length || 'short'
         );
         return res.status(200).json({ message: 'Flashcards generated!', data: result.flashcards, flashcardSetId: result.flashcardSetId });

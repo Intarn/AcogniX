@@ -32,3 +32,10 @@ export function archiveCourse(courseId) {
     }
   );
 }
+
+export function unarchiveCourse(courseId) {
+  return apiRequest(
+    `/courses/${courseId}/unarchive`,
+    { method: 'POST' }
+  );
+}

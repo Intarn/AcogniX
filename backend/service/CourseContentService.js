@@ -83,7 +83,7 @@ class CourseContentService {
       action: 'ADDED'
     });
 
-    return material;
+    return await this._withEducatorAccessibleResourceUrl(material);
   }
 
   // Basic Flow (UC-05): Chỉnh sửa thông tin / thay thế file hoặc link tài liệu
@@ -184,7 +184,7 @@ class CourseContentService {
       action: 'UPDATED'
     });
 
-    return updatedMaterial;
+    return await this._withEducatorAccessibleResourceUrl(updatedMaterial);
   }
 
   // Basic Flow & Alt Flow 2 (UC-05): Xóa tài liệu khỏi lớp và Workspace học viên
@@ -230,7 +230,135 @@ class CourseContentService {
       .order('uploadedAt', { ascending: false });
 
     if (error) throw new AppError(500, 'DB_ERROR', 'Failed to fetch course materials.');
-    return data || [];
+
+    const orderedMaterials = this._sortMaterialsForDisplay(data || []);
+    return Promise.all(
+      orderedMaterials.map((material) =>
+        this._withEducatorAccessibleResourceUrl(material)
+      )
+    );
+  }
+
+  static async reorderMaterials(educatorId, courseId, materialOrders) {
+    await this._verifyCourseOwnership(courseId, educatorId);
+
+    if (!Array.isArray(materialOrders) || materialOrders.length === 0) {
+      throw new AppError(400, 'INVALID_MATERIAL_ORDER', 'Material order is required.');
+    }
+
+    const normalized = materialOrders
+      .map((item, index) => ({
+        materialId: item?.materialId,
+        orderIndex: Number.isFinite(Number(item?.orderIndex))
+          ? Number(item.orderIndex)
+          : index + 1
+      }))
+      .filter((item) => item.materialId !== undefined && item.materialId !== null)
+      .sort((first, second) => first.orderIndex - second.orderIndex);
+
+    const { data: courseMaterials, error: materialError } = await supabase
+      .from('CourseMaterial')
+      .select('*')
+      .eq('courseId', courseId);
+
+    if (materialError) {
+      throw new AppError(500, 'DB_ERROR', 'Failed to load Course Materials for reordering.');
+    }
+
+    const allowedIds = new Set((courseMaterials || []).map((item) => String(item.materialId)));
+    if (
+      normalized.length !== allowedIds.size ||
+      normalized.some((item) => !allowedIds.has(String(item.materialId)))
+    ) {
+      throw new AppError(
+        400,
+        'INVALID_MATERIAL_ORDER',
+        'The material order does not match this Course.'
+      );
+    }
+
+    // Use a dedicated orderIndex column when the deployed schema supports it.
+    // Older project schemas do not contain that column, so detect that case
+    // before writing and fall back to the existing uploadedAt display order.
+    const { error: orderColumnCheckError } = await supabase
+      .from('CourseMaterial')
+      .select('materialId, orderIndex')
+      .eq('courseId', courseId)
+      .limit(1);
+
+    const orderColumnErrorText = orderColumnCheckError
+      ? `${orderColumnCheckError.message || ''} ${orderColumnCheckError.details || ''} ${orderColumnCheckError.hint || ''}`
+      : '';
+    const missingOrderIndexColumn =
+      Boolean(orderColumnCheckError) && /orderindex/i.test(orderColumnErrorText);
+
+    if (orderColumnCheckError && !missingOrderIndexColumn) {
+      throw new AppError(
+        500,
+        'REORDER_FAILED',
+        'Failed to verify Course Material ordering support.'
+      );
+    }
+
+    if (!orderColumnCheckError) {
+      for (const item of normalized) {
+        const { error } = await supabase
+          .from('CourseMaterial')
+          .update({ orderIndex: item.orderIndex })
+          .eq('materialId', item.materialId)
+          .eq('courseId', courseId);
+
+        if (error) {
+          throw new AppError(500, 'REORDER_FAILED', 'Failed to reorder Course Materials.');
+        }
+      }
+    } else {
+      // Backward-compatible fallback: preserve the existing timestamp values as
+      // display-order slots, then assign those slots according to the requested
+      // order. This makes Up/Down persistent without requiring a DB migration.
+      const existingSlots = (courseMaterials || [])
+        .map((item) => new Date(item.uploadedAt || 0))
+        .filter((date) => !Number.isNaN(date.getTime()))
+        .sort((first, second) => second.getTime() - first.getTime())
+        .map((date) => date.toISOString());
+
+      const fallbackBaseTime = Date.now();
+      for (let index = 0; index < normalized.length; index += 1) {
+        const item = normalized[index];
+        const uploadedAt =
+          existingSlots[index] ||
+          new Date(fallbackBaseTime - index * 1000).toISOString();
+
+        const { error } = await supabase
+          .from('CourseMaterial')
+          .update({ uploadedAt })
+          .eq('materialId', item.materialId)
+          .eq('courseId', courseId);
+
+        if (error) {
+          throw new AppError(500, 'REORDER_FAILED', 'Failed to reorder Course Materials.');
+        }
+      }
+    }
+
+    const { data: refreshed, error: refreshError } = await supabase
+      .from('CourseMaterial')
+      .select('*')
+      .eq('courseId', courseId)
+      .order('uploadedAt', { ascending: false });
+
+    if (refreshError) {
+      throw new AppError(
+        500,
+        'DB_ERROR',
+        'Failed to reload Course Materials after reordering.'
+      );
+    }
+
+    const ordered = this._sortMaterialsForDisplay(refreshed || []);
+    return Promise.all(
+      ordered.map((material) => this._withEducatorAccessibleResourceUrl(material))
+    );
   }
 
   // =========================================================================
@@ -250,7 +378,14 @@ class CourseContentService {
       .order('uploadedAt', { ascending: false });
 
     if (error) throw new AppError(500, 'DB_ERROR', 'Failed to fetch course materials.');
-    return data || [];
+    return this._sortMaterialsForDisplay(data || []);
+  }
+
+  // Educators and approved Learners open/download files through the
+  // authenticated backend instead of relying on a public Storage URL.
+  static async getMaterialFileForEducator(educatorId, materialId) {
+    const material = await this._getMaterialAndVerifyOwnership(materialId, educatorId);
+    return this._downloadMaterialFile(material);
   }
 
   // UC16 UI03/UI05/UI07: Resolve the actual Storage object through the
@@ -270,20 +405,15 @@ class CourseContentService {
     }
 
     await this._verifyLearnerEnrollment(material.courseId, learnerId);
+    return this._downloadMaterialFile(material);
+  }
 
+  static async _downloadMaterialFile(material) {
     if (material.resourceType !== ResourceType.FILE || !material.resourceUrl) {
       throw new AppError(400, 'MATERIAL_NOT_FILE', 'This material is not a downloadable file.');
     }
 
-    const marker = `${BUCKET_MATERIALS}/`;
-    const markerIndex = String(material.resourceUrl).indexOf(marker);
-    if (markerIndex < 0) {
-      throw new AppError(410, 'MATERIAL_FILE_UNAVAILABLE', 'This file is no longer available.');
-    }
-
-    const filePath = decodeURIComponent(
-      String(material.resourceUrl).slice(markerIndex + marker.length).split('?')[0]
-    );
+    const filePath = this._getMaterialStoragePath(material.resourceUrl);
     if (!filePath) {
       throw new AppError(410, 'MATERIAL_FILE_UNAVAILABLE', 'This file is no longer available.');
     }
@@ -313,19 +443,15 @@ class CourseContentService {
     const isPdf = mimeType.includes('pdf');
     const isDocx = mimeType.includes('wordprocessingml') || mimeType.includes('docx');
 
-    // Lightweight integrity guards for the two UC16 document formats. They
-    // catch common deleted/corrupted fixtures without attempting a full parser.
-    if (isPdf) {
-      const headerValid = buffer.subarray(0, 5).toString('ascii') === '%PDF-';
-      const tail = buffer.subarray(Math.max(0, buffer.length - 4096)).toString('latin1');
-      const trailerValid = tail.includes('%%EOF');
-      if (!headerValid || !trailerValid) {
-        throw new AppError(410, 'MATERIAL_FILE_UNAVAILABLE', 'This file is no longer available.');
-      }
+    if (isPdf && buffer.subarray(0, 5).toString('ascii') !== '%PDF-') {
+      throw new AppError(410, 'MATERIAL_FILE_UNAVAILABLE', 'This file is no longer available.');
     }
     if (isDocx && buffer.subarray(0, 2).toString('ascii') !== 'PK') {
       throw new AppError(410, 'MATERIAL_FILE_UNAVAILABLE', 'This file is no longer available.');
     }
+
+    const storedName = decodeURIComponent(filePath.split('/').pop() || '');
+    const originalName = storedName.replace(/^\d+_/, '').trim();
 
     const urlPath = String(material.resourceUrl).split('?')[0];
     const extensionMatch = urlPath.match(/\.([A-Za-z0-9]+)$/);
@@ -333,14 +459,14 @@ class CourseContentService {
     const safeBaseName = String(material.title || 'course-material')
       .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
       .trim() || 'course-material';
-    const fileName = safeBaseName.toLowerCase().endsWith(extension.toLowerCase())
+    const fallbackName = safeBaseName.toLowerCase().endsWith(extension.toLowerCase())
       ? safeBaseName
       : `${safeBaseName}${extension}`;
 
     return {
       buffer,
       mimeType: material.fileType || 'application/octet-stream',
-      fileName,
+      fileName: originalName || fallbackName,
       material
     };
   }
@@ -496,6 +622,90 @@ class CourseContentService {
   // =========================================================================
   // HELPER METHODS
   // =========================================================================
+
+  static _sortMaterialsForDisplay(materials) {
+    return [...(materials || [])].sort((first, second) => {
+      const firstOrder = Number(first?.orderIndex);
+      const secondOrder = Number(second?.orderIndex);
+      const firstHasOrder = Number.isFinite(firstOrder) && firstOrder > 0;
+      const secondHasOrder = Number.isFinite(secondOrder) && secondOrder > 0;
+
+      if (firstHasOrder && secondHasOrder) return firstOrder - secondOrder;
+      if (firstHasOrder) return -1;
+      if (secondHasOrder) return 1;
+
+      const firstTime = new Date(first?.uploadedAt || 0).getTime();
+      const secondTime = new Date(second?.uploadedAt || 0).getTime();
+      return secondTime - firstTime;
+    });
+  }
+
+  static _getMaterialStoragePath(resourceUrl) {
+    const rawUrl = String(resourceUrl || '').trim();
+    if (!rawUrl) return '';
+
+    try {
+      if (/^https?:\/\//i.test(rawUrl)) {
+        const parsedUrl = new URL(rawUrl);
+        const decodedPath = decodeURIComponent(parsedUrl.pathname);
+        const marker = `/${BUCKET_MATERIALS}/`;
+        const markerIndex = decodedPath.indexOf(marker);
+
+        if (markerIndex >= 0) {
+          return decodedPath
+            .slice(markerIndex + marker.length)
+            .replace(/^\/+/, '')
+            .trim();
+        }
+
+        return '';
+      }
+
+      let filePath = decodeURIComponent(rawUrl.split('?')[0]);
+      const bucketPrefix = `${BUCKET_MATERIALS}/`;
+
+      if (filePath.startsWith(bucketPrefix)) {
+        filePath = filePath.slice(bucketPrefix.length);
+      }
+
+      return filePath.replace(/^\/+/, '').trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static async _withEducatorAccessibleResourceUrl(material) {
+    if (
+      !material ||
+      material.resourceType !== ResourceType.FILE ||
+      !material.resourceUrl
+    ) {
+      return material;
+    }
+
+    const filePath = this._getMaterialStoragePath(material.resourceUrl);
+
+    if (!filePath) {
+      return material;
+    }
+
+    const { data, error } = await supabase.storage
+      .from(BUCKET_MATERIALS)
+      .createSignedUrl(filePath, 60 * 60);
+
+    if (error || !data?.signedUrl) {
+      console.error(
+        '[Course Material Signed URL Error]:',
+        error || 'Signed URL was not returned.'
+      );
+      return material;
+    }
+
+    return {
+      ...material,
+      resourceUrl: data.signedUrl
+    };
+  }
 
   static async _verifyCourseOwnership(courseId, educatorId) {
     const { data, error } = await supabase
