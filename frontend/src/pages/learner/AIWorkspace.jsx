@@ -151,16 +151,21 @@ export default function AIWorkspace() {
   const [flashcardCount, setFlashcardCount] = useState(10);
   const [flashcardMaterialIds, setFlashcardMaterialIds] = useState([]);
   const [quizCount, setQuizCount] = useState(5);
+  const contextSaveQueueRef = useRef(Promise.resolve());
+  const contextSaveVersionRef = useRef(0);
   const [quizDifficulty, setQuizDifficulty] = useState('medium');
   const [flashcardSets, setFlashcardSets] = useState([]);
   const [generatingFlashcards, setGeneratingFlashcards] = useState(false);
+  const flashcardGenerationInFlightRef = useRef(false);
   const [showFCModal, setShowFCModal] = useState(false);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
+  const quizGenerationInFlightRef = useRef(false);
   const [showQuizModal, setShowQuizModal] = useState(false);
 
   const classProjects = projects.filter((p) => p.type === 'CLASS');
   const personalProjects = projects.filter((p) => p.type !== 'CLASS');
   const currentProjectId = currentProject?.projectId || currentProject?.id;
+  const workspaceProjectStorageKey = 'acognix.aiWorkspace.currentProjectId';
   const isArchivedClassProject = Boolean(
     currentProject?.type === 'CLASS' &&
     (currentProject?.status === 'ARCHIVED' || currentProject?.courseStatus === 'ARCHIVED')
@@ -486,15 +491,22 @@ export default function AIWorkspace() {
 
       if (projectList.length > 0) {
         let activeProj = projectList[0];
+        const storedProjectId = sessionStorage.getItem(workspaceProjectStorageKey);
         const targetId = preservedProjectId || currentProject?.projectId || currentProject?.id;
+
         if (targetId) {
-          activeProj = projectList.find(p => (p.projectId === targetId || p.id === targetId)) || projectList[0];
+          activeProj = projectList.find(p => String(p.projectId || p.id) === String(targetId)) || projectList[0];
         } else if (targetCourseId) {
+          // Explicit navigation from Course Materials takes priority over a
+          // previously remembered Workspace Project.
           const matched = projectList.find(p => String(p.courseId) === String(targetCourseId));
           if (matched) activeProj = matched;
+        } else if (storedProjectId) {
+          activeProj = projectList.find(p => String(p.projectId || p.id) === String(storedProjectId)) || projectList[0];
         }
 
         setCurrentProject(activeProj);
+        sessionStorage.setItem(workspaceProjectStorageKey, String(activeProj.projectId || activeProj.id));
         const projMaterials = activeProj.Learning_Material || activeProj.materials || [];
         setMaterials(projMaterials);
 
@@ -526,6 +538,7 @@ export default function AIWorkspace() {
       } else {
         setCurrentProject(null);
         setMaterials([]);
+        sessionStorage.removeItem(workspaceProjectStorageKey);
       }
     } catch (err) {
       setErrorMsg(err.message || 'Unable to load the Workspace.');
@@ -537,6 +550,16 @@ export default function AIWorkspace() {
   useEffect(() => {
     fetchWorkspace();
   }, [targetCourseId, targetSourceUrl, targetTitle]);
+
+  // Any pending response from the previously opened Project must never overwrite
+  // the selection UI of the newly opened Project.
+  useEffect(() => {
+    contextSaveVersionRef.current += 1;
+
+    if (currentProjectId) {
+      sessionStorage.setItem(workspaceProjectStorageKey, String(currentProjectId));
+    }
+  }, [currentProjectId]);
 
   // UC01-UI09: Persist Active Context to the DB when checking/unchecking
   const toggleMaterialSelection = async (materialId) => {
@@ -551,58 +574,58 @@ export default function AIWorkspace() {
 
     const projId = currentProject?.projectId || currentProject?.id;
     if (!projId) return;
+    const mutationVersion = ++contextSaveVersionRef.current;
 
-    try {
-      await updateProjectActiveContext(projId, nextSelected);
+    // Serialize context writes. A slower older request can no longer finish after
+    // a newer click and overwrite the server state.
+    contextSaveQueueRef.current = contextSaveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const result = await updateProjectActiveContext(projId, nextSelected);
+        const persistedIds = Array.isArray(result?.selectedMaterialIds)
+          ? result.selectedMaterialIds
+          : nextSelected;
+        // The server write is still serialized, but an older response must not
+        // roll the visible UI back after a newer click/project switch.
+        if (mutationVersion !== contextSaveVersionRef.current) return;
 
-      // Keep the local project/material cache consistent with the persisted DB state.
-      // Otherwise reopening the selector in the same page session reads stale values.
-      const selectedSet = new Set(nextSelected.map((id) => String(id)));
-      const applySelection = (items = []) =>
-        items.map((material) => {
-          const id = material.materialId || material.id;
-          return {
-            ...material,
-            selectedAsContext: Boolean(id) && selectedSet.has(String(id))
-          };
+        const selectedSet = new Set(persistedIds.map((id) => String(id)));
+        const applySelection = (items = []) =>
+          items.map((material) => {
+            const id = material.materialId || material.id;
+            return {
+              ...material,
+              selectedAsContext: Boolean(id) && selectedSet.has(String(id))
+            };
+          });
+
+        setSelectedMaterialIds(persistedIds);
+        setMaterials((prev) => applySelection(prev));
+
+        setCurrentProject((prev) => {
+          if (!prev || String(prev.projectId || prev.id) !== String(projId)) return prev;
+          const updated = { ...prev };
+          if (Array.isArray(prev.Learning_Material)) updated.Learning_Material = applySelection(prev.Learning_Material);
+          if (Array.isArray(prev.materials)) updated.materials = applySelection(prev.materials);
+          return updated;
         });
 
-      setMaterials((prev) => applySelection(prev));
-
-      setCurrentProject((prev) => {
-        if (!prev || String(prev.projectId || prev.id) !== String(projId)) return prev;
-
-        const updated = { ...prev };
-        if (Array.isArray(prev.Learning_Material)) {
-          updated.Learning_Material = applySelection(prev.Learning_Material);
+        setProjects((prev) =>
+          prev.map((project) => {
+            if (String(project.projectId || project.id) !== String(projId)) return project;
+            const updated = { ...project };
+            if (Array.isArray(project.Learning_Material)) updated.Learning_Material = applySelection(project.Learning_Material);
+            if (Array.isArray(project.materials)) updated.materials = applySelection(project.materials);
+            return updated;
+          })
+        );
+      })
+      .catch((error) => {
+        if (mutationVersion === contextSaveVersionRef.current) {
+          setSelectedMaterialIds(previousSelected);
         }
-        if (Array.isArray(prev.materials)) {
-          updated.materials = applySelection(prev.materials);
-        }
-        return updated;
+        console.error('Failed to persist active context:', error);
       });
-
-      setProjects((prev) =>
-        prev.map((project) => {
-          if (String(project.projectId || project.id) !== String(projId)) {
-            return project;
-          }
-
-          const updated = { ...project };
-          if (Array.isArray(project.Learning_Material)) {
-            updated.Learning_Material = applySelection(project.Learning_Material);
-          }
-          if (Array.isArray(project.materials)) {
-            updated.materials = applySelection(project.materials);
-          }
-          return updated;
-        })
-      );
-    } catch (e) {
-      // Do not leave the UI showing a selection that failed to save.
-      setSelectedMaterialIds(previousSelected);
-      console.error('Failed to persist active context:', e);
-    }
   };
 
   useEffect(() => {
@@ -627,12 +650,9 @@ export default function AIWorkspace() {
   const handleCreateProject = async (e) => {
     e.preventDefault();
     if (!newProjectName.trim()) return;
-    const wsId = workspace?.workspaceId || workspace?.id;
-    if (!wsId) return showToast('Unable to find the workspace ID.', 'error');
-
     try {
       setCreating(true);
-      await createWorkspaceProject(newProjectName, wsId);
+      await createWorkspaceProject(newProjectName);
       showToast('Personal Project created successfully!', 'success');
       setNewProjectName('');
       setIsCreatingProject(false);
@@ -737,11 +757,13 @@ export default function AIWorkspace() {
         const safeFile = new File([file], safeName, { type: file.type });
         showToast(`Uploading: ${file.name}...`, 'info');
         const uploadRes = await uploadProjectMaterial(projectId, safeFile);
-        const materialId = uploadRes?.materialId || uploadRes?.data?.materialId || uploadRes?.id;
-        if (materialId) {
-          showToast(`AI is extracting: ${file.name}...`, 'info');
-          await extractDocumentText(materialId, safeFile);
+        const materialId = uploadRes?.material?.materialId;
+        if (!materialId) {
+          throw new Error('Upload succeeded but materialId was not returned.');
         }
+
+        showToast(`AI is extracting: ${file.name}...`, 'info');
+        await extractDocumentText(projectId, materialId, safeFile);
       }
       showToast('Upload and extraction completed successfully!', 'success');
       await fetchWorkspace(projectId);
@@ -815,7 +837,7 @@ export default function AIWorkspace() {
         }
       ]);
     } catch (err) {
-      const errMsg = err.status === 408 || err.code === 'ECONNABORTED'
+      const errMsg = err.status === 408 || err.status === 504 || err.code === 'ECONNABORTED'
         ? 'Connection to AI Tutor interrupted. Please try again.'
         : `AI error: ${err.message || 'Unable to connect.'}`;
       setChatHistory((prev) => [...prev, { from: 'ai', text: errMsg }]);
@@ -955,6 +977,7 @@ export default function AIWorkspace() {
 
   const handleGenerateFlashcards = async (e) => {
     e?.preventDefault();
+    if (flashcardGenerationInFlightRef.current) return;
     if (blockArchivedProjectAction()) return;
     if (!currentProject) return showToast('Please select a Project!', 'warning');
     if (flashcardMaterialIds.length === 0) {
@@ -962,6 +985,7 @@ export default function AIWorkspace() {
     }
 
     const projectId = currentProject.projectId || currentProject.id;
+    flashcardGenerationInFlightRef.current = true;
     try {
       setGeneratingFlashcards(true);
       const res = await generateAIFlashcards(projectId, flashcardMaterialIds, flashcardCount, 'short');
@@ -974,17 +998,20 @@ export default function AIWorkspace() {
     } catch (err) {
       showToast(err.message || 'Failed to generate Flashcards.', 'error');
     } finally {
+      flashcardGenerationInFlightRef.current = false;
       setGeneratingFlashcards(false);
     }
   };
 
   const handleGenerateQuiz = async (e) => {
     e?.preventDefault();
+    if (quizGenerationInFlightRef.current) return;
     if (blockArchivedProjectAction()) return;
     if (!currentProject) return showToast('Please select a Project!', 'warning');
     if (selectedMaterialIds.length === 0) return showToast('Please select at least one material!', 'warning');
 
     const projectId = currentProject.projectId || currentProject.id;
+    quizGenerationInFlightRef.current = true;
     try {
       setGeneratingQuiz(true);
       const res = await generateAIQuiz(projectId, selectedMaterialIds, quizCount, quizDifficulty);
@@ -997,6 +1024,7 @@ export default function AIWorkspace() {
     } catch (err) {
       showToast(err.message || 'Failed to generate the Quiz.', 'error');
     } finally {
+      quizGenerationInFlightRef.current = false;
       setGeneratingQuiz(false);
     }
   };
@@ -1052,20 +1080,23 @@ export default function AIWorkspace() {
             </div>
 
             {/* UC01-UI01: Categorized Projects Select */}
-            <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 min-w-0">
               <select
                 value={currentProject?.projectId || currentProject?.id || ''}
                 onChange={(e) => {
                   const proj = projects.find((p) => String(p.projectId || p.id) === String(e.target.value));
                   const projectMaterials = proj?.Learning_Material || proj?.materials || [];
                   setCurrentProject(proj || null);
+                  if (proj) {
+                    sessionStorage.setItem(workspaceProjectStorageKey, String(proj.projectId || proj.id));
+                  }
                   setMaterials(projectMaterials);
                   // Important: never carry material IDs from the previously opened Project.
                   setSelectedMaterialIds(getInitialMaterialSelection(proj));
                   setShowQuizModal(false);
                   setShowFCModal(false);
                 }}
-                className="flex-1 min-w-0 text-xs font-bold text-gray-800 bg-white border border-gray-200 p-2 rounded-lg outline-none cursor-pointer focus:border-blue-500 shadow-sm truncate"
+                className="w-full min-w-0 text-xs font-bold text-gray-800 bg-white border border-gray-200 p-2 rounded-lg outline-none cursor-pointer focus:border-blue-500 shadow-sm truncate"
               >
                 <option value="" disabled>Select a Project</option>
                 {classProjects.length > 0 && (
@@ -1608,9 +1639,9 @@ export default function AIWorkspace() {
               <input
                 type="number"
                 min="1"
-                max="50"
+                max="30"
                 value={flashcardCount}
-                onChange={(e) => setFlashcardCount(Math.min(50, Math.max(1, Number(e.target.value) || 1)))}
+                onChange={(e) => setFlashcardCount(Math.min(30, Math.max(1, Number(e.target.value) || 1)))}
                 className="w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:border-emerald-500 bg-gray-50 focus:bg-white transition-colors"
               />
             </div>
@@ -1674,9 +1705,9 @@ export default function AIWorkspace() {
                 <input
                   type="number"
                   min="1"
-                  max="50"
+                  max="20"
                   value={quizCount}
-                  onChange={(e) => setQuizCount(Math.min(50, Math.max(1, Number(e.target.value) || 1)))}
+                  onChange={(e) => setQuizCount(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
                   className="w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:border-blue-500 bg-gray-50 focus:bg-white transition-colors"
                 />
               </div>

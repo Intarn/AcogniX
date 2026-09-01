@@ -112,7 +112,7 @@ class AuthController {
 
       return res.status(200).json({
         message: 'Login successful',
-        token: session.tokenHash,
+        token: session.accessToken,
         userRole: session.userRole,
         user: {
           userId: session.userId,
@@ -151,6 +151,26 @@ class AuthController {
         message: error.statusCode
           ? error.message
           : 'Unable to log in at this time. Please try again.'
+      });
+    }
+  }
+
+
+  // POST /api/auth/test/fail-next - development/test only fault injection.
+  // Lets PA5 exercise UC20-UI09 and UC21-UI08 without stopping Supabase.
+  static async armTestFailure(req, res) {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(404).json({ message: 'Not found.' });
+    }
+
+    try {
+      const operation = String(req.body?.operation || '').trim().toLowerCase();
+      AuthenticationService.armTestFailure(operation);
+      return res.status(200).json({ success: true, operation });
+    } catch (error) {
+      return res.status(error.statusCode || 400).json({
+        code: error.code || 'INVALID_TEST_OPERATION',
+        message: error.message || 'Unable to configure test failure.'
       });
     }
   }

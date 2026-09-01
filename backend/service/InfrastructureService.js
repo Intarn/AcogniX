@@ -2,6 +2,7 @@ const os = require('os');
 const fs = require('fs');
 const supabase = require('../config/supabaseClient');
 const AppError = require('../error/AppError');
+const AIServiceClient = require('./AIServiceClient');
 
 
 const MAX_ERROR_LOGS = 100;
@@ -377,17 +378,49 @@ class InfrastructureService {
     };
   }
 
-  // UC18: Update LLM API Key (Save to System_Settings table)
+  // UC18: Validate and activate the replacement key in the live AI service first.
+  // Only a key that works for both generation and embedding is persisted as ACTIVE.
   static async updateAPIKey(newApiKey) {
-    if (!newApiKey) throw new AppError(400, 'INVALID_KEY', 'API Key cannot be empty.');
+    const trimmedKey = String(newApiKey || '').trim();
+    if (!trimmedKey) throw new AppError(400, 'INVALID_KEY', 'API Key cannot be empty.');
+
+    const { data: previousSetting, error: previousSettingError } = await supabase
+      .from('System_Settings')
+      .select('setting_value')
+      .eq('setting_key', 'GEMINI_API_KEY')
+      .maybeSingle();
+
+    if (previousSettingError) {
+      throw new AppError(500, 'DB_ERROR', 'Unable to read the current API key setting.');
+    }
+
+    const previousKey = String(previousSetting?.setting_value || '').trim();
+
+    try {
+      await AIServiceClient.activateGeminiKey(trimmedKey);
+    } catch (error) {
+      throw new AppError(422, 'API_KEY_ACTIVATION_FAILED', error?.message || 'The replacement API key could not be activated.');
+    }
 
     const { error } = await supabase
       .from('System_Settings')
-      .upsert([{ setting_key: 'GEMINI_API_KEY', setting_value: newApiKey }], { onConflict: 'setting_key' });
+      .upsert([{ setting_key: 'GEMINI_API_KEY', setting_value: trimmedKey }], { onConflict: 'setting_key' });
 
-    if (error) throw new AppError(500, 'DB_ERROR', 'Failed to update Backup API Key.');
+    if (error) {
+      // Keep runtime and persisted state aligned. Best-effort restore the previous
+      // live key if the database write fails after activation.
+      if (previousKey) {
+        try {
+          await AIServiceClient.activateGeminiKey(previousKey);
+        } catch (rollbackError) {
+          console.error('[Infrastructure] Failed to restore previous live AI key after DB save failure.');
+        }
+      }
+      throw new AppError(500, 'DB_ERROR', 'The replacement key could not be saved. The previous key remains active when rollback succeeds.');
+    }
+
     forceQuotaWarning = false;
-    return { success: true, message: 'Backup API Key updated successfully to ensure uninterrupted AI Workspace features.' };
+    return { success: true, message: 'Backup API Key updated and activated successfully.' };
   }
 
   static async restartDatabaseConnection() {

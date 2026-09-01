@@ -576,70 +576,25 @@ class NotificationService {
   // =========================================================
   // UC-11: EDUCATOR IN-APP WEEKLY REPORT NOTIFICATIONS
   //
-  // The current database already uses System_Settings as a
-  // persisted JSON store for generated weekly reports. Reuse
-  // the same real data source for the Educator notification
-  // feed instead of synthesizing notifications in the UI.
+  // Store each notification as its own row. This avoids the lost-update race
+  // caused by reading/modifying/writing one JSON array in System_Settings.
   // =========================================================
 
-  static _educatorNotificationSettingKey(educatorId) {
-    return `EDUCATOR_IN_APP_NOTIFICATIONS_${String(educatorId)}`;
-  }
+  static _mapNotificationRow(row) {
+    if (!row) return null;
 
-  static _parseNotificationFeed(settingValue) {
-    if (!settingValue) return [];
-
-    try {
-      const parsed = typeof settingValue === 'string'
-        ? JSON.parse(settingValue)
-        : settingValue;
-
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      console.error('[NotificationService] Invalid persisted notification feed:', error);
-      throw new AppError(
-        500,
-        'NOTIFICATION_DATA_INVALID',
-        'The notification data is unavailable.'
-      );
-    }
-  }
-
-  static async _getEducatorNotificationFeed(educatorId) {
-    const { data, error } = await supabase
-      .from('System_Settings')
-      .select('setting_value')
-      .eq('setting_key', this._educatorNotificationSettingKey(educatorId))
-      .maybeSingle();
-
-    if (error) {
-      console.error('[NotificationService] Notification lookup failed:', error);
-      throw new AppError(
-        500,
-        'NOTIFICATION_LOAD_FAILED',
-        'Unable to load notifications.'
-      );
-    }
-
-    return this._parseNotificationFeed(data?.setting_value);
-  }
-
-  static async _saveEducatorNotificationFeed(educatorId, notifications) {
-    const { error } = await supabase
-      .from('System_Settings')
-      .upsert([{
-        setting_key: this._educatorNotificationSettingKey(educatorId),
-        setting_value: JSON.stringify(notifications)
-      }], { onConflict: 'setting_key' });
-
-    if (error) {
-      console.error('[NotificationService] Notification persistence failed:', error);
-      throw new AppError(
-        500,
-        'NOTIFICATION_SAVE_FAILED',
-        'Unable to save the notification.'
-      );
-    }
+    return {
+      id: row.notificationId,
+      type: row.type,
+      title: row.title,
+      message: row.message,
+      courseId: row.courseId,
+      reportId: row.sourceId,
+      createdAt: row.createdAt,
+      readAt: row.readAt || null,
+      read: Boolean(row.readAt),
+      targetUrl: row.targetUrl
+    };
   }
 
   static async createWeeklyReportNotification({ report }) {
@@ -651,45 +606,50 @@ class NotificationService {
       );
     }
 
-    const educatorId = report.educatorId;
-    const notificationId = `WEEKLY_REPORT:${report.reportId}`;
-    const current = await this._getEducatorNotificationFeed(educatorId);
-
-    const notification = {
-      id: notificationId,
+    const row = {
+      recipientId: report.educatorId,
       type: 'WEEKLY_CLASS_PERFORMANCE',
+      sourceId: String(report.reportId),
+      courseId: report.courseId,
       title: 'Weekly class-performance report ready',
       message: report.courseCode
         ? `${report.courseName} (${report.courseCode})`
         : report.courseName,
-      courseId: report.courseId,
-      reportId: report.reportId,
-      generatedAt: report.generatedAt,
-      periodStart: report.periodStart,
-      periodEnd: report.periodEnd,
-      createdAt: report.generatedAt,
-      read: false,
-      targetUrl: `/educator/analytics?courseId=${encodeURIComponent(String(report.courseId))}&weekly=1`
+      targetUrl: `/educator/analytics?courseId=${encodeURIComponent(String(report.courseId))}&weekly=1`,
+      createdAt: report.generatedAt || new Date().toISOString(),
+      readAt: null
     };
 
-    // Regenerating the same course/report date replaces the existing item
-    // instead of producing duplicate fake-looking notifications.
-    const next = [
-      notification,
-      ...current.filter(item => item?.id !== notificationId)
-    ]
-      .filter(item => item && item.id)
-      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-      .slice(0, 50);
+    const { data, error } = await supabase
+      .from('Notification')
+      .upsert([row], { onConflict: 'recipientId,type,sourceId' })
+      .select('notificationId, type, sourceId, courseId, title, message, targetUrl, createdAt, readAt')
+      .single();
 
-    await this._saveEducatorNotificationFeed(educatorId, next);
-    return notification;
+    if (error) {
+      console.error('[NotificationService] Notification persistence failed:', error);
+      throw new AppError(500, 'NOTIFICATION_SAVE_FAILED', 'Unable to save the notification.');
+    }
+
+    return this._mapNotificationRow(data);
   }
 
   static async getEducatorNotifications(educatorId) {
-    const notifications = (await this._getEducatorNotificationFeed(educatorId))
-      .filter(item => item && item.id)
-      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    const { data, error } = await supabase
+      .from('Notification')
+      .select('notificationId, type, sourceId, courseId, title, message, targetUrl, createdAt, readAt')
+      .eq('recipientId', educatorId)
+      .order('createdAt', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error('[NotificationService] Notification lookup failed:', error);
+      throw new AppError(500, 'NOTIFICATION_LOAD_FAILED', 'Unable to load notifications.');
+    }
+
+    const notifications = (data || [])
+      .map(row => this._mapNotificationRow(row))
+      .filter(Boolean);
 
     return {
       notifications,
@@ -698,26 +658,37 @@ class NotificationService {
   }
 
   static async markEducatorNotificationRead(educatorId, notificationId) {
-    const current = await this._getEducatorNotificationFeed(educatorId);
-    const index = current.findIndex(item => String(item?.id) === String(notificationId));
+    const readAt = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('Notification')
+      .update({ readAt })
+      .eq('notificationId', notificationId)
+      .eq('recipientId', educatorId)
+      .select('notificationId, type, sourceId, courseId, title, message, targetUrl, createdAt, readAt')
+      .maybeSingle();
 
-    if (index < 0) {
+    if (error) {
+      console.error('[NotificationService] Notification update failed:', error);
+      throw new AppError(500, 'NOTIFICATION_UPDATE_FAILED', 'Unable to update the notification.');
+    }
+    if (!data) {
       throw new AppError(404, 'NOTIFICATION_NOT_FOUND', 'Notification not found.');
     }
 
-    const updatedNotification = {
-      ...current[index],
-      read: true,
-      readAt: current[index]?.readAt || new Date().toISOString()
-    };
+    const { count, error: countError } = await supabase
+      .from('Notification')
+      .select('notificationId', { count: 'exact', head: true })
+      .eq('recipientId', educatorId)
+      .is('readAt', null);
 
-    const next = [...current];
-    next[index] = updatedNotification;
-    await this._saveEducatorNotificationFeed(educatorId, next);
+    if (countError) {
+      console.error('[NotificationService] Notification unread-count lookup failed:', countError);
+      throw new AppError(500, 'NOTIFICATION_LOAD_FAILED', 'Unable to load notifications.');
+    }
 
     return {
-      notification: updatedNotification,
-      unreadCount: next.filter(item => item?.read !== true).length
+      notification: this._mapNotificationRow(data),
+      unreadCount: Number(count || 0)
     };
   }
 

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,3 +24,11 @@ CHUNK_OVERLAP_TOKENS = 100
 CHAT_TIMEOUT_SECONDS = 30  # per UC-02 alt flow
 
 TESSERACT_CMD = os.environ.get("TESSERACT_CMD")
+if not TESSERACT_CMD and os.name == "nt":
+    for candidate in (
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    ):
+        if Path(candidate).exists():
+            TESSERACT_CMD = candidate
+            break

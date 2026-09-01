@@ -16,7 +16,7 @@ export default defineConfig({
 
   // Development frontend server.
   server: {
-    port: 5000
+    port: 5173
   },
 
   // Production frontend build output.

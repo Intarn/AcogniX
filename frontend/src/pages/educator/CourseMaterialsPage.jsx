@@ -29,6 +29,7 @@ function getMaterialOrder(material) {
 
 
 function getMaterialFileName(material) {
+  if (material?.originalFileName) return material.originalFileName;
   if (material?.fileName) return material.fileName;
 
   const resourceUrl = String(material?.resourceUrl || '').trim();

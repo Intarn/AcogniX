@@ -2,8 +2,9 @@ const AssessmentService = require('../service/AssessmentService');
 const { UserRole } = require('../enums/AuthEnums');
 
 function handleControllerError(error, res) {
-    if (error.statusCode) {
-        return res.status(error.statusCode).json({
+    const statusCode = Number(error?.statusCode ?? error?.status);
+    if (Number.isInteger(statusCode) && statusCode >= 400 && statusCode <= 599) {
+        return res.status(statusCode).json({
             code: error.code,
             message: error.message
         });

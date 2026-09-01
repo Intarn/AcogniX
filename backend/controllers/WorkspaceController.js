@@ -19,21 +19,16 @@ class WorkspaceController {
 
   static async createProject(req, res) {
     try {
-      const { name, workspaceId, courseId } = req.body;
+      const { name } = req.body;
       const learnerId = req.user.userId;
 
       if (!name || !String(name).trim()) {
         return res.status(400).json({ code: 'INVALID_NAME', message: 'Tên project không được để trống.' });
       }
 
-      // Tự động tìm workspaceId nếu client không gửi kèm
-      let targetWsId = workspaceId;
-      if (!targetWsId) {
-        const ws = await WorkspaceService.getWorkspace(learnerId);
-        targetWsId = ws.workspaceId;
-      }
-
-      const project = await WorkspaceService.createPersonalProject(targetWsId, courseId, name.trim());
+      // Never trust a client-supplied workspaceId/courseId for Personal Projects.
+      // The service resolves the authenticated Learner's Workspace server-side.
+      const project = await WorkspaceService.createPersonalProject(learnerId, name.trim());
       return res.status(201).json({ message: 'Tạo project thành công.', project });
     } catch (error) {
       if (error.statusCode === 409 || error.code === 'PROJECT_NAME_EXISTS') {

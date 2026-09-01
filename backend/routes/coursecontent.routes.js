@@ -10,6 +10,13 @@ const upload = multer({ storage: multer.memoryStorage() }); // Store in RAM befo
 // Ensure user is authenticated
 router.use(requireAuth);
 
+// Controlled PA5 setup helper for UC17-UI07. Disabled by EmailService in production.
+router.post(
+  '/test/simulate-email-failure',
+  authorize(UserRole.EDUCATOR),
+  CourseContentController.simulateNextEmailFailure
+);
+
 // UC-05: Manage Course Materials
 router.post(
   '/:courseId/materials', 

@@ -422,6 +422,9 @@ class AssessmentService {
                 if (optionContents.some(content => !content)) {
                     throw new AppError(400, 'INVALID_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice option content cannot be empty.');
                 }
+                if (new Set(optionContents.map(content => content.toLowerCase())).size !== optionContents.length) {
+                    throw new AppError(400, 'DUPLICATE_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice options must be unique.');
+                }
                 updateData.options = optionContents;
                 updateData.correctAnswer = String(correctOptions[0].content).trim();
             } else if (questionRow.type !== QuestionType.MULTIPLE_CHOICE) {
@@ -1195,6 +1198,20 @@ class AssessmentService {
         const assessment = this._toAssessment(synchronized);
         const now = new Date();
 
+        // Check the schedule before interpreting the Submission status. Otherwise a
+        // late-disabled Assessment incorrectly reports ALREADY_FINALIZED after the
+        // deadline instead of the actual late-submission error.
+        if (now < startTime) {
+            throw new AppError(409, 'ASSESSMENT_NOT_STARTED', 'This Assessment has not started yet.');
+        }
+        if (now > deadline && !assessmentRow.allowLateSubmission) {
+            throw new AppError(
+                409,
+                'LATE_SUBMISSION_NOT_ALLOWED',
+                'The deadline has passed and late submission is not allowed.'
+            );
+        }
+
         const canAcceptSubmission = assessment.canAcceptSubmission(now);
         const quizCanSubmit =
             assessment.type === AssessmentType.QUIZ &&
@@ -1211,19 +1228,6 @@ class AssessmentService {
                 409,
                 'SUBMISSION_ALREADY_FINALIZED',
                 'This Submission can no longer be submitted or changed.'
-            );
-        }
-
-        if (now < startTime) {
-            throw new AppError(409, 'ASSESSMENT_NOT_STARTED', 'This Assessment has not started yet.');
-        }
-
-        const isLate = now > deadline;
-        if (isLate && !assessmentRow.allowLateSubmission) {
-            throw new AppError(
-                409,
-                'LATE_SUBMISSION_NOT_ALLOWED',
-                'The deadline has passed and late submission is not allowed.'
             );
         }
 
@@ -1260,9 +1264,20 @@ class AssessmentService {
             status = SubmissionStatus.GRADED;
         }
 
-        const submittedAt = now.toISOString();
+        // Re-check using the server clock immediately before the final write. The
+        // deadline may have passed while answers/questions were being loaded.
+        const finalizeNow = new Date();
+        const isLate = finalizeNow > deadline;
+        if (isLate && !assessmentRow.allowLateSubmission) {
+            throw new AppError(
+                409,
+                'LATE_SUBMISSION_NOT_ALLOWED',
+                'The deadline has passed and late submission is not allowed.'
+            );
+        }
+        const submittedAt = finalizeNow.toISOString();
 
-        const { data, error } = await supabase
+        let updateQuery = supabase
             .from('Submission')
             .update({
                 submittedAt,
@@ -1271,10 +1286,30 @@ class AssessmentService {
                 score
             })
             .eq('submissionId', submissionId)
+            .eq('learnerId', learnerId)
+            .eq('status', submissionRow.status);
+
+        // Optimistic concurrency: two simultaneous finalize requests that read the
+        // same old row cannot both succeed, even when the resulting status value is
+        // the same (for example PENDING_REVIEW -> PENDING_REVIEW on an Assignment).
+        if (submissionRow.submittedAt) {
+            updateQuery = updateQuery.eq('submittedAt', submissionRow.submittedAt);
+        } else {
+            updateQuery = updateQuery.is('submittedAt', null);
+        }
+
+        const { data, error } = await updateQuery
             .select()
-            .single();
+            .maybeSingle();
 
         if (error) throw error;
+        if (!data) {
+            throw new AppError(
+                409,
+                'SUBMISSION_ALREADY_FINALIZED',
+                'This Submission was already finalized by another request.'
+            );
+        }
 
         let analytics = null;
         if (status === SubmissionStatus.GRADED) {
@@ -1458,7 +1493,7 @@ class AssessmentService {
     static async _assertStoredQuestionsReadyForPublish(assessmentId, totalPoints, assessmentType) {
         const { data, error } = await supabase
             .from('Question')
-            .select('points, type')
+            .select('content, points, type, options, correctAnswer')
             .eq('assessmentId', assessmentId);
 
         if (error) throw error;
@@ -1473,15 +1508,35 @@ class AssessmentService {
         }
 
         const expectedQuestionType = this._getExpectedQuestionType(assessmentType);
-        const invalidQuestion = questions.find(
-            question => question.type !== expectedQuestionType
-        );
-        if (invalidQuestion) {
+        for (const question of questions) {
             this._assertQuestionTypeMatchesAssessment(
-                invalidQuestion.type,
+                question.type,
                 expectedQuestionType,
                 assessmentType
             );
+
+            if (!String(question.content || '').trim()) {
+                throw new AppError(400, 'QUESTION_CONTENT_REQUIRED', 'Question content cannot be empty.');
+            }
+
+            if (expectedQuestionType === QuestionType.MULTIPLE_CHOICE) {
+                const optionContents = Array.isArray(question.options)
+                    ? question.options.map(option => String(option || '').trim())
+                    : [];
+
+                if (optionContents.length < 2 || optionContents.some(content => !content)) {
+                    throw new AppError(400, 'INVALID_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice option content cannot be empty.');
+                }
+
+                if (new Set(optionContents.map(content => content.toLowerCase())).size !== optionContents.length) {
+                    throw new AppError(400, 'DUPLICATE_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice options must be unique.');
+                }
+
+                const correctAnswer = String(question.correctAnswer || '').trim();
+                if (!correctAnswer || optionContents.filter(content => content === correctAnswer).length !== 1) {
+                    throw new AppError(400, 'INVALID_CORRECT_OPTION', 'Select exactly one correct option.');
+                }
+            }
         }
 
         this._assertQuestionPointsMatchTotal(totalPoints, questions);
@@ -1538,9 +1593,13 @@ class AssessmentService {
     }
 
     static async _insertQuestion(assessmentId, questionInput) {
-        const { content, type, points = 0, displayOrder = 0, options = [] } = questionInput;
-        if (!content || !Object.values(QuestionType).includes(type)) {
-            throw new AppError(400, 'INVALID_QUESTION_DATA', 'Question content and type are required.');
+        const { type, points = 0, displayOrder = 0, options = [] } = questionInput || {};
+        const content = String(questionInput?.content || '').trim();
+        if (!content) {
+            throw new AppError(400, 'QUESTION_CONTENT_REQUIRED', 'Question content cannot be empty.');
+        }
+        if (!Object.values(QuestionType).includes(type)) {
+            throw new AppError(400, 'INVALID_QUESTION_DATA', 'Question type is required.');
         }
         const numericQuestionPoints = Number(points);
         if (!Number.isFinite(numericQuestionPoints) || numericQuestionPoints <= 0) {
@@ -1549,15 +1608,24 @@ class AssessmentService {
         let optionContents = [];
         let correctAnswer = null;
         if (type === QuestionType.MULTIPLE_CHOICE) {
-            const correctOptions = options.filter(option => option.isCorrect);
-            if (options.length < 2 || correctOptions.length !== 1) {
-                throw new AppError(
-                    400,
-                    'INVALID_MULTIPLE_CHOICE_OPTIONS',
-                    'A multiple-choice Question requires at least two options and exactly one correct option.'
-                );
+            if (!Array.isArray(options)) {
+                throw new AppError(400, 'INVALID_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice options must be an array.');
             }
-            optionContents = options.map(option => option.content);
+            const normalizedOptions = options.map(option => ({
+                content: String(option?.content || '').trim(),
+                isCorrect: option?.isCorrect === true
+            }));
+            const correctOptions = normalizedOptions.filter(option => option.isCorrect);
+            if (normalizedOptions.length < 2 || normalizedOptions.some(option => !option.content)) {
+                throw new AppError(400, 'INVALID_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice option content cannot be empty.');
+            }
+            if (new Set(normalizedOptions.map(option => option.content.toLowerCase())).size !== normalizedOptions.length) {
+                throw new AppError(400, 'DUPLICATE_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice options must be unique.');
+            }
+            if (correctOptions.length !== 1) {
+                throw new AppError(400, 'INVALID_CORRECT_OPTION', 'Select exactly one correct option.');
+            }
+            optionContents = normalizedOptions.map(option => option.content);
             correctAnswer = correctOptions[0].content;
         }
         const { data, error } = await supabase

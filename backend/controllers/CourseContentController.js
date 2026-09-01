@@ -1,5 +1,6 @@
 // backend/controllers/CourseContentController.js
 const CourseContentService = require('../service/CourseContentService');
+const EmailService = require('../service/EmailService');
 const { UserRole } = require('../enums/AuthEnums');
 
 /**
@@ -20,6 +21,15 @@ function handleControllerError(error, res) {
 }
 
 class CourseContentController {
+  static async simulateNextEmailFailure(req, res) {
+    try {
+      EmailService.armNextDeliveryFailure();
+      return res.status(200).json({ success: true, message: 'The next email delivery will fail once.' });
+    } catch (error) {
+      return handleControllerError(error, res);
+    }
+  }
+
   static async uploadMaterial(req, res) {
     try {
       const educatorId = req.user.userId;

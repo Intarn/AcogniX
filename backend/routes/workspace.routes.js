@@ -7,7 +7,28 @@ const { requireAuth, authorize } = require('../middleware/authMiddleware');
 const { UserRole } = require('../enums/AuthEnums');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }
+});
+
+const handleMaterialUpload = (req, res, next) => {
+  upload.single('material')(req, res, (error) => {
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        code: 'FILE_TOO_LARGE',
+        message: 'File exceeds the 50MB size limit.'
+      });
+    }
+    if (error) {
+      return res.status(400).json({
+        code: 'UPLOAD_ERROR',
+        message: error.message || 'Unable to upload the material.'
+      });
+    }
+    return next();
+  });
+};
 
 router.use(requireAuth);
 router.use(authorize(UserRole.LEARNER));
@@ -20,7 +41,7 @@ router.delete('/projects/:projectId', WorkspaceController.deleteProject);
 router.put('/projects/:projectId/context', WorkspaceController.updateActiveContext);
 
 // Materials
-router.post('/projects/:projectId/materials', upload.single('material'), WorkspaceController.uploadMaterial);
+router.post('/projects/:projectId/materials', handleMaterialUpload, WorkspaceController.uploadMaterial);
 router.delete('/projects/:projectId/materials/:materialId', WorkspaceController.deleteMaterial);
 
 // Notes

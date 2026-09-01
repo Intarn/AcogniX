@@ -25,6 +25,10 @@ class CourseContentService {
     let resourceUrl = linkUrl ? String(linkUrl).trim() : null;
     let fileType = null;
     let sizeBytes = 0;
+    let originalFileName = null;
+    let storageBucket = null;
+    let storagePath = null;
+    let mimeType = null;
 
     if (resourceType === ResourceType.FILE) {
       if (!file) {
@@ -46,12 +50,17 @@ class CourseContentService {
       resourceUrl = publicUrlData?.publicUrl || filePath;
       fileType = file.mimetype;
       sizeBytes = file.size;
+      originalFileName = file.originalname;
+      storageBucket = BUCKET_MATERIALS;
+      storagePath = filePath;
+      mimeType = file.mimetype;
     } else if (resourceType === ResourceType.LINK) {
       if (!resourceUrl) {
         throw new AppError(400, 'LINK_URL_REQUIRED', 'A link URL is required.');
       }
       fileType = 'link';
       sizeBytes = 0;
+      mimeType = 'link';
     } else {
       throw new AppError(400, 'INVALID_RESOURCE_TYPE', 'Invalid resource type.');
     }
@@ -66,6 +75,10 @@ class CourseContentService {
         resourceUrl,
         fileType,
         sizeBytes,
+        originalFileName,
+        storageBucket,
+        storagePath,
+        mimeType,
         available: true
       }])
       .select()
@@ -130,12 +143,17 @@ class CourseContentService {
       updateData.resourceUrl = publicUrlData?.publicUrl || filePath;
       updateData.fileType = newFile.mimetype;
       updateData.sizeBytes = newFile.size;
+      updateData.originalFileName = newFile.originalname;
+      updateData.storageBucket = BUCKET_MATERIALS;
+      updateData.storagePath = filePath;
+      updateData.mimeType = newFile.mimetype;
 
-      // Dọn dẹp file cũ trên Storage nếu trước đó là File
-      if (oldMaterial.resourceType === ResourceType.FILE && oldMaterial.resourceUrl?.includes(BUCKET_MATERIALS)) {
-        const oldFilePath = oldMaterial.resourceUrl.split(`${BUCKET_MATERIALS}/`)[1];
+      // Dọn dẹp file cũ trên Storage. Prefer persisted metadata; retain a
+      // legacy resourceUrl fallback for rows created before the migration.
+      if (oldMaterial.resourceType === ResourceType.FILE) {
+        const oldFilePath = oldMaterial.storagePath || this._getMaterialStoragePath(oldMaterial.resourceUrl);
         if (oldFilePath) {
-          await supabase.storage.from(BUCKET_MATERIALS).remove([oldFilePath]);
+          await supabase.storage.from(oldMaterial.storageBucket || BUCKET_MATERIALS).remove([oldFilePath]);
         }
       }
     }
@@ -148,12 +166,16 @@ class CourseContentService {
       updateData.resourceUrl = linkUrl;
       updateData.fileType = 'link';
       updateData.sizeBytes = 0;
+      updateData.originalFileName = null;
+      updateData.storageBucket = null;
+      updateData.storagePath = null;
+      updateData.mimeType = 'link';
 
-      // Xóa file cũ nếu đổi từ FILE sang LINK
-      if (oldMaterial.resourceType === ResourceType.FILE && oldMaterial.resourceUrl?.includes(BUCKET_MATERIALS)) {
-        const oldFilePath = oldMaterial.resourceUrl.split(`${BUCKET_MATERIALS}/`)[1];
+      // Xóa file cũ nếu đổi từ FILE sang LINK.
+      if (oldMaterial.resourceType === ResourceType.FILE) {
+        const oldFilePath = oldMaterial.storagePath || this._getMaterialStoragePath(oldMaterial.resourceUrl);
         if (oldFilePath) {
-          await supabase.storage.from(BUCKET_MATERIALS).remove([oldFilePath]);
+          await supabase.storage.from(oldMaterial.storageBucket || BUCKET_MATERIALS).remove([oldFilePath]);
         }
       }
     }
@@ -192,10 +214,10 @@ class CourseContentService {
     const material = await this._getMaterialAndVerifyOwnership(materialId, educatorId);
 
     // Xóa file trên Storage nếu tài liệu là FILE
-    if (material.resourceType === ResourceType.FILE && material.resourceUrl) {
-      const filePath = material.resourceUrl.split(`${BUCKET_MATERIALS}/`)[1];
+    if (material.resourceType === ResourceType.FILE) {
+      const filePath = material.storagePath || this._getMaterialStoragePath(material.resourceUrl);
       if (filePath) {
-        await supabase.storage.from(BUCKET_MATERIALS).remove([filePath]);
+        await supabase.storage.from(material.storageBucket || BUCKET_MATERIALS).remove([filePath]);
       }
     }
 
@@ -409,17 +431,20 @@ class CourseContentService {
   }
 
   static async _downloadMaterialFile(material) {
-    if (material.resourceType !== ResourceType.FILE || !material.resourceUrl) {
+    if (material.resourceType !== ResourceType.FILE) {
       throw new AppError(400, 'MATERIAL_NOT_FILE', 'This material is not a downloadable file.');
     }
 
-    const filePath = this._getMaterialStoragePath(material.resourceUrl);
+    // New rows carry the Storage locator explicitly. Legacy rows still fall back
+    // to parsing resourceUrl until their metadata is backfilled.
+    const filePath = material.storagePath || this._getMaterialStoragePath(material.resourceUrl);
+    const storageBucket = material.storageBucket || BUCKET_MATERIALS;
     if (!filePath) {
       throw new AppError(410, 'MATERIAL_FILE_UNAVAILABLE', 'This file is no longer available.');
     }
 
     const { data: downloaded, error: downloadError } = await supabase.storage
-      .from(BUCKET_MATERIALS)
+      .from(storageBucket)
       .download(filePath);
 
     if (downloadError || !downloaded) {
@@ -439,7 +464,7 @@ class CourseContentService {
       throw new AppError(410, 'MATERIAL_FILE_UNAVAILABLE', 'This file is no longer available.');
     }
 
-    const mimeType = String(material.fileType || 'application/octet-stream').toLowerCase();
+    const mimeType = String(material.mimeType || material.fileType || 'application/octet-stream').toLowerCase();
     const isPdf = mimeType.includes('pdf');
     const isDocx = mimeType.includes('wordprocessingml') || mimeType.includes('docx');
 
@@ -451,9 +476,10 @@ class CourseContentService {
     }
 
     const storedName = decodeURIComponent(filePath.split('/').pop() || '');
-    const originalName = storedName.replace(/^\d+_/, '').trim();
+    const originalName = String(material.originalFileName || '').trim()
+      || storedName.replace(/^\d+_/, '').trim();
 
-    const urlPath = String(material.resourceUrl).split('?')[0];
+    const urlPath = String(material.resourceUrl || filePath).split('?')[0];
     const extensionMatch = urlPath.match(/\.([A-Za-z0-9]+)$/);
     const extension = extensionMatch ? `.${extensionMatch[1]}` : '';
     const safeBaseName = String(material.title || 'course-material')
@@ -465,7 +491,7 @@ class CourseContentService {
 
     return {
       buffer,
-      mimeType: material.fileType || 'application/octet-stream',
+      mimeType: material.mimeType || material.fileType || 'application/octet-stream',
       fileName: originalName || fallbackName,
       material
     };
@@ -678,19 +704,19 @@ class CourseContentService {
     if (
       !material ||
       material.resourceType !== ResourceType.FILE ||
-      !material.resourceUrl
+      (!material.storagePath && !material.resourceUrl)
     ) {
       return material;
     }
 
-    const filePath = this._getMaterialStoragePath(material.resourceUrl);
+    const filePath = material.storagePath || this._getMaterialStoragePath(material.resourceUrl);
 
     if (!filePath) {
       return material;
     }
 
     const { data, error } = await supabase.storage
-      .from(BUCKET_MATERIALS)
+      .from(material.storageBucket || BUCKET_MATERIALS)
       .createSignedUrl(filePath, 60 * 60);
 
     if (error || !data?.signedUrl) {

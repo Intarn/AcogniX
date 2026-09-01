@@ -1,6 +1,7 @@
 // frontend/src/contexts/AuthContext.jsx
 import { createContext, useContext, useState, useEffect } from 'react';
 import { apiRequest } from '../services/apiClient';
+import { finalizeActiveStudyTracking } from '../services/studyTrackingCoordinator';
 import {
   getProfile,
   login as loginRequest,
@@ -35,6 +36,22 @@ export function AuthProvider({ children }) {
 
   // Restore and validate an existing authenticated session.
   async function refreshUser() {
+    const pendingLogoutToken = sessionStorage.getItem('pendingLogoutToken');
+    if (pendingLogoutToken) {
+      try {
+        await apiRequest('/auth/logout', { method: 'POST', authToken: pendingLogoutToken });
+        sessionStorage.removeItem('pendingLogoutToken');
+      } catch (error) {
+        // Remain logged out locally and retry revocation on the next refresh.
+        console.warn('Deferred logout revocation is still pending:', error);
+      }
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('currentUser');
+      setUser(null);
+      setLoading(false);
+      return null;
+    }
+
     const token = localStorage.getItem('accessToken');
     if (!token) {
       // A cached user without a token is not an authenticated session.
@@ -188,20 +205,36 @@ export function AuthProvider({ children }) {
 
   // UC22 - Log Out
   const logout = async () => {
+    const token = localStorage.getItem('accessToken');
+
+    // UC03-UI05: finalize Study Sessions while authentication is still valid.
+    // A tracking persistence error must not prevent the user from logging out.
+    try {
+      await finalizeActiveStudyTracking('logout');
+    } catch (trackingError) {
+      console.warn('Unable to finalize Study Session during logout:', trackingError);
+    }
+
     try {
       if (typeof logoutRequest === 'function') {
         await logoutRequest();
       } else {
         await apiRequest('/auth/logout', { method: 'POST' });
       }
+      sessionStorage.removeItem('pendingLogoutToken');
     } catch (e) {
       console.error('Logout API error:', e);
+      // UC22-UI04: clear authentication locally immediately, but keep the old
+      // token only in sessionStorage so revocation can be retried after network
+      // recovery without restoring the previous authenticated UI.
+      if (token) sessionStorage.setItem('pendingLogoutToken', token);
     } finally {
       localStorage.removeItem('accessToken');
       localStorage.removeItem('currentUser');
       setUser(null);
     }
   };
+
 
   const updateUser = (newFields) => {
     setUser((prev) => {

@@ -95,7 +95,7 @@ export default function CourseMaterials() {
     try {
       setViewerLoading(true);
       const { blob, contentType, contentDisposition } = await getCourseMaterialFileBlob(material.materialId);
-      const fallbackName = getFileNameFromResourceUrl(material.resourceUrl, material.title || 'course-material');
+      const fallbackName = material.originalFileName || getFileNameFromResourceUrl(material.resourceUrl, material.title || 'course-material');
       const fileName = getFileNameFromContentDisposition(contentDisposition, fallbackName);
       setPreviewFile({ blob, contentType, fileName });
       setViewingMaterial(material);
@@ -119,7 +119,7 @@ export default function CourseMaterials() {
       const { blob, contentDisposition } = await getCourseMaterialFileBlob(material.materialId, { download: true });
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      const fallbackName = getFileNameFromResourceUrl(material.resourceUrl, material.title || 'course-material');
+      const fallbackName = material.originalFileName || getFileNameFromResourceUrl(material.resourceUrl, material.title || 'course-material');
       link.href = blobUrl;
       link.download = getFileNameFromContentDisposition(contentDisposition, fallbackName);
       document.body.appendChild(link);

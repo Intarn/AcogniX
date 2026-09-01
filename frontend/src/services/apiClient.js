@@ -7,15 +7,16 @@ export async function apiRequest(
   path,
   options = {}
 ) {
-  const token = localStorage.getItem('accessToken');
+  const { authToken, ...requestOptions } = options;
+  const token = authToken || localStorage.getItem('accessToken');
 
   const headers = {
-    ...options.headers
+    ...requestOptions.headers
   };
 
   if (
-    options.body &&
-    !(options.body instanceof FormData)
+    requestOptions.body &&
+    !(requestOptions.body instanceof FormData)
   ) {
     headers['Content-Type'] = 'application/json';
   }
@@ -24,10 +25,10 @@ export async function apiRequest(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const method = String(options.method || 'GET').toUpperCase();
+  const method = String(requestOptions.method || 'GET').toUpperCase();
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
+    ...requestOptions,
     headers,
     ...(method === 'GET' ? { cache: 'no-store' } : {})
   });

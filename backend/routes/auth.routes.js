@@ -6,6 +6,7 @@ const router = express.Router();
 
 router.post('/signup', AuthController.register);
 router.post('/login', AuthController.login);
+router.post('/test/fail-next', AuthController.armTestFailure);
 router.post('/logout', requireAuth, AuthController.logout);
 
 module.exports = router;
