@@ -1,6 +1,5 @@
 // frontend/src/pages/auth/Settings.jsx
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../contexts/ToastContext';
 import { useConfirm } from '../../contexts/ConfirmContext';
@@ -33,14 +32,7 @@ function buildProfileState(profile = {}, user = {}) {
   };
 }
 
-function formatStudyHours(value) {
-  const hours = Number(value || 0);
-  if (!Number.isFinite(hours) || hours <= 0) return '0 h';
-  return `${Number(hours.toFixed(2))} h`;
-}
-
 export default function Settings() {
-  const navigate = useNavigate();
   const { user, updateUser, logout } = useAuth();
   const { showToast } = useToast();
   const { confirm } = useConfirm();
@@ -53,7 +45,6 @@ export default function Settings() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState(EMPTY_PROFILE);
   const [originalProfile, setOriginalProfile] = useState(EMPTY_PROFILE);
-  const [learningSummary, setLearningSummary] = useState(null);
   const [displayNameError, setDisplayNameError] = useState('');
   const [avatarError, setAvatarError] = useState('');
 
@@ -80,7 +71,6 @@ export default function Settings() {
         const nextProfile = buildProfileState(res.profile || res, user);
         setProfileForm(nextProfile);
         setOriginalProfile(nextProfile);
-        setLearningSummary(res.learningSummary || null);
         setIsEditingProfile(false);
         setDisplayNameError('');
         setAvatarError('');
@@ -90,7 +80,6 @@ export default function Settings() {
         const fallbackProfile = buildProfileState({}, user);
         setProfileForm(fallbackProfile);
         setOriginalProfile(fallbackProfile);
-        setLearningSummary(null);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -284,7 +273,6 @@ export default function Settings() {
       profileForm.displayName || 'User'
     )}&color=fff&background=3b82f6`;
 
-  const isLearner = String(profileForm.role || '').toUpperCase() === 'LEARNER';
 
   if (loading) {
     return (
@@ -490,44 +478,6 @@ export default function Settings() {
                   )}
                 </form>
 
-                {isLearner && (
-                  <section className="rounded-2xl border border-blue-100 bg-blue-50/40 p-5" aria-label="Personal Learning Summary">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                      <div>
-                        <h2 className="text-sm font-black text-gray-900">Personal Learning Summary</h2>
-                        <p className="text-[11px] text-gray-500 mt-0.5">High-level all-time learning activity.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/learner/dashboard')}
-                        className="text-xs font-bold text-blue-600 hover:text-blue-700 self-start sm:self-auto"
-                      >
-                        View Detailed Statistics
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="bg-white rounded-xl border border-blue-100 p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Total Active Study Hours</p>
-                        <p className="text-lg font-black text-gray-900 mt-1">
-                          {formatStudyHours(learningSummary?.totalActiveStudyHours)}
-                        </p>
-                      </div>
-                      <div className="bg-white rounded-xl border border-blue-100 p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Total AI Interactions</p>
-                        <p className="text-lg font-black text-gray-900 mt-1">
-                          {Number(learningSummary?.totalAiInteractions || 0)}
-                        </p>
-                      </div>
-                      <div className="bg-white rounded-xl border border-blue-100 p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Total Flashcards Created</p>
-                        <p className="text-lg font-black text-gray-900 mt-1">
-                          {Number(learningSummary?.totalFlashcardsCreated || 0)}
-                        </p>
-                      </div>
-                    </div>
-                  </section>
-                )}
               </div>
             )}
 

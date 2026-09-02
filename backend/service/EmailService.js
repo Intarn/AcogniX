@@ -119,6 +119,22 @@ class EmailService {
   }
 
 
+  static async sendForgotPassword(to, tempPassword) {
+    const safePassword = EmailService.escapeHtml(tempPassword);
+    await this.send(
+      to,
+      'AcogniX - Your New Password',
+      `
+        <p>We received a Forgot Password request for your AcogniX account.</p>
+        <p>Your password has been changed by the system.</p>
+        <p>New temporary password: <b>${safePassword}</b></p>
+        <p>Please log in with this password and change it from your profile as soon as possible.</p>
+        <p>If you did not request this change, please contact support immediately.</p>
+      `
+    );
+  }
+
+
   static async sendPasswordReset(to, tempPassword) {
     await this.send(
       to,

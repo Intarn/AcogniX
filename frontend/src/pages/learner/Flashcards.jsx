@@ -1,7 +1,9 @@
 // frontend/src/pages/learner/Flashcards.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { getSavedFlashcards } from '../../services/aiService';
+import { recordFlashcardReview } from '../../services/analyticsService';
+import { useStudyTracker } from '../../hooks/useStudyTracker';
 
 export default function Flashcards() {
   const [searchParams] = useSearchParams();
@@ -14,6 +16,16 @@ export default function Flashcards() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [loading, setLoading] = useState(true);
+  const reviewedCardIdsRef = useRef(new Set());
+  const deckReviewRecordedRef = useRef(false);
+  const reviewSessionIdRef = useRef(
+    globalThis.crypto?.randomUUID
+      ? globalThis.crypto.randomUUID()
+      : `flash-review-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+
+  // UC03: flashcard review is meaningful AI-Project study activity too.
+  useStudyTracker(projectId, Boolean(projectId && setId));
 
   useEffect(() => {
     if (!projectId || !setId) {
@@ -34,6 +46,11 @@ export default function Flashcards() {
           setCards(rawCards);
           setCurrentIndex(0);
           setShowAnswer(false);
+          reviewedCardIdsRef.current = new Set();
+          deckReviewRecordedRef.current = false;
+          reviewSessionIdRef.current = globalThis.crypto?.randomUUID
+            ? globalThis.crypto.randomUUID()
+            : `flash-review-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         } else {
           setCards([]);
         }
@@ -47,6 +64,43 @@ export default function Flashcards() {
 
     loadCards();
   }, [projectId, setId, navigate]);
+
+  const markCurrentCardReviewed = async () => {
+    const card = cards[currentIndex];
+    const flashcardId = card?.flashcardId || card?.id;
+    if (!flashcardId || reviewedCardIdsRef.current.has(String(flashcardId))) return;
+
+    // A card reveal only contributes to completing the current deck locally.
+    // Progress counts a reviewed DECK, not the number of individual cards.
+    reviewedCardIdsRef.current.add(String(flashcardId));
+
+    const deckCompleted =
+      cards.length > 0 && reviewedCardIdsRef.current.size >= cards.length;
+
+    if (!deckCompleted || deckReviewRecordedRef.current) return;
+
+    deckReviewRecordedRef.current = true;
+    try {
+      await recordFlashcardReview({
+        projectId,
+        setId,
+        flashcardId,
+        reviewSessionId: reviewSessionIdRef.current,
+        completed: true,
+        reviewedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      // Allow the completion event to retry if persistence failed.
+      deckReviewRecordedRef.current = false;
+      console.warn('[Flashcard Deck Review Tracking Error]:', error);
+    }
+  };
+
+  const revealAnswer = () => {
+    if (showAnswer) return;
+    setShowAnswer(true);
+    void markCurrentCardReviewed();
+  };
 
   const handlePrevious = () => {
     if (currentIndex <= 0) return;
@@ -129,7 +183,13 @@ export default function Flashcards() {
         ) : (
           <div className="space-y-6">
             <div
-              onClick={() => setShowAnswer((prev) => !prev)}
+              onClick={() => {
+                if (showAnswer) {
+                  setShowAnswer(false);
+                } else {
+                  revealAnswer();
+                }
+              }}
               className="w-full min-h-[340px] bg-white rounded-3xl border border-gray-100 shadow-md hover:shadow-lg transition-all p-8 flex flex-col justify-between cursor-pointer relative overflow-hidden group select-none"
             >
               <div className="flex items-center justify-between">
@@ -165,7 +225,7 @@ export default function Flashcards() {
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      setShowAnswer(true);
+                      revealAnswer();
                     }}
                     className="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-6 py-2.5 rounded-full transition-colors inline-block"
                   >

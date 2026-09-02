@@ -25,6 +25,15 @@ class AnalyticsController {
     }
   }
 
+  static async recordFlashcardReview(req, res) {
+    try {
+      const result = await AnalyticsService.recordFlashcardReview(req.user.userId, req.body || {});
+      return res.status(200).json({ message: 'Flashcard review recorded.', data: result });
+    } catch (error) {
+      return handleControllerError(error, res);
+    }
+  }
+
   // UC-04: Supports predefined ranges and a learner-selected custom date range.
   static async getPersonalStats(req, res) {
     try {

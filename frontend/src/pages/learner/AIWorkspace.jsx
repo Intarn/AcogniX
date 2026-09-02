@@ -136,6 +136,16 @@ export default function AIWorkspace() {
   const [activeNoteId, setActiveNoteId] = useState(null);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
+  const noteEditorRef = useRef(null);
+  const [noteFormats, setNoteFormats] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    strikeThrough: false,
+    justifyLeft: false,
+    justifyCenter: false,
+    justifyRight: false
+  });
 
   // AI Chat state
   const [chatInput, setChatInput] = useState('');
@@ -750,22 +760,61 @@ export default function AIWorkspace() {
       }
     }
 
+    const uploadedMaterials = [];
+
     try {
+      // Upload and AI extraction are intentionally separated. PDF extraction can
+      // take noticeably longer than DOCX extraction, so the material must be
+      // shown in the Workspace as soon as storage + DB creation succeeds.
       setUploading(true);
+
       for (const file of files) {
         const safeName = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
         const safeFile = new File([file], safeName, { type: file.type });
+
         showToast(`Uploading: ${file.name}...`, 'info');
         const uploadRes = await uploadProjectMaterial(projectId, safeFile);
         const materialId = uploadRes?.material?.materialId;
+
         if (!materialId) {
           throw new Error('Upload succeeded but materialId was not returned.');
         }
 
-        showToast(`AI is extracting: ${file.name}...`, 'info');
-        await extractDocumentText(projectId, materialId, safeFile);
+        uploadedMaterials.push({
+          materialId,
+          file: safeFile,
+          originalName: file.name
+        });
       }
-      showToast('Upload and extraction completed successfully!', 'success');
+
+      // Refresh immediately after upload. Do not wait for PDF text extraction.
+      await fetchWorkspace(projectId);
+      showToast(
+        uploadedMaterials.length === 1
+          ? `${uploadedMaterials[0].originalName} uploaded successfully!`
+          : `${uploadedMaterials.length} materials uploaded successfully!`,
+        'success'
+      );
+
+      // Re-enable the Upload button now that the actual upload is complete.
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = null;
+
+      // AI processing continues after the material is already visible. A slow
+      // PDF therefore no longer makes the upload UI look frozen.
+      for (const item of uploadedMaterials) {
+        try {
+          await extractDocumentText(projectId, item.materialId, item.file);
+        } catch (extractError) {
+          console.error(`AI extraction failed for ${item.originalName}:`, extractError);
+          showToast(
+            `${item.originalName} was uploaded, but AI processing could not be completed.`,
+            'warning'
+          );
+        }
+      }
+
+      // Sync once more in case the backend exposes processing state later.
       await fetchWorkspace(projectId);
     } catch (err) {
       if (err.statusCode === 403 || err.code === 'STORAGE_LIMIT_EXCEEDED') {
@@ -847,24 +896,63 @@ export default function AIWorkspace() {
   };
 
   // UC-23: Manage Personal Notes
+  const updateNoteToolbarState = () => {
+    try {
+      setNoteFormats({
+        bold: document.queryCommandState('bold'),
+        italic: document.queryCommandState('italic'),
+        underline: document.queryCommandState('underline'),
+        strikeThrough: document.queryCommandState('strikeThrough'),
+        justifyLeft: document.queryCommandState('justifyLeft'),
+        justifyCenter: document.queryCommandState('justifyCenter'),
+        justifyRight: document.queryCommandState('justifyRight')
+      });
+    } catch {}
+  };
+
+  const syncNoteEditor = (html = '') => {
+    if (noteEditorRef.current && noteEditorRef.current.innerHTML !== html) {
+      noteEditorRef.current.innerHTML = html;
+    }
+  };
+
+  const handleNoteFormat = (command) => {
+    if (isArchivedClassProject || !currentProjectId) return;
+    document.execCommand(command, false, null);
+    noteEditorRef.current?.focus();
+    setNoteContent(noteEditorRef.current?.innerHTML || '');
+    updateNoteToolbarState();
+  };
+
   const handleCreateNewNote = () => {
     if (blockArchivedProjectAction()) return;
     setActiveNoteId(null);
     setNoteTitle('');
     setNoteContent('');
     setNoteStatus('');
+    syncNoteEditor('');
+    setTimeout(() => noteEditorRef.current?.focus(), 0);
   };
 
   const handleOpenNote = (note) => {
+    const content = note.content || '';
     setActiveNoteId(note.noteId || note.id);
     setNoteTitle(note.title || '');
-    setNoteContent(note.content || '');
+    setNoteContent(content);
     setNoteStatus('');
+    syncNoteEditor(content);
+    setTimeout(updateNoteToolbarState, 0);
   };
 
   const handleSaveNote = async () => {
     if (blockArchivedProjectAction()) return;
-    if (!noteContent.trim()) {
+    const editor = noteEditorRef.current;
+    const content = editor ? editor.innerHTML.trim() : noteContent.trim();
+    const plainText = editor
+      ? (editor.textContent || editor.innerText || '').trim()
+      : String(noteContent || '').replace(/<[^>]+>/g, ' ').trim();
+
+    if (!plainText) {
       showToast('Note content cannot be empty', 'warning');
       return;
     }
@@ -881,7 +969,7 @@ export default function AIWorkspace() {
 
       const payload = {
         title: noteTitle.trim() || 'Untitled Note',
-        content: noteContent
+        content
       };
 
       const result = activeNoteId
@@ -904,8 +992,10 @@ export default function AIWorkspace() {
       }
 
       if (savedId) setActiveNoteId(savedId);
+      const persistedContent = savedNote?.content ?? payload.content;
       setNoteTitle(savedNote?.title || payload.title);
-      setNoteContent(savedNote?.content ?? payload.content);
+      setNoteContent(persistedContent);
+      syncNoteEditor(persistedContent);
       setNoteStatus('Saved');
       showToast('Note saved successfully!', 'success');
     } catch (error) {
@@ -1383,103 +1473,168 @@ export default function AIWorkspace() {
       {showRightPanel && (
         <div
           style={{ width: `${rightWidth}%` }}
-          className="h-full bg-white border-l border-gray-100 flex flex-col p-4 gap-3 flex-shrink-0 min-w-0 max-w-[500px] overflow-hidden"
+          className="h-full bg-white border-l border-gray-200/60 flex flex-col flex-shrink-0 min-w-0 max-w-[500px] overflow-hidden"
         >
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
+          <div className="px-4 py-3 border-b border-gray-200/60 bg-white flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <button
                 onClick={() => setShowRightPanel(false)}
-                className="text-gray-400 hover:text-gray-700 p-1 rounded-md hover:bg-gray-200 transition-colors text-xs"
+                className="text-gray-400 hover:text-gray-700 p-1 rounded-md hover:bg-gray-100 transition-colors text-xs"
                 title="Hide Personal Notes"
               >
                 ▶
               </button>
-              <h2 className="text-sm font-bold text-gray-800">📝 Personal Notes</h2>
+              <div className="min-w-0">
+                <h2 className="text-sm font-black text-gray-900 truncate">Personal Notes</h2>
+                <p className="text-[10px] text-gray-400 truncate">
+                  {currentProject?.name || 'Select a Project'}
+                </p>
+              </div>
             </div>
-            <Link to="/learner/notes" className="text-[10px] font-bold text-blue-600 hover:underline">
-              Manage all →
+            <Link to="/learner/notes" className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline whitespace-nowrap">
+              Open full editor →
             </Link>
           </div>
 
-          <button
-            type="button"
-            onClick={handleCreateNewNote}
-            disabled={!currentProjectId || isArchivedClassProject}
-            className="w-full rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            + Create new note
-          </button>
+          <div className="p-3 border-b border-gray-200/60 bg-slate-50/50">
+            <button
+              type="button"
+              onClick={handleCreateNewNote}
+              disabled={!currentProjectId || isArchivedClassProject}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all"
+            >
+              + New Note
+            </button>
+          </div>
 
-          <div className="max-h-28 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-1.5">
+          <div className="max-h-40 overflow-y-auto p-3 space-y-2 border-b border-gray-200/60 bg-slate-50/30">
             {loadingNotes ? (
-              <p className="px-2 py-3 text-center text-[10px] text-gray-400">Loading notes...</p>
+              <p className="text-center text-gray-400 py-5 text-xs italic font-medium">Loading notes...</p>
             ) : projectNotes.length === 0 ? (
-              <p className="px-2 py-3 text-center text-[10px] text-gray-400">No saved notes in this Project.</p>
+              <p className="text-center text-gray-400 py-5 text-xs font-medium">No notes yet. Click “+ New Note” to create one.</p>
             ) : (
-              <div className="space-y-1">
-                {projectNotes.map((note) => {
-                  const noteId = note.noteId || note.id;
-                  const isActive = String(noteId) === String(activeNoteId);
-                  return (
-                    <button
-                      key={noteId}
-                      type="button"
-                      onClick={() => handleOpenNote(note)}
-                      className={`w-full rounded-lg px-2.5 py-2 text-left text-[10px] transition ${
-                        isActive
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-white text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      <span className="block truncate font-bold">{note.title || 'Untitled Note'}</span>
-                      <span className={`mt-0.5 block truncate ${isActive ? 'text-blue-100' : 'text-gray-400'}`}>
-                        {String(note.content || '').replace(/<[^>]+>/g, ' ').trim() || 'No content'}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+              projectNotes.map((note) => {
+                const noteId = note.noteId || note.id;
+                const isActive = String(noteId) === String(activeNoteId);
+                const snippet = String(note.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                const noteDate = note.updatedAt || note.createdAt;
+                return (
+                  <button
+                    key={noteId}
+                    type="button"
+                    onClick={() => handleOpenNote(note)}
+                    className={`w-full p-3 rounded-2xl text-left transition-all border ${
+                      isActive
+                        ? 'bg-blue-50/80 border-blue-200 shadow-sm'
+                        : 'bg-white border-gray-100 hover:border-gray-200 hover:bg-gray-50/50'
+                    }`}
+                  >
+                    <span className={`block truncate text-xs font-black ${isActive ? 'text-blue-900' : 'text-gray-900'}`}>
+                      {note.title || 'Untitled Note'}
+                    </span>
+                    <span className="mt-1 block truncate text-[10px] text-gray-500">
+                      {snippet || 'Empty content'}
+                    </span>
+                    <span className="mt-1.5 block text-[9px] font-semibold text-gray-400">
+                      {noteDate ? new Date(noteDate).toLocaleString('en-US') : ''}
+                    </span>
+                  </button>
+                );
+              })
             )}
           </div>
 
-          <input
-            type="text"
-            value={noteTitle}
-            onChange={(e) => setNoteTitle(e.target.value)}
-            disabled={!currentProjectId || isArchivedClassProject}
-            placeholder="Note title..."
-            className="w-full text-xs font-bold border border-gray-200 p-3 rounded-xl outline-none focus:border-amber-400 bg-gray-50 focus:bg-white transition-colors disabled:opacity-50"
-          />
-          <textarea
-            value={noteContent}
-            onChange={(e) => setNoteContent(e.target.value)}
-            disabled={!currentProjectId || isArchivedClassProject}
-            rows="12"
-            placeholder="Type a note or paste copied AI Tutor content here..."
-            className="w-full text-xs border border-gray-200 p-3 rounded-xl outline-none resize-none flex-1 focus:border-amber-400 bg-gray-50 focus:bg-white transition-colors leading-relaxed disabled:opacity-50"
-          />
+          <div className="flex-1 min-h-0 flex flex-col bg-white">
+            <div className="flex flex-wrap items-center gap-1 px-3 py-2 border-b border-gray-100 bg-white">
+              {[
+                ['bold', 'B', 'font-black'],
+                ['italic', 'I', 'italic font-black'],
+                ['underline', 'U', 'underline font-black'],
+                ['strikeThrough', 'S', 'line-through font-bold']
+              ].map(([command, label, extraClass]) => (
+                <button
+                  key={command}
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => handleNoteFormat(command)}
+                  disabled={!currentProjectId || isArchivedClassProject}
+                  className={`px-2.5 h-7 rounded-lg text-[10px] flex items-center justify-center transition border disabled:opacity-40 ${extraClass} ${
+                    noteFormats[command]
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white border-gray-200 text-gray-800 hover:bg-gray-50'
+                  }`}
+                  title={command}
+                >
+                  {label}
+                </button>
+              ))}
+              <div className="w-px h-4 bg-gray-200 mx-0.5" />
+              {[
+                ['justifyLeft', 'Left'],
+                ['justifyCenter', 'Center'],
+                ['justifyRight', 'Right']
+              ].map(([command, label]) => (
+                <button
+                  key={command}
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => handleNoteFormat(command)}
+                  disabled={!currentProjectId || isArchivedClassProject}
+                  className={`px-2 h-7 rounded-lg text-[9px] font-bold transition border disabled:opacity-40 ${
+                    noteFormats[command]
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-          <div className="flex items-center justify-between gap-2">
-            <span className="min-w-0 truncate text-[10px] text-gray-400 italic">{noteStatus}</span>
-            <div className="flex items-center gap-2">
-              {activeNoteId && (
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+              <input
+                type="text"
+                value={noteTitle}
+                onChange={(e) => setNoteTitle(e.target.value)}
+                disabled={!currentProjectId || isArchivedClassProject}
+                className="w-full text-lg font-black text-gray-900 outline-none pb-2 border-b border-gray-100 placeholder-gray-300 disabled:bg-transparent disabled:opacity-50"
+                placeholder="Note title..."
+              />
+
+              <div
+                ref={noteEditorRef}
+                contentEditable={Boolean(currentProjectId) && !isArchivedClassProject}
+                suppressContentEditableWarning
+                onInput={(event) => setNoteContent(event.currentTarget.innerHTML)}
+                onKeyUp={updateNoteToolbarState}
+                onMouseUp={updateNoteToolbarState}
+                data-placeholder="Type a note or paste copied AI Tutor content here..."
+                className="min-h-[260px] text-sm text-gray-800 leading-relaxed outline-none prose max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-300"
+              />
+            </div>
+
+            <div className="px-4 py-3 border-t border-gray-200/60 bg-white flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-[10px] text-gray-400 italic">{noteStatus}</span>
+              <div className="flex items-center gap-2">
+                {activeNoteId && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteNote}
+                    disabled={savingNote || isArchivedClassProject}
+                    className="text-red-600 bg-red-50 hover:bg-red-100 text-xs font-bold px-3.5 py-2.5 rounded-xl transition disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={handleDeleteNote}
-                  disabled={savingNote || isArchivedClassProject}
-                  className="rounded-xl bg-red-50 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                  onClick={handleSaveNote}
+                  disabled={!currentProjectId || savingNote || isArchivedClassProject}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-sm transition-colors"
                 >
-                  Delete
+                  {savingNote ? 'Saving...' : 'Save Note'}
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={handleSaveNote}
-                disabled={!currentProjectId || savingNote || isArchivedClassProject}
-                className="bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-sm transition-colors"
-              >
-                {savingNote ? 'Saving...' : 'Save'}
-              </button>
+              </div>
             </div>
           </div>
         </div>

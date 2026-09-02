@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../contexts/ToastContext';
+import { forgotPassword } from '../../features/auth/authApi';
 
 const EMPTY_ERRORS = {
   email: false,
@@ -18,6 +19,9 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState(EMPTY_ERRORS);
   const [submitting, setSubmitting] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
 
   const validateEmail = (emailStr) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr);
@@ -106,6 +110,33 @@ export default function Login() {
     }
   };
 
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    const cleanEmail = forgotEmail.trim();
+
+    if (!cleanEmail) {
+      showToast('Please enter your email address.', 'warning');
+      return;
+    }
+    if (!validateEmail(cleanEmail)) {
+      showToast('Please enter a valid email address.', 'warning');
+      return;
+    }
+
+    try {
+      setForgotSubmitting(true);
+      const response = await forgotPassword(cleanEmail);
+      showToast(response?.message || 'If an account exists for this email, a new temporary password has been sent to that email address.', 'success');
+      setForgotOpen(false);
+      setForgotEmail('');
+    } catch (error) {
+      showToast(error?.message || 'Unable to reset the password right now. Please try again.', 'error');
+    } finally {
+      setForgotSubmitting(false);
+    }
+  };
+
   const inputClass = (hasError) =>
     `w-full text-xs border rounded-xl p-3 outline-none bg-gray-50/50 ${
       hasError
@@ -162,6 +193,16 @@ export default function Login() {
             />
           </div>
 
+          <div className="flex justify-end -mt-1">
+            <button
+              type="button"
+              onClick={() => { setForgotEmail(email.trim()); setForgotOpen(true); }}
+              className="text-xs font-bold text-blue-600 hover:underline"
+            >
+              Forgot password?
+            </button>
+          </div>
+
           <button
             type="submit"
             disabled={submitting}
@@ -170,6 +211,28 @@ export default function Login() {
             {submitting ? 'Authenticating...' : 'Log In'}
           </button>
         </form>
+
+
+        {forgotOpen && (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+            <form onSubmit={handleForgotPassword} className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl border border-gray-100">
+              <h2 className="text-lg font-black text-gray-900">Forgot Password</h2>
+              <p className="text-xs text-gray-500 mt-2">Enter your account email. The system will generate a new temporary password and send it to your email.</p>
+              <input
+                type="email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="mt-5 w-full text-xs border border-gray-200 rounded-xl p-3 outline-none bg-gray-50/50 focus:border-blue-500"
+                autoFocus
+              />
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" disabled={forgotSubmitting} onClick={() => setForgotOpen(false)} className="px-4 py-2.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-600">Cancel</button>
+                <button type="submit" disabled={forgotSubmitting} className="px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold disabled:opacity-50">{forgotSubmitting ? 'Resetting...' : 'Send New Password'}</button>
+              </div>
+            </form>
+          </div>
+        )}
 
         <p className="text-center text-xs text-gray-500 mt-6">
           Don't have an account?{' '}

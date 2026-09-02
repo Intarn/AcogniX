@@ -13,30 +13,17 @@ class UserManagementController {
     }
   }
 
-  // Basic Flow #3-4 (UC-12)
-  static async resetPassword(req, res) {
-    const { userId } = req.params;
-    try {
-      await UserManagementService.resetPassword(userId);
-      return res.status(200).json({ message: "Password has been reset and emailed to the user." });
-    } catch (error) {
-      if (error.message === 'USER_NOT_FOUND') {
-        return res.status(404).json({ message: "User not found." });
-      }
-      return res.status(500).json({ message: "Unable to reset password. Please try again." });
-    }
-  }
 
   // Basic Flow #3-4 (UC-12)
   static async ban(req, res) {
     const { userId } = req.params;
     try {
-      await UserManagementService.banAccount(userId);
+      await UserManagementService.banAccount(req.user.userId, userId);
       return res.status(200).json({ message: "Account has been banned." });
     } catch (error) {
-      if (error.message === 'USER_NOT_FOUND') {
-        return res.status(404).json({ message: "User not found." });
-      }
+      if (error.message === 'USER_NOT_FOUND') return res.status(404).json({ message: 'User not found.' });
+      if (error.message === 'CANNOT_MANAGE_SELF') return res.status(403).json({ code: 'CANNOT_MANAGE_SELF', message: 'You cannot ban your own administrator account.' });
+      if (error.message === 'ADMIN_ACCOUNT_PROTECTED') return res.status(403).json({ code: 'ADMIN_ACCOUNT_PROTECTED', message: 'Administrator accounts cannot be banned by another administrator.' });
       return res.status(500).json({ message: "Unable to ban account. Please try again." });
     }
   }
@@ -45,12 +32,12 @@ class UserManagementController {
   static async unban(req, res) {
     const { userId } = req.params;
     try {
-      await UserManagementService.unbanAccount(userId);
+      await UserManagementService.unbanAccount(req.user.userId, userId);
       return res.status(200).json({ message: "Account has been unbanned." });
     } catch (error) {
-      if (error.message === 'USER_NOT_FOUND') {
-        return res.status(404).json({ message: "User not found." });
-      }
+      if (error.message === 'USER_NOT_FOUND') return res.status(404).json({ message: 'User not found.' });
+      if (error.message === 'CANNOT_MANAGE_SELF') return res.status(403).json({ code: 'CANNOT_MANAGE_SELF', message: 'You cannot change your own administrator account status.' });
+      if (error.message === 'ADMIN_ACCOUNT_PROTECTED') return res.status(403).json({ code: 'ADMIN_ACCOUNT_PROTECTED', message: 'Administrator accounts cannot be managed by another administrator.' });
       return res.status(500).json({ message: "Unable to unban account. Please try again." });
     }
   }
@@ -60,12 +47,14 @@ class UserManagementController {
     const { userId } = req.params;
     const { role } = req.body;
     try {
-      await UserManagementService.assignRole(userId, role);
+      await UserManagementService.assignRole(req.user.userId, userId, role);
       return res.status(200).json({ message: "Role has been updated." });
     } catch (error) {
       if (error.message === 'INVALID_ROLE') {
-        return res.status(400).json({ message: "Please select a valid role." });
+        return res.status(400).json({ code: 'INVALID_ROLE', message: 'Only Learner or Educator can be assigned from User Management.' });
       }
+      if (error.message === 'CANNOT_MANAGE_SELF') return res.status(403).json({ code: 'CANNOT_MANAGE_SELF', message: 'You cannot change your own administrator role.' });
+      if (error.message === 'ADMIN_ACCOUNT_PROTECTED') return res.status(403).json({ code: 'ADMIN_ACCOUNT_PROTECTED', message: 'Administrator roles cannot be changed from User Management.' });
       if (error.message === 'USER_NOT_FOUND') {
         return res.status(404).json({ message: "User not found." });
       }
@@ -83,9 +72,9 @@ class UserManagementController {
       await UserManagementService.requestAccountDeletion(adminUserId, adminEmail, userId);
       return res.status(200).json({ message: "A verification code has been sent to your email. Enter it to confirm deletion." });
     } catch (error) {
-      if (error.message === 'USER_NOT_FOUND') {
-        return res.status(404).json({ message: "User not found." });
-      }
+      if (error.message === 'USER_NOT_FOUND') return res.status(404).json({ message: 'User not found.' });
+      if (error.message === 'CANNOT_MANAGE_SELF') return res.status(403).json({ code: 'CANNOT_MANAGE_SELF', message: 'You cannot delete your own administrator account.' });
+      if (error.message === 'ADMIN_ACCOUNT_PROTECTED') return res.status(403).json({ code: 'ADMIN_ACCOUNT_PROTECTED', message: 'Administrator accounts cannot be deleted by another administrator.' });
       return res.status(500).json({ message: "Unable to send verification code. Please try again." });
     }
   }
@@ -107,9 +96,9 @@ class UserManagementController {
       if (error.message === 'INVALID_TWO_FACTOR_CODE' || error.message === 'TWO_FACTOR_CODE_EXPIRED') {
         return res.status(401).json({ message: "Invalid or expired verification code." });
       }
-      if (error.message === 'USER_NOT_FOUND') {
-        return res.status(404).json({ message: "User not found." });
-      }
+      if (error.message === 'USER_NOT_FOUND') return res.status(404).json({ message: 'User not found.' });
+      if (error.message === 'CANNOT_MANAGE_SELF') return res.status(403).json({ code: 'CANNOT_MANAGE_SELF', message: 'You cannot delete your own administrator account.' });
+      if (error.message === 'ADMIN_ACCOUNT_PROTECTED') return res.status(403).json({ code: 'ADMIN_ACCOUNT_PROTECTED', message: 'Administrator accounts cannot be deleted by another administrator.' });
       return res.status(500).json({ message: "Unable to delete account. Please try again." });
     }
   }

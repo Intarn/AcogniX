@@ -15,7 +15,6 @@ router.get('/courses/active-count', CourseController.countActive);
 
 // User Management APIs
 router.get('/users', UserManagementController.search);
-router.post('/users/:userId/reset-password', UserManagementController.resetPassword);
 router.post('/users/:userId/ban', UserManagementController.ban);
 router.post('/users/:userId/unban', UserManagementController.unban);
 router.post('/users/:userId/role', UserManagementController.assignRole);

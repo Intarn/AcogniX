@@ -88,6 +88,38 @@ class AuthController {
     }
   }
 
+
+  // POST /api/auth/forgot-password
+  static async forgotPassword(req, res) {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({
+        code: 'MISSING_EMAIL',
+        message: 'Please enter your email address.'
+      });
+    }
+
+    if (!EMAIL_REGEX.test(email)) {
+      return res.status(400).json({
+        code: 'INVALID_EMAIL_FORMAT',
+        message: 'Please enter a valid email address.'
+      });
+    }
+
+    try {
+      await AuthenticationService.requestPasswordReset(email);
+      return res.status(200).json({
+        message: 'If an account exists for this email, a new temporary password has been sent to that email address.'
+      });
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({
+        code: error.code || 'PASSWORD_RESET_REQUEST_FAILED',
+        message: error.message || 'Unable to reset the password right now. Please try again.'
+      });
+    }
+  }
+
   // POST /api/auth/login (UC-21)
   static async login(req, res) {
     try {

@@ -40,3 +40,9 @@ export function logout() {
 export function getProfile() {
   return apiRequest('/profile');
 }
+export function forgotPassword(email) {
+  return apiRequest('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email })
+  });
+}

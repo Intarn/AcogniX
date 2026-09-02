@@ -174,20 +174,95 @@ class AnalyticsService {
     return this.recordStudyCheckpoint(learnerId, payload);
   }
 
+  // Records a completed FLASHCARD DECK review. Individual card flips are not
+  // counted by Personal Statistics. System_Settings is used as an idempotent
+  // event store so the existing database schema does not need a migration.
+  static async recordFlashcardReview(learnerId, payload = {}) {
+    const projectId = String(payload.projectId || '').trim();
+    const setId = String(payload.setId || '').trim();
+    const flashcardId = String(payload.flashcardId || '').trim();
+    const reviewSessionId = String(payload.reviewSessionId || '').trim();
+    const completed = payload.completed === true;
+    const reviewedAtDate = payload.reviewedAt ? new Date(payload.reviewedAt) : new Date();
+
+    if (!projectId || !setId || !flashcardId || !reviewSessionId || !completed) {
+      throw new AppError(400, 'FLASHCARD_REVIEW_DATA_REQUIRED', 'Flashcard review information is incomplete.');
+    }
+    if (Number.isNaN(reviewedAtDate.getTime())) {
+      throw new AppError(400, 'INVALID_REVIEW_TIME', 'Flashcard review time is invalid.');
+    }
+
+    const { data: workspace, error: workspaceError } = await supabase
+      .from('AI_Workspace')
+      .select('workspaceId')
+      .eq('learnerId', learnerId)
+      .maybeSingle();
+    if (workspaceError) throw workspaceError;
+    if (!workspace) throw new AppError(404, 'WORKSPACE_NOT_FOUND', 'AI Workspace not found.');
+
+    const { data: project, error: projectError } = await supabase
+      .from('AI_Project')
+      .select('projectId')
+      .eq('projectId', projectId)
+      .eq('workspaceId', workspace.workspaceId)
+      .maybeSingle();
+    if (projectError) throw projectError;
+    if (!project) throw new AppError(403, 'PROJECT_ACCESS_DENIED', 'You do not have access to this AI Project.');
+
+    const { data: set, error: setError } = await supabase
+      .from('Flashcard_Set')
+      .select('flashcardSetId, projectId')
+      .eq('flashcardSetId', setId)
+      .eq('projectId', projectId)
+      .maybeSingle();
+    if (setError) throw setError;
+    if (!set) throw new AppError(404, 'FLASHCARD_SET_NOT_FOUND', 'Flashcard set not found.');
+
+    const { data: card, error: cardError } = await supabase
+      .from('Flashcard')
+      .select('flashcardId')
+      .eq('flashcardId', flashcardId)
+      .eq('flashcardSetId', setId)
+      .maybeSingle();
+    if (cardError) throw cardError;
+    if (!card) throw new AppError(404, 'FLASHCARD_NOT_FOUND', 'Flashcard not found.');
+
+    const event = {
+      learnerId,
+      projectId,
+      setId,
+      flashcardId,
+      reviewSessionId,
+      completed: true,
+      reviewedAt: reviewedAtDate.toISOString()
+    };
+    // One completion event per learner + deck + review session.
+    const settingKey = `FLASHCARD_REVIEW:${learnerId}:${reviewSessionId}:${setId}`;
+    const { error: saveError } = await supabase
+      .from('System_Settings')
+      .upsert([{ setting_key: settingKey, setting_value: JSON.stringify(event) }], { onConflict: 'setting_key' });
+
+    if (saveError) throw saveError;
+    return event;
+  }
+
   // UC-04: View Personal Statistics
   static async getPersonalStats(learnerId, timeRange = 'Last 7 days', startDate = null, endDate = null) {
     try {
       const now = new Date();
       const range = this._resolvePersonalStatsRange(timeRange, now, startDate, endDate);
 
-      const [sessionsRes, enrollmentsRes, submissionsRes, workspaceRes, practiceAttemptsRes] = await Promise.all([
+      const [sessionsRes, enrollmentsRes, submissionsRes, workspaceRes, practiceAttemptsRes, flashcardReviewsRes] = await Promise.all([
         supabase.from('Study_Session').select('durationMinutes, startTime, endTime, courseId').eq('learnerId', learnerId),
         supabase.from('Enrollment').select('courseId, Course(courseId, subjectName, courseCode, status)').eq('learnerId', learnerId).eq('status', 'APPROVED'),
         supabase.from('Submission').select('submissionId, score, status, submittedAt, Assessment(assessmentId, title, type, totalPoints, courseId)').eq('learnerId', learnerId),
         supabase.from('AI_Workspace').select('workspaceId, AI_Project(projectId, Learning_Material(materialId, title))').eq('learnerId', learnerId).maybeSingle(),
         supabase.from('System_Settings')
           .select('setting_key, setting_value')
-          .like('setting_key', `PRACTICE_QUIZ_ATTEMPT:${learnerId}:%`)
+          .like('setting_key', `PRACTICE_QUIZ_ATTEMPT:${learnerId}:%`),
+        supabase.from('System_Settings')
+          .select('setting_key, setting_value')
+          .like('setting_key', `FLASHCARD_REVIEW:${learnerId}:%`)
       ]);
 
       // UC-04 Alternative Flow 2: do not render partial/misleading statistics
@@ -197,7 +272,8 @@ class AnalyticsService {
         enrollmentsRes.error ||
         submissionsRes.error ||
         workspaceRes.error ||
-        practiceAttemptsRes.error;
+        practiceAttemptsRes.error ||
+        flashcardReviewsRes.error;
       if (retrievalError) throw retrievalError;
 
       const sessions = sessionsRes.data || [];
@@ -255,6 +331,31 @@ class AnalyticsService {
           const completedMs = new Date(attempt.completedAt).getTime();
           return completedMs >= range.start.getTime() && completedMs <= range.end.getTime();
         });
+
+      const flashcardReviews = (flashcardReviewsRes.data || [])
+        .map((row) => {
+          try {
+            const review = JSON.parse(row.setting_value || '{}');
+            if (String(review.learnerId) !== String(learnerId)) return null;
+            const reviewedAt = new Date(review.reviewedAt);
+            if (Number.isNaN(reviewedAt.getTime())) return null;
+            return { ...review, reviewedAt: reviewedAt.toISOString() };
+          } catch (_) {
+            return null;
+          }
+        })
+        .filter(Boolean)
+        .filter((review) => {
+          const reviewedMs = new Date(review.reviewedAt).getTime();
+          return reviewedMs >= range.start.getTime() && reviewedMs <= range.end.getTime();
+        });
+
+      // Progress metric means reviewed flashcard DECKS/SETS, not individual cards.
+      // Count each set at most once in the selected period. Legacy card-level
+      // events are also collapsed by setId, correcting old inflated totals.
+      const flashcardsReviewed = new Set(
+        flashcardReviews.map((review) => String(review.setId || '')).filter(Boolean)
+      ).size;
 
       const assessmentPercentages = gradedSubmissions.map((submission) => {
         const total = Number(submission.Assessment?.totalPoints || 100);
@@ -382,6 +483,7 @@ class AnalyticsService {
         sessions.length > 0 ||
         gradedSubmissions.length > 0 ||
         practiceQuizAttempts.length > 0 ||
+        flashcardsReviewed > 0 ||
         materialsStudiedCount > 0;
 
       return {
@@ -394,6 +496,7 @@ class AnalyticsService {
         practiceQuizScores: quizScoreAverage,
         overallPerformance,
         quizzesPassed,
+        flashcardsReviewed,
         coursesCompleted: coursesMasteredCount,
         progressTrend: trend.values,
         progressTrendLabels: trend.labels,

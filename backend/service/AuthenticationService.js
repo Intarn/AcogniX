@@ -6,6 +6,7 @@ const User = require('../entities/User');
 const UserSession = require('../entities/UserSession');
 const { AccountStatus } = require('../enums/AuthEnums');
 const AppError = require('../error/AppError');
+const EmailService = require('./EmailService');
 
 let failNextSignupAfterAuthCreation = false;
 let failNextSessionCreation = false;
@@ -170,6 +171,62 @@ class AuthenticationService {
 
       throw error;
     }
+  }
+
+  // ===================================================================
+  // FORGOT PASSWORD - generate a temporary password and email it
+  // ===================================================================
+  static async requestPasswordReset(email) {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+
+    // Keep the public response generic so callers cannot enumerate accounts.
+    const { data: profile, error: profileError } = await supabase
+      .from('User')
+      .select('userId, email')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error('[AuthService.requestPasswordReset] User lookup failed:', profileError);
+      throw new AppError(500, 'PASSWORD_RESET_REQUEST_FAILED', 'Unable to reset the password right now. Please try again.');
+    }
+
+    // Unknown email: intentionally behave like success without changing anything.
+    if (!profile) return true;
+
+    // Build a strong temporary password with guaranteed upper/lower/digit/symbol.
+    const randomPart = crypto.randomBytes(12).toString('base64url').slice(0, 12);
+    const tempPassword = `Ax9!${randomPart}`;
+
+    const { error: updateError } = await supabase.auth.admin.updateUserById(
+      profile.userId,
+      { password: tempPassword }
+    );
+
+    if (updateError) {
+      console.error('[AuthService.requestPasswordReset] Password update failed:', updateError);
+      throw new AppError(500, 'PASSWORD_RESET_REQUEST_FAILED', 'Unable to reset the password right now. Please try again.');
+    }
+
+    // Revoke existing AcogniX sessions after the credential changes.
+    const { error: revokeError } = await supabase
+      .from('UserSession')
+      .update({ revokedAt: new Date() })
+      .eq('userId', profile.userId)
+      .is('revokedAt', null);
+
+    if (revokeError) {
+      console.error('[AuthService.requestPasswordReset] Session revocation failed:', revokeError);
+    }
+
+    try {
+      await EmailService.sendForgotPassword(profile.email, tempPassword);
+    } catch (error) {
+      console.error('[AuthService.requestPasswordReset] Password email failed:', error);
+      throw new AppError(500, 'PASSWORD_EMAIL_FAILED', 'The password was changed, but the email could not be delivered. Please contact support.');
+    }
+
+    return true;
   }
 
   // ===================================================================

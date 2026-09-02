@@ -16,6 +16,7 @@ import {
   uploadInstructionFile
 } from '../../features/assessment/assessmentApi';
 import { useToast } from '../../contexts/ToastContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 function resolveFileUrl(rawUrl, defaultBucket = 'assessment-files') {
   if (!rawUrl) return '';
@@ -167,6 +168,7 @@ function autoDistributePoints(totalPoints, questions) {
 export default function AssessmentBuilderPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { confirm } = useConfirm();
   const { courseId: routeCourseId, assessmentId: routeAssessmentId } = useParams();
   const courseId = routeCourseId || null;
   const assessmentId = routeAssessmentId || null;
@@ -529,8 +531,13 @@ export default function AssessmentBuilderPage() {
       if (startTime && deadline && new Date(deadline) <= new Date(startTime)) {
         nextErrors.deadline = 'Deadline must be after the start time.';
       }
-      if (questions.length === 0) {
-        nextErrors.content = 'Add at least one question before publishing.';
+      const hasInstructionFile = Boolean(instructionFile || existingInstructionFileUrl);
+      const canPublishFileBasedAssignment = type === 'ASSIGNMENT' && hasInstructionFile;
+      if (questions.length === 0 && !canPublishFileBasedAssignment) {
+        nextErrors.content =
+          type === 'ASSIGNMENT'
+            ? 'Add at least one Essay question or upload an instruction file before publishing.'
+            : 'Add at least one question before publishing.';
       }
       if (questions.some((question) => question.type !== expectedQuestionType)) {
         nextErrors.content =
@@ -548,6 +555,18 @@ export default function AssessmentBuilderPage() {
 
     const publishing = targetStatus === 'SCHEDULED';
     if (!validateAssessment({ publishing })) return;
+
+    if (publishing && !allowLateSubmission) {
+      const confirmed = await confirm({
+        title: 'Late submissions are disabled',
+        message:
+          'Allow Late Submission is currently turned off. Learners will not be able to submit after the deadline. Publish with late submissions disabled?',
+        confirmLabel: 'Publish anyway',
+        cancelLabel: 'Go back',
+        tone: 'danger'
+      });
+      if (!confirmed) return;
+    }
 
     saveAssessmentInFlightRef.current = true;
     setSavingAssessment(true);

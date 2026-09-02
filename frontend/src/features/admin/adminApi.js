@@ -19,9 +19,6 @@ export function changeUserRole(userId, role) {
   });
 }
 
-export function resetUserPassword(userId) {
-  return apiRequest(`/admin/users/${userId}/reset-password`, { method: 'POST' });
-}
 
 export function requestDeleteUser(userId) {
   return apiRequest(`/admin/users/${userId}/delete/request`, { method: 'POST' });

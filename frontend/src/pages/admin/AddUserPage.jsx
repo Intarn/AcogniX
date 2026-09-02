@@ -77,7 +77,6 @@ export default function AddUserPage() {
               >
                 <option value="LEARNER">Learner</option>
                 <option value="EDUCATOR">Educator</option>
-                <option value="SYSTEM_ADMINISTRATOR">Administrator</option>
               </select>
             </div>
 
