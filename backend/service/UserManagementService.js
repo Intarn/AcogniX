@@ -1,5 +1,4 @@
 const supabase = require('../config/supabaseClient');
-const crypto = require('crypto');
 const { UserRole, AccountStatus } = require('../enums/AuthEnums');
 const EmailService = require('./EmailService');
 const TwoFactorService = require('./TwoFactorService');
@@ -7,6 +6,35 @@ const TwoFactorService = require('./TwoFactorService');
 const USER_SELECT_FIELDS = 'userId, email, displayName, role, status, createdAt';
 
 class UserManagementService {
+  static async getTargetAccount(targetUserId) {
+    const { data: profile, error } = await supabase
+      .from('User')
+      .select('userId, email, role, status')
+      .eq('userId', targetUserId)
+      .single();
+
+    if (error || !profile) {
+      const err = new Error('USER_NOT_FOUND');
+      err.status = 404;
+      throw err;
+    }
+
+    return profile;
+  }
+
+  static assertManageableNonAdminTarget(adminUserId, profile, action) {
+    if (profile.userId === adminUserId) {
+      const err = new Error('CANNOT_MANAGE_SELF');
+      err.status = 403;
+      throw err;
+    }
+    if (profile.role === UserRole.SYSTEM_ADMINISTRATOR) {
+      const err = new Error('ADMIN_ACCOUNT_PROTECTED');
+      err.status = 403;
+      throw err;
+    }
+    if (action === 'assignRole') return;
+  }
   // Basic Flow #2 (UC-12): Admin searches for accounts by exact name or email.
   // When the search box is empty, return the latest accounts for the management list.
   static async searchAccounts(query) {
@@ -60,53 +88,11 @@ class UserManagementService {
     });
   }
 
-  // Basic Flow #3-4 (UC-12): Reset password and notify the affected user.
-  static async resetPassword(targetUserId) {
-    const { data: profile, error: profileError } = await supabase
-      .from('User')
-      .select('email')
-      .eq('userId', targetUserId)
-      .single();
-
-    if (profileError || !profile) {
-      const err = new Error('USER_NOT_FOUND');
-      err.status = 404;
-      throw err;
-    }
-
-    const tempPassword = crypto
-      .randomBytes(12)
-      .toString('base64')
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .slice(0, 14);
-
-    const { error: updateError } = await supabase.auth.admin.updateUserById(
-      targetUserId,
-      { password: tempPassword }
-    );
-
-    if (updateError) {
-      const err = new Error('RESET_PASSWORD_FAILED');
-      err.status = 500;
-      throw err;
-    }
-
-    await EmailService.sendPasswordReset(profile.email, tempPassword);
-  }
 
   // Basic Flow #3-4 (UC-12): Ban account.
-  static async banAccount(targetUserId) {
-    const { data: profile, error: profileError } = await supabase
-      .from('User')
-      .select('email')
-      .eq('userId', targetUserId)
-      .single();
-
-    if (profileError || !profile) {
-      const err = new Error('USER_NOT_FOUND');
-      err.status = 404;
-      throw err;
-    }
+  static async banAccount(adminUserId, targetUserId) {
+    const profile = await this.getTargetAccount(targetUserId);
+    this.assertManageableNonAdminTarget(adminUserId, profile, 'ban');
 
     const { error } = await supabase
       .from('User')
@@ -137,18 +123,9 @@ class UserManagementService {
   }
 
   // Basic Flow #3-4 (UC-12): Unban account.
-  static async unbanAccount(targetUserId) {
-    const { data: profile, error: profileError } = await supabase
-      .from('User')
-      .select('email')
-      .eq('userId', targetUserId)
-      .single();
-
-    if (profileError || !profile) {
-      const err = new Error('USER_NOT_FOUND');
-      err.status = 404;
-      throw err;
-    }
+  static async unbanAccount(adminUserId, targetUserId) {
+    const profile = await this.getTargetAccount(targetUserId);
+    this.assertManageableNonAdminTarget(adminUserId, profile, 'unban');
 
     const { error } = await supabase
       .from('User')
@@ -165,12 +142,11 @@ class UserManagementService {
   }
 
   // Basic Flow #3-4 (UC-12): Role assignment.
-  static async assignRole(targetUserId, newRole) {
+  static async assignRole(adminUserId, targetUserId, newRole) {
     if (
       ![
         UserRole.LEARNER,
-        UserRole.EDUCATOR,
-        UserRole.SYSTEM_ADMINISTRATOR
+        UserRole.EDUCATOR
       ].includes(newRole)
     ) {
       const err = new Error('INVALID_ROLE');
@@ -178,17 +154,8 @@ class UserManagementService {
       throw err;
     }
 
-    const { data: profile, error: profileError } = await supabase
-      .from('User')
-      .select('email')
-      .eq('userId', targetUserId)
-      .single();
-
-    if (profileError || !profile) {
-      const err = new Error('USER_NOT_FOUND');
-      err.status = 404;
-      throw err;
-    }
+    const profile = await this.getTargetAccount(targetUserId);
+    this.assertManageableNonAdminTarget(adminUserId, profile, 'assignRole');
 
     const { error } = await supabase
       .from('User')
@@ -208,17 +175,8 @@ class UserManagementService {
   // The verification code is sent to the logged-in administrator, not the
   // target account being deleted.
   static async requestAccountDeletion(adminUserId, adminEmail, targetUserId) {
-    const { data: profile, error: profileError } = await supabase
-      .from('User')
-      .select('userId')
-      .eq('userId', targetUserId)
-      .single();
-
-    if (profileError || !profile) {
-      const err = new Error('USER_NOT_FOUND');
-      err.status = 404;
-      throw err;
-    }
+    const profile = await this.getTargetAccount(targetUserId);
+    this.assertManageableNonAdminTarget(adminUserId, profile, 'delete');
 
     await TwoFactorService.requestCode(
       adminUserId,
@@ -230,6 +188,9 @@ class UserManagementService {
 
   // Alternative Flow 1 (UC-12), step 2: verify 2FA and permanently delete.
   static async confirmAccountDeletion(adminUserId, targetUserId, code) {
+    const target = await this.getTargetAccount(targetUserId);
+    this.assertManageableNonAdminTarget(adminUserId, target, 'delete');
+
     await TwoFactorService.verifyCode(
       adminUserId,
       'DELETE_ACCOUNT',

@@ -1,9 +1,13 @@
+import logging
+
 from google import genai
 from google.genai import types
 from google.genai.errors import ClientError
 
 from config import EMBEDDING_MODEL, EMBEDDING_DIMENSIONS
 from services.api_key_provider import api_key_provider
+
+logger = logging.getLogger("acognix.embedding_provider")
 
 
 class EmbeddingQuotaExceeded(RuntimeError):
@@ -37,12 +41,24 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
             config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIMENSIONS),
         )
     except ClientError as exc:
+        logger.error(
+            "Gemini embedding request failed: type=%s status=%s message=%s",
+            type(exc).__name__,
+            getattr(exc, "status_code", None) or getattr(exc, "code", None) or "unknown",
+            str(exc),
+        )
         if _is_quota_error(exc):
             raise EmbeddingQuotaExceeded(
                 "Gemini embedding quota is temporarily exhausted. Please try again shortly."
             ) from exc
         raise EmbeddingServiceError("Gemini embedding request failed.") from exc
     except Exception as exc:
+        logger.error(
+            "Gemini embedding request failed: type=%s status=%s message=%s",
+            type(exc).__name__,
+            getattr(exc, "status_code", None) or getattr(exc, "code", None) or "unknown",
+            str(exc),
+        )
         if _is_quota_error(exc):
             raise EmbeddingQuotaExceeded(
                 "Gemini embedding quota is temporarily exhausted. Please try again shortly."

@@ -25,10 +25,10 @@ async def chat(req: ChatRequest):
             req.projectId,
             req.materialIds,
             req.userMessage,
-            full_context_for_small=False,
+            full_context_for_small=True,
         )
     except EmbeddingQuotaExceeded as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=429, detail={"code": "AI_EMBEDDING_QUOTA", "message": str(exc)}) from exc
     except EmbeddingServiceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     if not records:

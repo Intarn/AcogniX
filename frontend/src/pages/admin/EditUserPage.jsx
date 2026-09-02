@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { resetUserPassword, requestDeleteUser } from '../../features/admin/adminApi';
+import { requestDeleteUser } from '../../features/admin/adminApi';
 import { useConfirm } from '../../contexts/ConfirmContext';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -13,23 +13,6 @@ export default function EditUserPage() {
   const [user] = useState({
     userId: userId, email: 'mock@example.com', displayName: 'Mock User', role: 'LEARNER', status: 'ACTIVE'
   });
-
-  const handleResetPassword = async () => {
-    const confirmed = await confirm({
-      title: 'Reset User Password?',
-      message: 'A password reset email will be sent to this user.',
-      confirmLabel: 'Reset Password',
-      cancelLabel: 'Cancel',
-      tone: 'danger'
-    });
-    if (!confirmed) return;
-    try {
-      await resetUserPassword(user.userId);
-      showToast('Password reset successfully. An email has been sent.', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
-  };
 
   const handleDeleteRequest = async () => {
     const confirmed = await confirm({
@@ -74,9 +57,6 @@ export default function EditUserPage() {
             <p className="text-xs text-red-600 mt-1 font-medium">These actions are irreversible or directly affect system access privileges.</p>
           </div>
           <div className="flex gap-3 pt-2">
-            <button onClick={handleResetPassword} className="bg-white border border-red-200 text-red-600 text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-red-50 transition shadow-xs">
-              Reset Password
-            </button>
             <button onClick={handleDeleteRequest} className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition shadow-md">
               Delete Account
             </button>

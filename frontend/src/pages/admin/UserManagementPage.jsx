@@ -5,17 +5,18 @@ import {
   banUser,
   unbanUser,
   changeUserRole,
-  resetUserPassword,
   requestDeleteUser,
   confirmDeleteUser
 } from '../../features/admin/adminApi';
 import { useConfirm } from '../../contexts/ConfirmContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../hooks/useAuth';
 
 export default function UserManagementPage() {
   const navigate = useNavigate();
   const { confirm } = useConfirm();
   const { showToast } = useToast();
+  const { user: currentUser } = useAuth();
 
   const [users, setUsers] = useState([]);
   const [searchInput, setSearchInput] = useState('');
@@ -69,30 +70,6 @@ export default function UserManagementPage() {
     }
   };
 
-  const handleResetPassword = async (user) => {
-    const confirmed = await confirm({
-      title: 'Reset User Password?',
-      message: `Reset the password for ${user.email} and send the new sign-in information to the user?`,
-      confirmLabel: 'Reset Password',
-      cancelLabel: 'Cancel',
-      tone: 'danger'
-    });
-
-    if (!confirmed) return;
-
-    setActionUserId(user.userId);
-    try {
-      const response = await resetUserPassword(user.userId);
-      showToast(
-        response.message || 'Password reset completed and the user was notified by email.',
-        'success'
-      );
-    } catch (error) {
-      showToast(error.message || 'Unable to reset password.', 'error');
-    } finally {
-      setActionUserId(null);
-    }
-  };
 
   const handleToggleBan = async (user) => {
     const willBan = user.status !== 'BANNED';
@@ -139,9 +116,7 @@ export default function UserManagementPage() {
       return;
     }
 
-    const roleLabel = newRole === 'SYSTEM_ADMINISTRATOR'
-      ? 'System Administrator'
-      : newRole.charAt(0) + newRole.slice(1).toLowerCase();
+    const roleLabel = newRole.charAt(0) + newRole.slice(1).toLowerCase();
 
     const confirmed = await confirm({
       title: 'Assign New Role?',
@@ -244,7 +219,7 @@ export default function UserManagementPage() {
         <div>
           <h1 className="text-xl font-black text-gray-900 tracking-tight">User Management</h1>
           <p className="text-xs text-gray-500 mt-0.5 font-medium">
-            Search accounts, manage access status, reset passwords, assign roles, and delete accounts with 2FA verification.
+            Search accounts, manage Learner/Educator roles, account access, and deletion with protected Administrator accounts.
           </p>
         </div>
 
@@ -278,15 +253,15 @@ export default function UserManagementPage() {
 
       <main className="flex-1 overflow-y-auto p-8">
         <div className="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left whitespace-nowrap">
+          <div className="w-full overflow-hidden">
+            <table className="w-full table-fixed text-xs text-left">
               <thead className="bg-gray-50 text-gray-400 font-black uppercase tracking-wider">
                 <tr>
-                  <th className="px-6 py-4">Display Name</th>
-                  <th className="px-6 py-4">Email Address</th>
-                  <th className="px-6 py-4">Role</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
+                  <th className="w-[16%] px-4 py-4">Display Name</th>
+                  <th className="w-[24%] px-4 py-4">Email Address</th>
+                  <th className="w-[23%] px-4 py-4">Role</th>
+                  <th className="w-[12%] px-4 py-4">Status</th>
+                  <th className="w-[25%] px-4 py-4 text-right">Actions</th>
                 </tr>
               </thead>
 
@@ -307,35 +282,37 @@ export default function UserManagementPage() {
                   users.map((user) => {
                     const busy = actionUserId === user.userId;
                     const roleDraft = roleDrafts[user.userId] || user.role;
+                    const isAdministrator = user.role === 'SYSTEM_ADMINISTRATOR';
+                    const isSelf = Boolean(currentUser?.userId && currentUser.userId === user.userId);
+                    const protectedAdmin = isAdministrator || isSelf;
 
                     return (
                       <tr key={user.userId} className="hover:bg-gray-50/50 transition">
-                        <td className="px-6 py-4 font-bold text-gray-900">{user.displayName}</td>
-                        <td className="px-6 py-4 text-gray-500">{user.email}</td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
+                        <td className="px-4 py-4 font-bold text-gray-900 break-words">{user.displayName}</td>
+                        <td className="px-4 py-4 text-gray-500 break-all">{user.email}</td>
+                        <td className="px-4 py-4">
+                          <div className="flex flex-wrap items-center gap-2">
                             <select
                               value={roleDraft}
                               onChange={(event) => handleRoleDraftChange(user.userId, event.target.value)}
-                              disabled={busy}
-                              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-700 outline-none focus:border-blue-500 cursor-pointer disabled:opacity-50"
+                              disabled={busy || protectedAdmin}
+                              className="min-w-0 max-w-full bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-gray-700 outline-none focus:border-blue-500 cursor-pointer disabled:opacity-50"
                               aria-label={`Role for ${user.email}`}
                             >
                               <option value="LEARNER">Learner</option>
                               <option value="EDUCATOR">Educator</option>
-                              <option value="SYSTEM_ADMINISTRATOR">Administrator</option>
                             </select>
                             <button
                               type="button"
                               onClick={() => handleAssignRole(user)}
-                              disabled={busy || roleDraft === user.role}
+                              disabled={busy || protectedAdmin || roleDraft === user.role}
                               className="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
                             >
                               Assign Role
                             </button>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
                           <span
                             className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
                               user.status === 'BANNED'
@@ -346,21 +323,16 @@ export default function UserManagementPage() {
                             {user.status}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleResetPassword(user)}
-                              disabled={busy}
-                              className="text-xs font-bold px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition shadow-xs"
-                            >
-                              Reset Password
-                            </button>
+                        <td className="px-4 py-4 align-top">
+                          <div className="flex flex-wrap items-center justify-end gap-2 max-w-full">
+                            {protectedAdmin && (
+                              <span className="text-[10px] font-black uppercase tracking-wide text-gray-400 px-2">Protected Admin</span>
+                            )}
                             <button
                               type="button"
                               onClick={() => handleToggleBan(user)}
-                              disabled={busy}
-                              className={`text-xs font-bold px-3 py-1.5 rounded-xl transition shadow-xs disabled:opacity-50 ${
+                              disabled={busy || protectedAdmin}
+                              className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl transition shadow-xs disabled:opacity-50 whitespace-normal text-center leading-tight ${
                                 user.status === 'BANNED'
                                   ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                                   : 'bg-red-50 text-red-600 hover:bg-red-100'
@@ -371,8 +343,8 @@ export default function UserManagementPage() {
                             <button
                               type="button"
                               onClick={() => handleDeleteRequest(user)}
-                              disabled={busy}
-                              className="text-xs font-bold px-3 py-1.5 rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition shadow-xs"
+                              disabled={busy || protectedAdmin}
+                              className="text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition shadow-xs whitespace-normal text-center leading-tight"
                             >
                               Delete Account
                             </button>

@@ -9,6 +9,13 @@ export const pingStudySession = async (payload, options = {}) => {
   });
 };
 
+export const recordFlashcardReview = async (payload) => {
+  return await apiRequest('/analytics/flashcard-review', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+};
+
 export const getClassPerformance = async (courseId) => {
   return await apiRequest(`/analytics/courses/${courseId}`, {
     method: 'GET'

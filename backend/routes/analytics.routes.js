@@ -12,6 +12,7 @@ scheduleWeeklyReports();
 router.use(requireAuth);
 
 router.post('/ping', authorize('LEARNER'), AnalyticsController.pingSession); // UC-03
+router.post('/flashcard-review', authorize('LEARNER'), AnalyticsController.recordFlashcardReview); // UC-04 metric
 router.get('/me', authorize('LEARNER'), AnalyticsController.getPersonalStats); // UC-04
 router.get('/notifications', authorize('EDUCATOR'), AnalyticsController.getEducatorNotifications); // UC-11 weekly report notifications
 router.patch('/notifications/:notificationId/read', authorize('EDUCATOR'), AnalyticsController.markEducatorNotificationRead); // UC-11

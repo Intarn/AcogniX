@@ -15,6 +15,7 @@ SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 INTERNAL_SERVICE_SECRET = os.environ["AI_SERVICE_INTERNAL_SECRET"]
 
 GENERATION_MODEL = "gemini-3.6-flash"
+CHAT_FALLBACK_MODEL = "gemini-3.5-flash-lite"
 EMBEDDING_MODEL = "gemini-embedding-001"
 EMBEDDING_DIMENSIONS = 768  # must match the Document_Chunk.embedding column (vector(768))
 
@@ -22,6 +23,7 @@ CHUNK_SIZE_TOKENS = 700
 CHUNK_OVERLAP_TOKENS = 100
 
 CHAT_TIMEOUT_SECONDS = 30  # per UC-02 alt flow
+CHAT_PRIMARY_TIMEOUT_SECONDS = 8  # fail over quickly; total chat budget remains 30s
 
 TESSERACT_CMD = os.environ.get("TESSERACT_CMD")
 if not TESSERACT_CMD and os.name == "nt":

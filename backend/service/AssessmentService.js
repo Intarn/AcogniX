@@ -605,7 +605,8 @@ class AssessmentService {
         await this._assertStoredQuestionsReadyForPublish(
             assessmentId,
             assessmentRow.totalPoints,
-            assessmentRow.type
+            assessmentRow.type,
+            assessmentRow.instructionFileUrl
         );
 
         const now = new Date();
@@ -1490,7 +1491,7 @@ class AssessmentService {
         }
     }
 
-    static async _assertStoredQuestionsReadyForPublish(assessmentId, totalPoints, assessmentType) {
+    static async _assertStoredQuestionsReadyForPublish(assessmentId, totalPoints, assessmentType, instructionFileUrl = null) {
         const { data, error } = await supabase
             .from('Question')
             .select('content, points, type, options, correctAnswer')
@@ -1500,10 +1501,20 @@ class AssessmentService {
 
         const questions = data || [];
         if (questions.length === 0) {
+            const isFileBasedAssignment =
+                assessmentType === AssessmentType.ASSIGNMENT &&
+                Boolean(String(instructionFileUrl || '').trim());
+
+            if (isFileBasedAssignment) {
+                return;
+            }
+
             throw new AppError(
                 400,
-                'ASSESSMENT_QUESTION_REQUIRED',
-                'Add at least one Question before publishing the Assessment.'
+                'ASSESSMENT_CONTENT_REQUIRED',
+                assessmentType === AssessmentType.ASSIGNMENT
+                    ? 'Add at least one Essay Question or upload an instruction file before publishing the Assessment.'
+                    : 'Add at least one Question before publishing the Assessment.'
             );
         }
 
