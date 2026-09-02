@@ -1,12 +1,13 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 
 
 class FlashcardRequest(BaseModel):
     projectId: str
     materialIds: List[str] = Field(default_factory=list)
-    flashcardCount: int = 10
+    flashcardCount: int = Field(default=10, ge=1, le=30)
     length: str = "short"
+    idempotencyKey: Optional[str] = None
 
 
 class FlashcardItem(BaseModel):

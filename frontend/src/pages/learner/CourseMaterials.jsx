@@ -4,6 +4,8 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { getCourses } from '../../services/courseService';
 import { getCourseMaterials, getCourseMaterialFileBlob } from '../../features/classroom/courseContentApi';
 import { useToast } from '../../contexts/ToastContext';
+import DocumentPreviewModal from '../../components/common/DocumentPreviewModal';
+import { getFileNameFromContentDisposition, getFileNameFromResourceUrl } from '../../utils/documentPreview';
 
 function formatDateTime(value) {
   if (!value) return '';
@@ -39,7 +41,7 @@ export default function CourseMaterials() {
 
   // State cho Built-in Document Viewer (UC16-UI03)
   const [viewingMaterial, setViewingMaterial] = useState(null);
-  const [viewerUrl, setViewerUrl] = useState('');
+  const [previewFile, setPreviewFile] = useState(null);
   const [viewerLoading, setViewerLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState('ALL');
 
@@ -71,18 +73,9 @@ export default function CourseMaterials() {
     loadPage();
   }, [courseId]);
 
-  useEffect(() => {
-    return () => {
-      if (viewerUrl) window.URL.revokeObjectURL(viewerUrl);
-    };
-  }, [viewerUrl]);
-
   const closeViewer = () => {
     setViewingMaterial(null);
-    if (viewerUrl) {
-      window.URL.revokeObjectURL(viewerUrl);
-      setViewerUrl('');
-    }
+    setPreviewFile(null);
   };
 
   // Built-in Viewer & reliable Storage validation (UC16-UI03, UC16-UI05)
@@ -101,10 +94,10 @@ export default function CourseMaterials() {
 
     try {
       setViewerLoading(true);
-      const { blob } = await getCourseMaterialFileBlob(material.materialId);
-      if (viewerUrl) window.URL.revokeObjectURL(viewerUrl);
-      const nextUrl = window.URL.createObjectURL(blob);
-      setViewerUrl(nextUrl);
+      const { blob, contentType, contentDisposition } = await getCourseMaterialFileBlob(material.materialId);
+      const fallbackName = material.originalFileName || getFileNameFromResourceUrl(material.resourceUrl, material.title || 'course-material');
+      const fileName = getFileNameFromContentDisposition(contentDisposition, fallbackName);
+      setPreviewFile({ blob, contentType, fileName });
       setViewingMaterial(material);
     } catch (error) {
       closeViewer();
@@ -123,11 +116,12 @@ export default function CourseMaterials() {
     }
     try {
       setDownloadingId(material.materialId);
-      const { blob } = await getCourseMaterialFileBlob(material.materialId, { download: true });
+      const { blob, contentDisposition } = await getCourseMaterialFileBlob(material.materialId, { download: true });
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
+      const fallbackName = material.originalFileName || getFileNameFromResourceUrl(material.resourceUrl, material.title || 'course-material');
       link.href = blobUrl;
-      link.download = material.title || 'course-material';
+      link.download = getFileNameFromContentDisposition(contentDisposition, fallbackName);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -293,39 +287,16 @@ export default function CourseMaterials() {
       )}
 
       {/* BUILT-IN DOCUMENT VIEWER MODAL (UC16-UI03) */}
-      {viewingMaterial && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-4xl h-[85vh] shadow-2xl overflow-hidden flex flex-col">
-            <div className="p-4 px-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <div className="flex items-center gap-2 overflow-hidden">
-                <span className="text-base">📄</span>
-                <h3 className="text-sm font-bold text-gray-900 truncate">{viewingMaterial.title}</h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={(e) => handleDownloadMaterial(e, viewingMaterial)}
-                  className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-bold rounded-xl transition"
-                >
-                  Download
-                </button>
-                <button
-                  onClick={closeViewer}
-                  className="w-8 h-8 rounded-full bg-white hover:bg-gray-200 text-gray-500 flex items-center justify-center text-sm transition"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 bg-gray-100 p-2 overflow-hidden">
-              <iframe
-                src={viewerUrl}
-                title={viewingMaterial.title}
-                className="w-full h-full rounded-2xl bg-white border-0"
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <DocumentPreviewModal
+        open={Boolean(viewingMaterial && previewFile)}
+        title={viewingMaterial?.title}
+        fileName={previewFile?.fileName}
+        blob={previewFile?.blob}
+        contentType={previewFile?.contentType}
+        onClose={closeViewer}
+        onDownload={(e) => handleDownloadMaterial(e, viewingMaterial)}
+        downloading={downloadingId === viewingMaterial?.materialId}
+      />
     </main>
   );
 }

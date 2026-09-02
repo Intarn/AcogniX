@@ -68,40 +68,59 @@ class ProfileService {
         .filter(Boolean);
 
       if (projectIds.length > 0) {
-        const [conversationResult, flashcardResult] = await Promise.all([
+        // Fetch only identifiers first. Avoid the nested Flashcard relationship
+        // payload here: on larger histories PostgREST may spend a long time
+        // materializing every flashcard row just to calculate a count.
+        const [conversationResult, flashcardSetResult] = await Promise.all([
           supabase
             .from('Conversation')
             .select('conversationId')
             .in('projectId', projectIds),
           supabase
             .from('Flashcard_Set')
-            .select('flashcardSetId, Flashcard(flashcardId)')
+            .select('flashcardSetId')
             .in('projectId', projectIds)
         ]);
 
         if (conversationResult.error) throw conversationResult.error;
-        if (flashcardResult.error) throw flashcardResult.error;
+        if (flashcardSetResult.error) throw flashcardSetResult.error;
 
         const conversationIds = (conversationResult.data || [])
           .map((conversation) => conversation.conversationId)
           .filter(Boolean);
+        const flashcardSetIds = (flashcardSetResult.data || [])
+          .map((set) => set.flashcardSetId)
+          .filter(Boolean);
 
+        const countPromises = [];
         if (conversationIds.length > 0) {
-          // One AI_TUTOR response represents one completed AI interaction.
-          const { count, error: messageError } = await supabase
-            .from('Chat_Message')
-            .select('messageId', { count: 'exact', head: true })
-            .in('conversationId', conversationIds)
-            .eq('senderRole', 'AI_TUTOR');
-
-          if (messageError) throw messageError;
-          totalAiInteractions = Number(count || 0);
+          countPromises.push(
+            supabase
+              .from('Chat_Message')
+              .select('messageId', { count: 'exact', head: true })
+              .in('conversationId', conversationIds)
+              .eq('senderRole', 'AI_TUTOR')
+              .then(({ count, error }) => {
+                if (error) throw error;
+                totalAiInteractions = Number(count || 0);
+              })
+          );
         }
 
-        totalFlashcardsCreated = (flashcardResult.data || []).reduce(
-          (sum, set) => sum + (Array.isArray(set.Flashcard) ? set.Flashcard.length : 0),
-          0
-        );
+        if (flashcardSetIds.length > 0) {
+          countPromises.push(
+            supabase
+              .from('Flashcard')
+              .select('flashcardId', { count: 'exact', head: true })
+              .in('flashcardSetId', flashcardSetIds)
+              .then(({ count, error }) => {
+                if (error) throw error;
+                totalFlashcardsCreated = Number(count || 0);
+              })
+          );
+        }
+
+        await Promise.all(countPromises);
       }
     }
 

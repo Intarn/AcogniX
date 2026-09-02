@@ -1,10 +1,22 @@
 // frontend/src/services/progressService.js
 import { apiRequest } from './apiClient';
 
-export const getProgressOverview = async (userEmail, timeRange = 'Last 7 days') => {
+export const getProgressOverview = async (
+  userEmail,
+  timeRange = 'Last 7 days',
+  startDate = '',
+  endDate = ''
+) => {
   // UC04: let the caller handle retrieval failures so the Dashboard can show
   // the required Retry state instead of silently rendering partial statistics.
-  const data = await apiRequest(`/analytics/me?timeRange=${encodeURIComponent(timeRange)}`, {
+  const params = new URLSearchParams({ timeRange });
+
+  if (timeRange === 'Custom range') {
+    if (startDate) params.set('startDate', startDate);
+    if (endDate) params.set('endDate', endDate);
+  }
+
+  const data = await apiRequest(`/analytics/me?${params.toString()}`, {
     method: 'GET'
   });
 
@@ -18,6 +30,8 @@ export const getProgressOverview = async (userEmail, timeRange = 'Last 7 days') 
 
   return {
     selectedTimeRange: data?.selectedTimeRange || timeRange,
+    selectedStartDate: data?.selectedStartDate || startDate || null,
+    selectedEndDate: data?.selectedEndDate || endDate || null,
     timeStudied,
     totalStudyMinutes: totalMins,
     materialsStudied: Number(data?.materialsStudied || 0),

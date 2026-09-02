@@ -7,7 +7,35 @@ const UserSession = require('../entities/UserSession');
 const { AccountStatus } = require('../enums/AuthEnums');
 const AppError = require('../error/AppError');
 
+let failNextSignupAfterAuthCreation = false;
+let failNextSessionCreation = false;
+
+function hashToken(token) {
+  return crypto
+    .createHash('sha256')
+    .update(String(token || ''), 'utf8')
+    .digest('hex');
+}
+
+
 class AuthenticationService {
+  static armTestFailure(operation) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new AppError(404, 'NOT_FOUND', 'Not found.');
+    }
+
+    if (operation === 'signup') {
+      failNextSignupAfterAuthCreation = true;
+      return true;
+    }
+    if (operation === 'session') {
+      failNextSessionCreation = true;
+      return true;
+    }
+
+    throw new AppError(400, 'INVALID_TEST_OPERATION', 'operation must be signup or session.');
+  }
+
   // ===================================================================
   // SIGN UP (UC-20)
   // ===================================================================
@@ -87,6 +115,13 @@ class AuthenticationService {
 
       createdAuthUserId = authData.user.id;
 
+      // Non-production one-shot fault injection for UC20-UI09. It fails after
+      // the Auth identity exists so the compensating delete path is exercised.
+      if (failNextSignupAfterAuthCreation) {
+        failNextSignupAfterAuthCreation = false;
+        throw new AppError(500, 'SIGNUP_FAILED', 'Unable to create your account. Please try again.');
+      }
+
       const newUser = new User(
         createdAuthUserId,
         normalizedEmail,
@@ -165,16 +200,33 @@ class AuthenticationService {
       throw new AppError(403, 'BANNED_ACCOUNT', 'Your account has been banned. Please contact the System Administrator for assistance.');
     }
 
+    // Non-production one-shot fault injection for UC21-UI08. The current
+    // Supabase token is revoked and no UserSession row is created. Because the
+    // flag is consumed, the tester can immediately retry successfully.
+    if (failNextSessionCreation) {
+      failNextSessionCreation = false;
+      try {
+        await supabase.auth.admin.signOut(authData.session.access_token, 'global');
+      } catch (revokeError) {
+        console.warn('[AuthService] Failed to revoke simulated failed-session token:', revokeError?.message || revokeError);
+      }
+      throw new AppError(500, 'SESSION_CREATION_FAILED', 'Unable to log in at this time. Please try again.');
+    }
+
     const expiresAt = new Date(authData.session.expires_at * 1000);
     // SỬA TẠI ĐÂY: Dùng crypto.randomUUID() chuẩn UUID v4 thay vì cắt chuỗi access_token
     const validSessionId = authData.session.session_id || crypto.randomUUID();
 
+    const accessToken = authData.session.access_token;
     const session = new UserSession(
       validSessionId,
-      authData.session.access_token,
+      hashToken(accessToken),
       new Date(),
       expiresAt
     );
+    // The raw token is returned to the authenticated client, but never persisted
+    // in UserSession. Only its SHA-256 digest is stored server-side.
+    session.accessToken = accessToken;
     // Attach authenticated user information so the controller can return
     // the correct role immediately after login.
     session.userId = userProfile.userId;
@@ -192,6 +244,11 @@ class AuthenticationService {
 
     if (sessionInsertError) {
       console.error('[AuthService] Session creation DB failure:', sessionInsertError);
+      try {
+        await supabase.auth.admin.signOut(accessToken, 'global');
+      } catch (revokeError) {
+        console.error('[AuthService] Failed to revoke token after session insert failure:', revokeError);
+      }
       throw new AppError(500, 'SESSION_CREATION_FAILED', 'Unable to log in at this time. Please try again.');
     }
 
@@ -202,11 +259,13 @@ class AuthenticationService {
   // LOG OUT (UC-22) - Thu hồi Session Server-side
   // ===================================================================
   static async logOut(token) {
-    // 1. Cập nhật UserSession đánh dấu revokedAt
+    const digest = hashToken(token);
+
+    // Local revocation is authoritative and happens before the external Auth call.
     const { error: sessionError } = await supabase
       .from('UserSession')
       .update({ revokedAt: new Date().toISOString() })
-      .eq('tokenHash', token)
+      .eq('tokenHash', digest)
       .is('revokedAt', null);
 
     if (sessionError) {
@@ -214,32 +273,41 @@ class AuthenticationService {
       throw new AppError(500, 'LOGOUT_FAILED', 'Error during logout, please clear client session.');
     }
 
-    // 2. Sign out khỏi Supabase Auth Admin
-    const { error: authError } = await supabase.auth.admin.signOut(token, 'global');
-    if (authError) {
-      console.warn('Supabase global signout warning:', authError.message);
-      throw new AppError(500, 'LOGOUT_FAILED', authError.message);
+    // Global Supabase sign-out is best-effort after local revocation. Failure here
+    // must not make the locally revoked session valid again.
+    try {
+      const { error: authError } = await supabase.auth.admin.signOut(token, 'global');
+      if (authError) {
+        console.warn('Supabase global signout warning:', authError.message);
+      }
+    } catch (authError) {
+      console.warn('Supabase global signout warning:', authError?.message || authError);
     }
+
+    return true;
   }
 
   // ===================================================================
   // VALIDATE SESSION (Middleware Auth Check)
   // ===================================================================
   static async validateSession(token) {
-    // 1. Kiểm tra Blacklist/Revocation trong bảng UserSession
+    // 1. A valid Supabase token is not enough: the application session row
+    // must exist, match the token digest, be unrevoked and unexpired.
+    const digest = hashToken(token);
     const { data: sessionRecord, error: sessionError } = await supabase
       .from('UserSession')
       .select('sessionId, revokedAt, expiresAt')
-      .eq('tokenHash', token)
+      .eq('tokenHash', digest)
       .maybeSingle();
 
-    if (!sessionError && sessionRecord) {
-      if (sessionRecord.revokedAt !== null) {
-        throw new AppError(401, 'INVALID_SESSION', 'Session has been logged out.');
-      }
-      if (new Date(sessionRecord.expiresAt) < new Date()) {
-        throw new AppError(401, 'INVALID_SESSION', 'Session has expired.');
-      }
+    if (sessionError || !sessionRecord) {
+      throw new AppError(401, 'INVALID_SESSION', 'Session is invalid.');
+    }
+    if (sessionRecord.revokedAt !== null) {
+      throw new AppError(401, 'INVALID_SESSION', 'Session has been logged out.');
+    }
+    if (new Date(sessionRecord.expiresAt) < new Date()) {
+      throw new AppError(401, 'INVALID_SESSION', 'Session has expired.');
     }
 
     // 2. Xác thực Token với Supabase Auth

@@ -29,6 +29,65 @@ import {
 } from '../../services/workspaceService';
 import { apiRequest } from '../../services/apiClient';
 
+const LATEX_SYMBOL_REPLACEMENTS = [
+  [/\\cup/g, '∪'],
+  [/\\cap/g, '∩'],
+  [/\\in/g, '∈'],
+  [/\\notin/g, '∉'],
+  [/\\subseteq/g, '⊆'],
+  [/\\subset/g, '⊂'],
+  [/\\supseteq/g, '⊇'],
+  [/\\supset/g, '⊃'],
+  [/\\emptyset/g, '∅'],
+  [/\\forall/g, '∀'],
+  [/\\exists/g, '∃'],
+  [/\\land/g, '∧'],
+  [/\\lor/g, '∨'],
+  [/\\neg/g, '¬'],
+  [/\\leq/g, '≤'],
+  [/\\le/g, '≤'],
+  [/\\geq/g, '≥'],
+  [/\\ge/g, '≥'],
+  [/\\neq/g, '≠'],
+  [/\\times/g, '×'],
+  [/\\cdot/g, '·'],
+  [/\\leftrightarrow/g, '↔'],
+  [/\\rightarrow/g, '→'],
+  [/\\to/g, '→'],
+  [/\\leftarrow/g, '←'],
+  [/\\infty/g, '∞']
+];
+
+function convertLatexExpressionToSymbols(expression) {
+  let result = String(expression || '');
+
+  LATEX_SYMBOL_REPLACEMENTS.forEach(([pattern, symbol]) => {
+    result = result.replace(pattern, symbol);
+  });
+
+  return result
+    .replace(/\\left/g, '')
+    .replace(/\\right/g, '')
+    .replace(/\\,/g, ' ')
+    .replace(/\\;/g, ' ')
+    .replace(/\\!/g, '')
+    .replace(/\\\{/g, '{')
+    .replace(/\\\}/g, '}')
+    .trim();
+}
+
+function renderInlineLatexSymbols(text) {
+  if (!text) return text;
+
+  return String(text)
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, expression) =>
+      convertLatexExpressionToSymbols(expression)
+    )
+    .replace(/\$([^$\n]+)\$/g, (_, expression) =>
+      convertLatexExpressionToSymbols(expression)
+    );
+}
+
 export default function AIWorkspace() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -40,7 +99,7 @@ export default function AIWorkspace() {
   const targetTitle = searchParams.get('title');
 
   // ========================================================
-  // STATE ĐIỀU KHIỂN & KÍCH THƯỚC 3 PANEL (UC-01)
+  // 3-PANEL STATE & SIZE CONTROLS (UC-01)
   // ========================================================
   const [showLeftPanel, setShowLeftPanel] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
@@ -48,6 +107,7 @@ export default function AIWorkspace() {
   const [rightWidth, setRightWidth] = useState(25);
   const isDraggingLeft = useRef(false);
   const isDraggingRight = useRef(false);
+  const workspaceContainerRef = useRef(null);
 
   const [workspace, setWorkspace] = useState(null);
   const [projects, setProjects] = useState([]);
@@ -59,7 +119,7 @@ export default function AIWorkspace() {
   const [hasNoWorkspace, setHasNoWorkspace] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
-  // Modals cho Project (Tạo mới, Đổi tên)
+  // Project modals (Create, Rename)
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -81,7 +141,7 @@ export default function AIWorkspace() {
   const [chatInput, setChatInput] = useState('');
   const [conversationId, setConversationId] = useState(null);
   const [chatHistory, setChatHistory] = useState([
-    { from: 'ai', text: 'Xin chào! Tôi là AI Tutor. Hãy chọn tài liệu làm ngữ cảnh (Context) để bắt đầu học tập.' }
+    { from: 'ai', text: 'Hello! I am your AI Tutor. Select materials as context to start learning.' }
   ]);
   const [sendingChat, setSendingChat] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -89,17 +149,23 @@ export default function AIWorkspace() {
   const fileInputRef = useRef(null);
 
   const [flashcardCount, setFlashcardCount] = useState(10);
+  const [flashcardMaterialIds, setFlashcardMaterialIds] = useState([]);
   const [quizCount, setQuizCount] = useState(5);
+  const contextSaveQueueRef = useRef(Promise.resolve());
+  const contextSaveVersionRef = useRef(0);
   const [quizDifficulty, setQuizDifficulty] = useState('medium');
   const [flashcardSets, setFlashcardSets] = useState([]);
   const [generatingFlashcards, setGeneratingFlashcards] = useState(false);
+  const flashcardGenerationInFlightRef = useRef(false);
   const [showFCModal, setShowFCModal] = useState(false);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
+  const quizGenerationInFlightRef = useRef(false);
   const [showQuizModal, setShowQuizModal] = useState(false);
 
   const classProjects = projects.filter((p) => p.type === 'CLASS');
   const personalProjects = projects.filter((p) => p.type !== 'CLASS');
   const currentProjectId = currentProject?.projectId || currentProject?.id;
+  const workspaceProjectStorageKey = 'acognix.aiWorkspace.currentProjectId';
   const isArchivedClassProject = Boolean(
     currentProject?.type === 'CLASS' &&
     (currentProject?.status === 'ARCHIVED' || currentProject?.courseStatus === 'ARCHIVED')
@@ -107,14 +173,11 @@ export default function AIWorkspace() {
 
   const getInitialMaterialSelection = (project) => {
     const projectMaterials = project?.Learning_Material || project?.materials || [];
-    const savedIds = projectMaterials
+
+    return projectMaterials
       .filter((material) => material.selectedAsContext === true)
       .map((material) => material.materialId || material.id)
       .filter(Boolean);
-
-    return savedIds.length > 0
-      ? savedIds
-      : projectMaterials.map((material) => material.materialId || material.id).filter(Boolean);
   };
 
   const blockArchivedProjectAction = () => {
@@ -147,7 +210,7 @@ export default function AIWorkspace() {
   };
 
   // ========================================================
-  // LỊCH SỬ CHAT (Giữ nguyên vị trí & định vị đúng bên)
+  // CHAT HISTORY (Preserve order & align messages correctly)
   // ========================================================
   useEffect(() => {
     if (!currentProjectId) return;
@@ -155,7 +218,7 @@ export default function AIWorkspace() {
     let isMounted = true;
     const defaultWelcome = {
       from: 'ai',
-      text: `Xin chào! Bạn đang ở không gian học tập "${currentProject?.name || 'Project'}". Hãy đặt câu hỏi cho AI Tutor dựa trên tài liệu đã chọn!`
+      text: `Hello! You are in the "${currentProject?.name || 'Project'}" learning space. Ask the AI Tutor questions based on the selected materials!`
     };
 
     const fetchChatHistory = async () => {
@@ -283,34 +346,119 @@ export default function AIWorkspace() {
   // RESIZE PANEL CONTROLLERS
   // ========================================================
   useEffect(() => {
+    // Keep every workspace feature usable while the user resizes the panels.
+    // Percent-only minimums allowed Documents to become too narrow on smaller
+    // workspaces, which caused its controls to wrap, clip, or appear missing.
+    const MIN_LEFT_PX = 260;
+    const MIN_RIGHT_PX = 230;
+    const MIN_CENTER_PX = 360;
+    const MAX_SIDE_WIDTH = 45;
+
+    const getPanelLimits = (containerWidth) => {
+      const minLeft = Math.min(
+        30,
+        Math.max(15, (MIN_LEFT_PX / containerWidth) * 100)
+      );
+      const minRight = Math.min(
+        28,
+        Math.max(15, (MIN_RIGHT_PX / containerWidth) * 100)
+      );
+      const minCenter = Math.min(
+        40,
+        Math.max(25, (MIN_CENTER_PX / containerWidth) * 100)
+      );
+
+      return { minLeft, minRight, minCenter };
+    };
+
+    const normalizePanelWidths = () => {
+      const container = workspaceContainerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0) return;
+
+      const { minLeft, minRight, minCenter } = getPanelLimits(rect.width);
+
+      setLeftWidth((currentLeft) => {
+        if (!showLeftPanel) return currentLeft;
+        const effectiveRight = showRightPanel
+          ? Math.max(rightWidth, minRight)
+          : 0;
+        const maxLeft = Math.min(
+          MAX_SIDE_WIDTH,
+          100 - minCenter - effectiveRight
+        );
+        return Math.max(minLeft, Math.min(currentLeft, maxLeft));
+      });
+
+      setRightWidth((currentRight) => {
+        if (!showRightPanel) return currentRight;
+        const effectiveLeft = showLeftPanel
+          ? Math.max(leftWidth, minLeft)
+          : 0;
+        const maxRight = Math.min(
+          MAX_SIDE_WIDTH,
+          100 - minCenter - effectiveLeft
+        );
+        return Math.max(minRight, Math.min(currentRight, maxRight));
+      });
+    };
+
     const handleMouseMove = (e) => {
-      const containerWidth = window.innerWidth;
+      const container = workspaceContainerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0) return;
+
+      const { minLeft, minRight, minCenter } = getPanelLimits(rect.width);
+
       if (isDraggingLeft.current) {
-        const newLeftWidth = (e.clientX / containerWidth) * 100;
-        if (newLeftWidth >= 15 && newLeftWidth <= 45) {
-          setLeftWidth(newLeftWidth);
-        }
+        const requestedWidth = ((e.clientX - rect.left) / rect.width) * 100;
+        const otherPanelWidth = showRightPanel
+          ? Math.max(rightWidth, minRight)
+          : 0;
+        const maxAllowed = Math.min(
+          MAX_SIDE_WIDTH,
+          100 - minCenter - otherPanelWidth
+        );
+        setLeftWidth(Math.max(minLeft, Math.min(requestedWidth, maxAllowed)));
       }
+
       if (isDraggingRight.current) {
-        const newRightWidth = ((containerWidth - e.clientX) / containerWidth) * 100;
-        if (newRightWidth >= 15 && newRightWidth <= 45) {
-          setRightWidth(newRightWidth);
-        }
+        const requestedWidth = ((rect.right - e.clientX) / rect.width) * 100;
+        const otherPanelWidth = showLeftPanel
+          ? Math.max(leftWidth, minLeft)
+          : 0;
+        const maxAllowed = Math.min(
+          MAX_SIDE_WIDTH,
+          100 - minCenter - otherPanelWidth
+        );
+        setRightWidth(Math.max(minRight, Math.min(requestedWidth, maxAllowed)));
       }
     };
+
     const handleMouseUp = () => {
       isDraggingLeft.current = false;
       isDraggingRight.current = false;
       document.body.style.cursor = 'default';
       document.body.style.userSelect = 'auto';
     };
+
+    normalizePanelWidths();
+    window.addEventListener('resize', normalizePanelWidths);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+
     return () => {
+      window.removeEventListener('resize', normalizePanelWidths);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
     };
-  }, []);
+  }, [leftWidth, rightWidth, showLeftPanel, showRightPanel]);
 
   const startDraggingLeft = () => {
     isDraggingLeft.current = true;
@@ -325,7 +473,7 @@ export default function AIWorkspace() {
   };
 
   // ========================================================
-  // TẢI WORKSPACE & PERSIST CONTEXT (UC-01 & UC-16)
+  // LOAD WORKSPACE & PERSIST CONTEXT (UC-01 & UC-16)
   // ========================================================
   const fetchWorkspace = async (preservedProjectId = null) => {
     try {
@@ -343,19 +491,26 @@ export default function AIWorkspace() {
 
       if (projectList.length > 0) {
         let activeProj = projectList[0];
+        const storedProjectId = sessionStorage.getItem(workspaceProjectStorageKey);
         const targetId = preservedProjectId || currentProject?.projectId || currentProject?.id;
+
         if (targetId) {
-          activeProj = projectList.find(p => (p.projectId === targetId || p.id === targetId)) || projectList[0];
+          activeProj = projectList.find(p => String(p.projectId || p.id) === String(targetId)) || projectList[0];
         } else if (targetCourseId) {
+          // Explicit navigation from Course Materials takes priority over a
+          // previously remembered Workspace Project.
           const matched = projectList.find(p => String(p.courseId) === String(targetCourseId));
           if (matched) activeProj = matched;
+        } else if (storedProjectId) {
+          activeProj = projectList.find(p => String(p.projectId || p.id) === String(storedProjectId)) || projectList[0];
         }
 
         setCurrentProject(activeProj);
+        sessionStorage.setItem(workspaceProjectStorageKey, String(activeProj.projectId || activeProj.id));
         const projMaterials = activeProj.Learning_Material || activeProj.materials || [];
         setMaterials(projMaterials);
 
-        // UC16-UI06: Khớp tài liệu truyền từ CourseMaterials sang
+        // UC16-UI06: Match the material passed from CourseMaterials
         if (targetSourceUrl || targetTitle) {
           const targetMat = projMaterials.find(
             (m) =>
@@ -372,23 +527,21 @@ export default function AIWorkspace() {
           }
         }
 
-        // UC01-UI09: Đọc trạng thái Active Context đã lưu
+        // UC01-UI09: Read the saved Active Context state accurately.
+        // Do not automatically select all materials when the saved list is empty.
         const savedActiveIds = projMaterials
           .filter((m) => m.selectedAsContext === true)
-          .map((m) => m.materialId || m.id);
+          .map((m) => m.materialId || m.id)
+          .filter(Boolean);
 
-        if (savedActiveIds.length > 0) {
-          setSelectedMaterialIds(savedActiveIds);
-        } else {
-          const allIds = projMaterials.map((m) => m.materialId || m.id);
-          setSelectedMaterialIds(allIds);
-        }
+        setSelectedMaterialIds(savedActiveIds);
       } else {
         setCurrentProject(null);
         setMaterials([]);
+        sessionStorage.removeItem(workspaceProjectStorageKey);
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Không thể tải Workspace.');
+      setErrorMsg(err.message || 'Unable to load the Workspace.');
     } finally {
       setLoading(false);
     }
@@ -398,10 +551,21 @@ export default function AIWorkspace() {
     fetchWorkspace();
   }, [targetCourseId, targetSourceUrl, targetTitle]);
 
-  // UC01-UI09: Persist Active Context vào DB khi tick/untick
+  // Any pending response from the previously opened Project must never overwrite
+  // the selection UI of the newly opened Project.
+  useEffect(() => {
+    contextSaveVersionRef.current += 1;
+
+    if (currentProjectId) {
+      sessionStorage.setItem(workspaceProjectStorageKey, String(currentProjectId));
+    }
+  }, [currentProjectId]);
+
+  // UC01-UI09: Persist Active Context to the DB when checking/unchecking
   const toggleMaterialSelection = async (materialId) => {
     if (blockArchivedProjectAction()) return;
 
+    const previousSelected = selectedMaterialIds;
     const nextSelected = selectedMaterialIds.includes(materialId)
       ? selectedMaterialIds.filter((id) => id !== materialId)
       : [...selectedMaterialIds, materialId];
@@ -409,13 +573,59 @@ export default function AIWorkspace() {
     setSelectedMaterialIds(nextSelected);
 
     const projId = currentProject?.projectId || currentProject?.id;
-    if (projId) {
-      try {
-        await updateProjectActiveContext(projId, nextSelected);
-      } catch (e) {
-        console.error('Failed to persist active context:', e);
-      }
-    }
+    if (!projId) return;
+    const mutationVersion = ++contextSaveVersionRef.current;
+
+    // Serialize context writes. A slower older request can no longer finish after
+    // a newer click and overwrite the server state.
+    contextSaveQueueRef.current = contextSaveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const result = await updateProjectActiveContext(projId, nextSelected);
+        const persistedIds = Array.isArray(result?.selectedMaterialIds)
+          ? result.selectedMaterialIds
+          : nextSelected;
+        // The server write is still serialized, but an older response must not
+        // roll the visible UI back after a newer click/project switch.
+        if (mutationVersion !== contextSaveVersionRef.current) return;
+
+        const selectedSet = new Set(persistedIds.map((id) => String(id)));
+        const applySelection = (items = []) =>
+          items.map((material) => {
+            const id = material.materialId || material.id;
+            return {
+              ...material,
+              selectedAsContext: Boolean(id) && selectedSet.has(String(id))
+            };
+          });
+
+        setSelectedMaterialIds(persistedIds);
+        setMaterials((prev) => applySelection(prev));
+
+        setCurrentProject((prev) => {
+          if (!prev || String(prev.projectId || prev.id) !== String(projId)) return prev;
+          const updated = { ...prev };
+          if (Array.isArray(prev.Learning_Material)) updated.Learning_Material = applySelection(prev.Learning_Material);
+          if (Array.isArray(prev.materials)) updated.materials = applySelection(prev.materials);
+          return updated;
+        });
+
+        setProjects((prev) =>
+          prev.map((project) => {
+            if (String(project.projectId || project.id) !== String(projId)) return project;
+            const updated = { ...project };
+            if (Array.isArray(project.Learning_Material)) updated.Learning_Material = applySelection(project.Learning_Material);
+            if (Array.isArray(project.materials)) updated.materials = applySelection(project.materials);
+            return updated;
+          })
+        );
+      })
+      .catch((error) => {
+        if (mutationVersion === contextSaveVersionRef.current) {
+          setSelectedMaterialIds(previousSelected);
+        }
+        console.error('Failed to persist active context:', error);
+      });
   };
 
   useEffect(() => {
@@ -426,7 +636,7 @@ export default function AIWorkspace() {
         const res = await getSavedFlashcards(projId);
         setFlashcardSets(res.data || []);
       } catch (err) {
-        console.error('Lỗi Flashcards:', err);
+        console.error('Flashcards error:', err);
       }
     };
     fetchFlashcards();
@@ -440,13 +650,10 @@ export default function AIWorkspace() {
   const handleCreateProject = async (e) => {
     e.preventDefault();
     if (!newProjectName.trim()) return;
-    const wsId = workspace?.workspaceId || workspace?.id;
-    if (!wsId) return showToast('Lỗi: Không tìm thấy ID Workspace!', 'error');
-
     try {
       setCreating(true);
-      await createWorkspaceProject(newProjectName, wsId);
-      showToast('Tạo Personal Project thành công!', 'success');
+      await createWorkspaceProject(newProjectName);
+      showToast('Personal Project created successfully!', 'success');
       setNewProjectName('');
       setIsCreatingProject(false);
       await fetchWorkspace();
@@ -454,7 +661,7 @@ export default function AIWorkspace() {
       if (err.statusCode === 409 || err.code === 'PROJECT_NAME_EXISTS') {
         showToast('Project name already exists. Please choose another name.', 'error');
       } else {
-        showToast(err.message || 'Lỗi khi tạo Project.', 'error');
+        showToast(err.message || 'Unable to create the Personal Project.', 'error');
       }
     } finally {
       setCreating(false);
@@ -479,14 +686,14 @@ export default function AIWorkspace() {
         method: 'PATCH',
         body: JSON.stringify({ name: trimmed })
       });
-      showToast('Đổi tên Project thành công!', 'success');
+      showToast('Project renamed successfully!', 'success');
       setIsRenamingProject(false);
       await fetchWorkspace(currentProjectId);
     } catch (err) {
       if (err.statusCode === 409 || err.code === 'PROJECT_NAME_EXISTS') {
         showToast('Project name already exists. Please choose another name.', 'error');
       } else {
-        showToast(err.message || 'Không thể đổi tên Project.', 'error');
+        showToast(err.message || 'Unable to rename the Project.', 'error');
       }
     } finally {
       setRenaming(false);
@@ -509,10 +716,10 @@ export default function AIWorkspace() {
 
     try {
       await apiRequest(`/workspace/projects/${currentProjectId}`, { method: 'DELETE' });
-      showToast('Đã xóa Project thành công!', 'success');
+      showToast('Project deleted successfully!', 'success');
       await fetchWorkspace();
     } catch (error) {
-      showToast(error.message || 'Không thể xóa Project.', 'error');
+      showToast(error.message || 'Unable to delete the Project.', 'error');
     }
   };
 
@@ -548,21 +755,23 @@ export default function AIWorkspace() {
       for (const file of files) {
         const safeName = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
         const safeFile = new File([file], safeName, { type: file.type });
-        showToast(`Đang tải lên: ${file.name}...`, 'info');
+        showToast(`Uploading: ${file.name}...`, 'info');
         const uploadRes = await uploadProjectMaterial(projectId, safeFile);
-        const materialId = uploadRes?.materialId || uploadRes?.data?.materialId || uploadRes?.id;
-        if (materialId) {
-          showToast(`AI đang trích xuất: ${file.name}...`, 'info');
-          await extractDocumentText(materialId, safeFile);
+        const materialId = uploadRes?.material?.materialId;
+        if (!materialId) {
+          throw new Error('Upload succeeded but materialId was not returned.');
         }
+
+        showToast(`AI is extracting: ${file.name}...`, 'info');
+        await extractDocumentText(projectId, materialId, safeFile);
       }
-      showToast('Tải lên & trích xuất hoàn tất!', 'success');
+      showToast('Upload and extraction completed successfully!', 'success');
       await fetchWorkspace(projectId);
     } catch (err) {
       if (err.statusCode === 403 || err.code === 'STORAGE_LIMIT_EXCEEDED') {
         showToast('Storage capacity is full. Please delete old materials to continue.', 'error');
       } else {
-        showToast(err.message || 'Lỗi tải tài liệu.', 'error');
+        showToast(err.message || 'Failed to upload the material.', 'error');
       }
     } finally {
       setUploading(false);
@@ -574,20 +783,20 @@ export default function AIWorkspace() {
     if (blockArchivedProjectAction()) return;
 
     const isConfirmed = await confirm({
-      title: 'Xóa tài liệu',
-      message: `Bạn có chắc muốn xóa "${materialName}" khỏi Project này?`,
-      confirmLabel: 'Xóa',
-      cancelLabel: 'Hủy',
+      title: 'Delete Material',
+      message: `Are you sure you want to remove "${materialName}" from this Project?`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
       tone: 'danger'
     });
     if (!isConfirmed) return;
     const projectId = currentProject.projectId || currentProject.id;
     try {
       await deleteProjectMaterial(projectId, materialId);
-      showToast('Xóa tài liệu thành công!', 'success');
+      showToast('Material deleted successfully!', 'success');
       await fetchWorkspace(projectId);
     } catch (error) {
-      showToast(error.message || 'Lỗi khi xóa tài liệu.', 'error');
+      showToast(error.message || 'Failed to delete the material.', 'error');
     }
   };
 
@@ -598,11 +807,11 @@ export default function AIWorkspace() {
     const projId = currentProject?.projectId || currentProject?.id;
 
     if (!projId) {
-      return showToast('Vui lòng chọn hoặc tạo Project trước khi chat!', 'warning');
+      return showToast('Please select or create a Project before chatting!', 'warning');
     }
     // UC01-UI15: Require at least one material
     if (selectedMaterialIds.length === 0) {
-      return showToast('Vui lòng tick chọn ít nhất 1 tài liệu để AI có ngữ cảnh!', 'warning');
+      return showToast('Please select at least one material to provide context for the AI!', 'warning');
     }
 
     const userMsg = chatInput.trim();
@@ -624,13 +833,13 @@ export default function AIWorkspace() {
         ...prev,
         {
           from: 'ai',
-          text: response?.data?.reply || 'Không nhận được phản hồi.'
+          text: response?.data?.reply || 'No response received.'
         }
       ]);
     } catch (err) {
-      const errMsg = err.status === 408 || err.code === 'ECONNABORTED'
+      const errMsg = err.status === 408 || err.status === 504 || err.code === 'ECONNABORTED'
         ? 'Connection to AI Tutor interrupted. Please try again.'
-        : `Lỗi AI: ${err.message || 'Không thể kết nối.'}`;
+        : `AI error: ${err.message || 'Unable to connect.'}`;
       setChatHistory((prev) => [...prev, { from: 'ai', text: errMsg }]);
     } finally {
       setSendingChat(false);
@@ -738,48 +947,84 @@ export default function AIWorkspace() {
   };
 
   // AI Generators (UC-06 & UC-07)
+  const handleOpenFlashcardModal = () => {
+    if (blockArchivedProjectAction()) return;
+
+    // Start from the current Active Context for convenience, but keep the
+    // Flashcard source selection independent from Active Context.
+    const availableIds = new Set(
+      materials
+        .map((material) => material.materialId || material.id)
+        .filter(Boolean)
+        .map((id) => String(id))
+    );
+
+    const initialIds = selectedMaterialIds.filter((id) =>
+      availableIds.has(String(id))
+    );
+
+    setFlashcardMaterialIds(initialIds);
+    setShowFCModal(true);
+  };
+
+  const toggleFlashcardMaterial = (materialId) => {
+    setFlashcardMaterialIds((previous) =>
+      previous.some((id) => String(id) === String(materialId))
+        ? previous.filter((id) => String(id) !== String(materialId))
+        : [...previous, materialId]
+    );
+  };
+
   const handleGenerateFlashcards = async (e) => {
     e?.preventDefault();
+    if (flashcardGenerationInFlightRef.current) return;
     if (blockArchivedProjectAction()) return;
-    if (!currentProject) return showToast('Vui lòng chọn Project!', 'warning');
-    if (selectedMaterialIds.length === 0) return showToast('Vui lòng tick chọn ít nhất 1 tài liệu!', 'warning');
+    if (!currentProject) return showToast('Please select a Project!', 'warning');
+    if (flashcardMaterialIds.length === 0) {
+      return showToast('Please select at least one source material for Flashcards.', 'warning');
+    }
 
     const projectId = currentProject.projectId || currentProject.id;
+    flashcardGenerationInFlightRef.current = true;
     try {
       setGeneratingFlashcards(true);
-      const res = await generateAIFlashcards(projectId, selectedMaterialIds, flashcardCount, 'short');
-      showToast('AI tạo Flashcards thành công!', 'success');
+      const res = await generateAIFlashcards(projectId, flashcardMaterialIds, flashcardCount, 'short');
+      showToast('Flashcards generated successfully!', 'success');
       setShowFCModal(false);
       if (res?.flashcardSetId || res?.data?.flashcardSetId) {
         const setId = res.flashcardSetId || res.data.flashcardSetId;
         navigate(`/learner/flashcards/study?projectId=${projectId}&setId=${setId}&name=Generated+Flashcards`);
       }
     } catch (err) {
-      showToast(err.message || 'Lỗi tạo Flashcards.', 'error');
+      showToast(err.message || 'Failed to generate Flashcards.', 'error');
     } finally {
+      flashcardGenerationInFlightRef.current = false;
       setGeneratingFlashcards(false);
     }
   };
 
   const handleGenerateQuiz = async (e) => {
     e?.preventDefault();
+    if (quizGenerationInFlightRef.current) return;
     if (blockArchivedProjectAction()) return;
-    if (!currentProject) return showToast('Vui lòng chọn Project!', 'warning');
-    if (selectedMaterialIds.length === 0) return showToast('Vui lòng tick chọn ít nhất 1 tài liệu!', 'warning');
+    if (!currentProject) return showToast('Please select a Project!', 'warning');
+    if (selectedMaterialIds.length === 0) return showToast('Please select at least one material!', 'warning');
 
     const projectId = currentProject.projectId || currentProject.id;
+    quizGenerationInFlightRef.current = true;
     try {
       setGeneratingQuiz(true);
       const res = await generateAIQuiz(projectId, selectedMaterialIds, quizCount, quizDifficulty);
-      showToast('AI tạo Practice Quiz thành công!', 'success');
+      showToast('Practice Quiz generated successfully!', 'success');
       setShowQuizModal(false);
       if (res?.quizId || res?.data?.quizId) {
         const quizId = res.quizId || res.data.quizId;
         navigate(`/learner/ai-quizzes/study?projectId=${projectId}&quizId=${quizId}&name=Generated+Quiz`);
       }
     } catch (err) {
-      showToast(err.message || 'Lỗi tạo Quiz.', 'error');
+      showToast(err.message || 'Failed to generate the Quiz.', 'error');
     } finally {
+      quizGenerationInFlightRef.current = false;
       setGeneratingQuiz(false);
     }
   };
@@ -787,7 +1032,7 @@ export default function AIWorkspace() {
   if (loading && !workspace) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 bg-gray-50">
-        <p className="text-sm font-bold text-gray-500">Đang tải cấu trúc AI Workspace...</p>
+        <p className="text-sm font-bold text-gray-500">Loading AI Workspace...</p>
       </div>
     );
   }
@@ -796,10 +1041,10 @@ export default function AIWorkspace() {
     return (
       <main className="flex-1 p-8 bg-gray-50 flex items-center justify-center">
         <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-sm text-center">
-          <h2 className="text-lg font-bold text-gray-800 mb-2">Chưa có Workspace</h2>
-          <p className="text-sm text-gray-500 mb-4">Hệ thống không tìm thấy không gian học tập của bạn.</p>
+          <h2 className="text-lg font-bold text-gray-800 mb-2">Workspace Not Found</h2>
+          <p className="text-sm text-gray-500 mb-4">The system could not find your learning workspace.</p>
           <button onClick={() => fetchWorkspace()} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
-            Tải lại trang
+            Reload
           </button>
         </div>
       </main>
@@ -807,48 +1052,51 @@ export default function AIWorkspace() {
   }
 
   return (
-    <main className="flex-1 flex overflow-hidden bg-white relative w-full h-full">
+    <main ref={workspaceContainerRef} className="flex-1 flex overflow-hidden bg-white relative w-full h-full min-w-0">
       {/* PANEL 1: DOCUMENT VIEWER & CONTEXT SELECTION (UC-01) */}
       {showLeftPanel && (
         <div
           style={{ width: `${leftWidth}%` }}
-          className="h-full bg-white border-r border-gray-100 flex flex-col flex-shrink-0 min-w-[240px] max-w-[500px]"
+          className="h-full bg-white border-r border-gray-100 flex flex-col flex-shrink-0 min-w-0 max-w-[500px] overflow-hidden"
         >
           <div className="p-4 border-b border-gray-100 flex flex-col gap-3 flex-shrink-0 bg-gray-50/50">
-            <div className="flex justify-between items-center mb-1">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-gray-800">📄 Documents</h2>
+            <div className="flex justify-between items-center gap-2 mb-1 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                <h2 className="text-sm font-bold text-gray-800 whitespace-nowrap">📄 Documents</h2>
                 <button
                   onClick={() => setShowLeftPanel(false)}
                   className="text-gray-400 hover:text-gray-700 p-1 rounded-md hover:bg-gray-200 transition-colors text-xs"
-                  title="Ẩn danh sách tài liệu"
+                  title="Hide documents"
                 >
                   ◀
                 </button>
               </div>
               <button
                 onClick={() => setIsCreatingProject(true)}
-                className="text-[10px] bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1.5 rounded font-bold transition-colors"
+                className="text-[10px] bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1.5 rounded font-bold transition-colors whitespace-nowrap flex-shrink-0"
               >
                 + New Project
               </button>
             </div>
 
             {/* UC01-UI01: Categorized Projects Select */}
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 min-w-0">
               <select
                 value={currentProject?.projectId || currentProject?.id || ''}
                 onChange={(e) => {
                   const proj = projects.find((p) => String(p.projectId || p.id) === String(e.target.value));
                   const projectMaterials = proj?.Learning_Material || proj?.materials || [];
                   setCurrentProject(proj || null);
+                  if (proj) {
+                    sessionStorage.setItem(workspaceProjectStorageKey, String(proj.projectId || proj.id));
+                  }
                   setMaterials(projectMaterials);
                   // Important: never carry material IDs from the previously opened Project.
                   setSelectedMaterialIds(getInitialMaterialSelection(proj));
                   setShowQuizModal(false);
                   setShowFCModal(false);
                 }}
-                className="flex-1 text-xs font-bold text-gray-800 bg-white border border-gray-200 p-2 rounded-lg outline-none cursor-pointer focus:border-blue-500 shadow-sm truncate"
+                className="w-full min-w-0 text-xs font-bold text-gray-800 bg-white border border-gray-200 p-2 rounded-lg outline-none cursor-pointer focus:border-blue-500 shadow-sm truncate"
               >
                 <option value="" disabled>Select a Project</option>
                 {classProjects.length > 0 && (
@@ -879,7 +1127,7 @@ export default function AIWorkspace() {
                     setMaterials([]);
                     setSelectedMaterialIds([]);
                   }}
-                  className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
+                  className="p-1.5 flex-shrink-0 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
                   title="Close active Project"
                   aria-label="Close active Project"
                 >
@@ -888,11 +1136,11 @@ export default function AIWorkspace() {
               )}
 
               {currentProject && currentProject.type !== 'CLASS' && (
-                <div className="flex items-center gap-1">
-                  <button onClick={handleOpenRename} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Rename Project">
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button onClick={handleOpenRename} className="p-1.5 flex-shrink-0 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Rename Project">
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                   </button>
-                  <button onClick={handleDeleteProject} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete Project">
+                  <button onClick={handleDeleteProject} className="p-1.5 flex-shrink-0 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete Project">
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                   </button>
                 </div>
@@ -923,7 +1171,7 @@ export default function AIWorkspace() {
                     : 'bg-gray-100 text-gray-400 border-transparent cursor-not-allowed'
                 }`}
               >
-                {uploading ? 'Đang tải lên...' : '📁 Upload Materials'}
+                {uploading ? 'Uploading...' : '📁 Upload Materials'}
               </button>
             </div>
           </div>
@@ -934,7 +1182,7 @@ export default function AIWorkspace() {
               <p className="text-center text-red-500 mt-10">{errorMsg}</p>
             ) : !currentProject ? (
               <div className="text-center mt-10">
-                <p className="text-gray-400 mb-2">Tạo Personal Project hoặc chọn Class Project để bắt đầu.</p>
+                <p className="text-gray-400 mb-2">Create a Personal Project or select a Class Project to get started.</p>
               </div>
             ) : materials.length > 0 ? (
               <>
@@ -996,7 +1244,7 @@ export default function AIWorkspace() {
               </>
             ) : (
               <div className="text-center mt-10">
-                <p className="text-gray-400 mb-2">Chưa có tài liệu ngữ cảnh nào.</p>
+                <p className="text-gray-400 mb-2">No context materials available.</p>
               </div>
             )}
           </div>
@@ -1004,12 +1252,12 @@ export default function AIWorkspace() {
           {/* AI GENERATORS */}
           <div className="p-3 border-t border-gray-100 bg-gray-50/50 flex-shrink-0 grid grid-cols-2 gap-2">
             <button
-              onClick={() => setShowFCModal(true)}
+              onClick={handleOpenFlashcardModal}
               disabled={generatingFlashcards || !currentProject || materials.length === 0 || isArchivedClassProject}
               className="flex items-center justify-center gap-1.5 p-2 bg-white border border-gray-200 rounded-lg hover:border-emerald-400 hover:shadow-sm transition-all disabled:opacity-50"
             >
               <span className="text-xs">🗂️</span>
-              <span className="text-[10px] font-bold text-gray-700">Flashcards</span>
+              <span className="text-[10px] font-bold text-gray-700">Generate Flashcards</span>
             </button>
             <button
               onClick={() => setShowQuizModal(true)}
@@ -1033,16 +1281,16 @@ export default function AIWorkspace() {
       )}
 
       {/* PANEL 2: AI TUTOR CHAT (UC-01 & UC-02) */}
-      <div className="flex-1 h-full flex flex-col bg-gray-50/30 min-w-[320px] overflow-hidden">
+      <div className="flex-1 h-full flex flex-col bg-gray-50/30 min-w-0 overflow-hidden">
         <div className="p-3.5 border-b border-gray-100 bg-white flex justify-between items-center flex-shrink-0">
           <div className="flex items-center gap-2">
             {!showLeftPanel && (
               <button
                 onClick={() => setShowLeftPanel(true)}
                 className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded-md font-semibold flex items-center gap-1 shadow-sm transition-colors"
-                title="Mở tài liệu"
+                title="Open documents"
               >
-                ▶ Tài liệu
+                ▶ Documents
               </button>
             )}
             <h2 className="text-sm font-bold text-gray-800">💬 AI Tutor Chat</h2>
@@ -1057,7 +1305,7 @@ export default function AIWorkspace() {
               <button
                 onClick={() => setShowRightPanel(true)}
                 className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded-md font-semibold flex items-center gap-1 shadow-sm transition-colors"
-                title="Mở ghi chú"
+                title="Open notes"
               >
                 📝 Personal Notes
               </button>
@@ -1067,7 +1315,7 @@ export default function AIWorkspace() {
 
         <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-5 space-y-5 text-xs min-h-0">
           {loadingHistory ? (
-            <div className="text-center text-gray-400 italic py-4">Đang đồng bộ hội thoại...</div>
+            <div className="text-center text-gray-400 italic py-4">Syncing conversation...</div>
           ) : (
             chatHistory.map((msg, index) => (
               <div key={index} className={`flex ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -1082,7 +1330,7 @@ export default function AIWorkspace() {
                     msg.text
                   ) : (
                     <ReactMarkdown className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-gray-50 prose-pre:text-gray-800">
-                      {msg.text}
+                      {renderInlineLatexSymbols(msg.text)}
                     </ReactMarkdown>
                   )}
                 </div>
@@ -1106,7 +1354,7 @@ export default function AIWorkspace() {
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendChat())}
-              placeholder={isArchivedClassProject ? 'Archived Class Project — AI Tutor is disabled.' : (currentProject ? 'Hỏi AI Tutor về tài liệu đang chọn...' : 'Hãy chọn Project để chat...')}
+              placeholder={isArchivedClassProject ? 'Archived Class Project — AI Tutor is disabled.' : (currentProject ? 'Ask the AI Tutor about the selected materials...' : 'Select a Project to start chatting...')}
               disabled={!currentProject || sendingChat || isArchivedClassProject}
               rows="2"
               className="w-full bg-gray-50 text-xs rounded-xl p-4 pr-12 border border-gray-200 outline-none resize-none focus:border-blue-400 focus:bg-white transition-all disabled:bg-gray-100"
@@ -1135,7 +1383,7 @@ export default function AIWorkspace() {
       {showRightPanel && (
         <div
           style={{ width: `${rightWidth}%` }}
-          className="h-full bg-white border-l border-gray-100 flex flex-col p-4 gap-3 flex-shrink-0 min-w-[240px] max-w-[500px]"
+          className="h-full bg-white border-l border-gray-100 flex flex-col p-4 gap-3 flex-shrink-0 min-w-0 max-w-[500px] overflow-hidden"
         >
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
@@ -1241,15 +1489,15 @@ export default function AIWorkspace() {
       {isCreatingProject && (
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
-            <h3 className="text-lg font-bold text-gray-800 mb-1">Tạo Personal Project</h3>
-            <p className="text-xs text-gray-500 mb-5">Gom nhóm tài liệu liên quan vào một không gian tự học.</p>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">Create Personal Project</h3>
+            <p className="text-xs text-gray-500 mb-5">Group related learning materials into your own study space.</p>
             <form onSubmit={handleCreateProject}>
               <input
                 type="text"
                 required
                 value={newProjectName}
                 onChange={(e) => setNewProjectName(e.target.value)}
-                placeholder="VD: Luyện thi IELTS..."
+                placeholder="e.g. IELTS Preparation..."
                 className="w-full text-sm text-gray-800 border border-gray-200 p-3 rounded-xl mb-6 outline-none focus:border-blue-500"
               />
               <div className="flex justify-end gap-3">
@@ -1261,14 +1509,14 @@ export default function AIWorkspace() {
                   }}
                   className="px-5 py-2.5 text-xs font-semibold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200"
                 >
-                  Hủy
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={creating || !newProjectName.trim()}
                   className="px-5 py-2.5 text-xs font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50"
                 >
-                  Tạo Project
+                  Create Project
                 </button>
               </div>
             </form>
@@ -1280,15 +1528,15 @@ export default function AIWorkspace() {
       {isRenamingProject && (
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
-            <h3 className="text-lg font-bold text-gray-800 mb-1">Đổi tên Project</h3>
-            <p className="text-xs text-gray-500 mb-5">Nhập tên mới cho Personal Project của bạn.</p>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">Rename Project</h3>
+            <p className="text-xs text-gray-500 mb-5">Enter a new name for your Personal Project.</p>
             <form onSubmit={handleConfirmRename}>
               <input
                 type="text"
                 required
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
-                placeholder="Nhập tên mới..."
+                placeholder="Enter a new name..."
                 className="w-full text-sm text-gray-800 border border-gray-200 p-3 rounded-xl mb-6 outline-none focus:border-blue-500"
               />
               <div className="flex justify-end gap-3">
@@ -1297,14 +1545,14 @@ export default function AIWorkspace() {
                   onClick={() => setIsRenamingProject(false)}
                   className="px-5 py-2.5 text-xs font-semibold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200"
                 >
-                  Hủy
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={renaming || !renameValue.trim()}
                   className="px-5 py-2.5 text-xs font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50"
                 >
-                  Lưu thay đổi
+                  Save Changes
                 </button>
               </div>
             </form>
@@ -1314,39 +1562,105 @@ export default function AIWorkspace() {
 
       {showFCModal && (
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
-            <h3 className="text-lg font-bold text-gray-800 mb-2">Tạo Flashcard bằng AI</h3>
-            <p className="text-xs text-gray-600 mb-5 leading-relaxed">
-              Hệ thống sẽ tổng hợp kiến thức từ{' '}
-              <span className="font-bold text-emerald-600">{selectedMaterialIds.length} tài liệu đang Active</span> để
-              trích xuất thẻ học thuật.
+          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Generate Flashcards</h3>
+            <p className="text-xs text-gray-600 mb-4 leading-relaxed">
+              Select the source materials to use for this Flashcard set. This selection is independent from the
+              Project&apos;s Active Context.
             </p>
+
+            <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <label className="mb-2 block text-xs font-bold text-gray-700">Source Materials</label>
+              <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
+                {materials.map((material) => {
+                  const materialId = material.materialId || material.id;
+                  const isSelected = flashcardMaterialIds.some(
+                    (id) => String(id) === String(materialId)
+                  );
+
+                  return (
+                    <label
+                      key={materialId}
+                      className={`flex cursor-pointer items-start gap-2 rounded-lg border px-2.5 py-2 text-xs transition ${
+                        isSelected
+                          ? 'border-emerald-200 bg-emerald-50 text-gray-800'
+                          : 'border-gray-100 bg-white text-gray-600'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 accent-emerald-600"
+                        checked={isSelected}
+                        onChange={() => toggleFlashcardMaterial(materialId)}
+                      />
+                      <span className="min-w-0 flex-1 break-words">
+                        {material.title || 'Learning Material'}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <p className="mt-2 text-[10px] font-semibold text-gray-400">
+                Selected {flashcardMaterialIds.length}/{materials.length} material(s).
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <p className="mb-2 text-xs font-bold text-gray-700">Selected Materials</p>
+              {flashcardMaterialIds.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {materials
+                    .filter((material) => {
+                      const materialId = material.materialId || material.id;
+                      return flashcardMaterialIds.some(
+                        (id) => String(id) === String(materialId)
+                      );
+                    })
+                    .map((material) => (
+                      <span
+                        key={`selected-${material.materialId || material.id}`}
+                        className="max-w-full truncate rounded-lg bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700"
+                        title={material.title || 'Learning Material'}
+                      >
+                        {material.title || 'Learning Material'}
+                      </span>
+                    ))}
+                </div>
+              ) : (
+                <p className="text-[10px] font-semibold text-amber-600">
+                  Select at least one source material before generating Flashcards.
+                </p>
+              )}
+            </div>
+
             <div className="mb-6">
-              <label className="block text-xs font-bold text-gray-700 mb-2">Số lượng thẻ mục tiêu:</label>
+              <label className="block text-xs font-bold text-gray-700 mb-2">Target number of cards</label>
               <input
                 type="number"
                 min="1"
-                max="50"
+                max="30"
                 value={flashcardCount}
-                onChange={(e) => setFlashcardCount(Number(e.target.value))}
+                onChange={(e) => setFlashcardCount(Math.min(30, Math.max(1, Number(e.target.value) || 1)))}
                 className="w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:border-emerald-500 bg-gray-50 focus:bg-white transition-colors"
               />
             </div>
+
             <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setShowFCModal(false)}
                 className="px-5 py-2.5 text-xs font-semibold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200"
               >
-                Hủy
+                Cancel
               </button>
               <button
                 type="button"
                 onClick={handleGenerateFlashcards}
-                disabled={generatingFlashcards}
+                disabled={generatingFlashcards || flashcardMaterialIds.length === 0}
                 className="px-5 py-2.5 text-xs font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
               >
-                {generatingFlashcards ? 'Đang trích xuất...' : 'Tạo Thẻ'}
+                {generatingFlashcards ? 'Generating...' : 'Generate Flashcards'}
               </button>
             </div>
           </div>
@@ -1356,14 +1670,14 @@ export default function AIWorkspace() {
       {showQuizModal && (
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
-            <h3 className="text-lg font-bold text-gray-800 mb-2">Tạo Practice Quiz</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Create Practice Quiz</h3>
             <p className="text-xs text-gray-600 mb-4 leading-relaxed">
-              Project hiện tại: <span className="font-bold text-blue-700">{currentProject?.name || '—'}</span>.
-              Chỉ tài liệu thuộc Project này mới được dùng để tạo Quiz.
+              Current Project: <span className="font-bold text-blue-700">{currentProject?.name || '—'}</span>.
+              Only materials from this Project can be used to generate the Quiz.
             </p>
 
             <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <label className="mb-2 block text-xs font-bold text-gray-700">Chọn tài liệu:</label>
+              <label className="mb-2 block text-xs font-bold text-gray-700">Select materials:</label>
               <div className="max-h-32 space-y-2 overflow-y-auto pr-1">
                 {materials.map((material) => {
                   const materialId = material.materialId || material.id;
@@ -1381,24 +1695,24 @@ export default function AIWorkspace() {
                 })}
               </div>
               <p className="mt-2 text-[10px] font-semibold text-gray-400">
-                Đã chọn {selectedMaterialIds.length}/{materials.length} tài liệu trong {currentProject?.name || 'Project'}.
+                Selected {selectedMaterialIds.length}/{materials.length} materials in {currentProject?.name || 'Project'}.
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-6">
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-2">Số lượng câu hỏi:</label>
+                <label className="block text-xs font-bold text-gray-700 mb-2">Number of questions:</label>
                 <input
                   type="number"
                   min="1"
                   max="20"
                   value={quizCount}
-                  onChange={(e) => setQuizCount(Number(e.target.value))}
+                  onChange={(e) => setQuizCount(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
                   className="w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:border-blue-500 bg-gray-50 focus:bg-white transition-colors"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-2">Mức độ:</label>
+                <label className="block text-xs font-bold text-gray-700 mb-2">Difficulty:</label>
                 <select
                   value={quizDifficulty}
                   onChange={(e) => setQuizDifficulty(e.target.value)}
@@ -1416,7 +1730,7 @@ export default function AIWorkspace() {
                 onClick={() => setShowQuizModal(false)}
                 className="px-5 py-2.5 text-xs font-semibold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200"
               >
-                Hủy
+                Cancel
               </button>
               <button
                 type="button"
@@ -1424,7 +1738,7 @@ export default function AIWorkspace() {
                 disabled={generatingQuiz || selectedMaterialIds.length === 0}
                 className="px-4 py-2.5 text-xs font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 shadow-sm"
               >
-                {generatingQuiz ? 'Đang tạo...' : 'Tạo Quiz'}
+                {generatingQuiz ? 'Generating...' : 'Generate Quiz'}
               </button>
             </div>
           </div>

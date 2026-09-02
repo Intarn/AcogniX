@@ -50,13 +50,28 @@ class WorkspaceService {
       courseStatus = course?.status || null;
     }
 
+    // Self-heal both directions so Admin/Educator Archive/Restore is immediately
+    // reflected in the Learner Class Project without a second manual Restore.
+    if (project.type === 'CLASS' && courseStatus && courseStatus !== 'ARCHIVED' && project.status === 'ARCHIVED') {
+      const { error: restoreProjectError } = await supabase
+        .from('AI_Project')
+        .update({ status: 'ACTIVE' })
+        .eq('projectId', project.projectId)
+        .eq('status', 'ARCHIVED');
+
+      if (restoreProjectError) throw restoreProjectError;
+      project.status = 'ACTIVE';
+    }
+
     if (project.status === 'ARCHIVED' || courseStatus === 'ARCHIVED') {
       // Self-heal stale AI_Project status if the Course was archived first.
       if (project.status !== 'ARCHIVED') {
-        await supabase
+        const { error: archiveProjectError } = await supabase
           .from('AI_Project')
           .update({ status: 'ARCHIVED' })
           .eq('projectId', project.projectId);
+
+        if (archiveProjectError) throw archiveProjectError;
       }
 
       throw new AppError(
@@ -211,7 +226,7 @@ class WorkspaceService {
 
           // Enrollment APPROVED => Learner phải có lại quyền truy cập Class Project.
           // Nếu Project từng bị revoke khi Learner bị REMOVE, kích hoạt lại nó.
-          if (course.status !== 'ARCHIVED' && project.status === 'INACTIVE') {
+          if (course.status !== 'ARCHIVED' && ['INACTIVE', 'ARCHIVED'].includes(project.status)) {
             updates.status = 'ACTIVE';
           }
 
@@ -277,20 +292,25 @@ class WorkspaceService {
     return workspace;
   }
 
-  static async createPersonalProject(workspaceId, courseId, name) {
+  static async createPersonalProject(learnerId, name) {
     const trimmedName = String(name || '').trim();
     if (!trimmedName) {
       throw new AppError(400, 'PROJECT_NAME_REQUIRED', 'Project name cannot be empty.');
     }
 
-    // Kiểm tra tên trùng lặp (UC-01 Alternative Flow 3)[cite: 1]
-    const { data: existing } = await supabase
+    // Resolve the Workspace from the authenticated Learner. The client cannot
+    // choose another Learner's workspace (IDOR protection).
+    const workspace = await this.getWorkspace(learnerId);
+    const workspaceId = workspace.workspaceId;
+
+    const { data: existing, error: duplicateError } = await supabase
       .from('AI_Project')
       .select('projectId')
       .eq('workspaceId', workspaceId)
       .ilike('name', trimmedName)
       .maybeSingle();
 
+    if (duplicateError) throw duplicateError;
     if (existing) {
       throw new AppError(409, 'PROJECT_NAME_EXISTS', 'Project name already exists. Please choose another name.');
     }
@@ -299,7 +319,7 @@ class WorkspaceService {
       .from('AI_Project')
       .insert([{
         workspaceId,
-        courseId: courseId || null,
+        courseId: null,
         name: trimmedName,
         type: 'PERSONAL',
         status: 'ACTIVE'
@@ -328,18 +348,12 @@ class WorkspaceService {
       throw new AppError(400, 'PROJECT_NAME_REQUIRED', 'Project name cannot be empty.');
     }
 
-    const { data: project, error: pError } = await supabase
-      .from('AI_Project')
-      .select('projectId, workspaceId, type')
-      .eq('projectId', projectId)
-      .maybeSingle();
-
-    if (pError || !project) {
-      throw new AppError(404, 'PROJECT_NOT_FOUND', 'Project not found.');
+    const project = await this.assertProjectWritable(projectId, learnerId);
+    if (project.type !== 'PERSONAL') {
+      throw new AppError(403, 'PROJECT_NOT_PERSONAL', 'Only Personal Projects can be renamed.');
     }
 
-    // Kiểm tra trùng tên khi rename (UC-01 Alternative Flow 3)[cite: 1]
-    const { data: duplicate } = await supabase
+    const { data: duplicate, error: duplicateError } = await supabase
       .from('AI_Project')
       .select('projectId')
       .eq('workspaceId', project.workspaceId)
@@ -347,6 +361,7 @@ class WorkspaceService {
       .neq('projectId', projectId)
       .maybeSingle();
 
+    if (duplicateError) throw duplicateError;
     if (duplicate) {
       throw new AppError(409, 'PROJECT_NAME_EXISTS', 'Project name already exists. Please choose another name.');
     }
@@ -355,6 +370,7 @@ class WorkspaceService {
       .from('AI_Project')
       .update({ name: trimmedName })
       .eq('projectId', projectId)
+      .eq('workspaceId', project.workspaceId)
       .select()
       .single();
 
@@ -363,24 +379,17 @@ class WorkspaceService {
   }
 
   static async deletePersonalProject(projectId, learnerId) {
-    const { data: project, error: pError } = await supabase
-      .from('AI_Project')
-      .select('projectId, type')
-      .eq('projectId', projectId)
-      .maybeSingle();
+    const project = await this.assertProjectWritable(projectId, learnerId);
 
-    if (pError || !project) {
-      throw new AppError(404, 'PROJECT_NOT_FOUND', 'Project not found.');
-    }
-
-    if (project.type === 'CLASS') {
-      throw new AppError(400, 'CANNOT_DELETE_CLASS_PROJECT', 'Class projects cannot be deleted manually.');
+    if (project.type !== 'PERSONAL') {
+      throw new AppError(403, 'PROJECT_NOT_PERSONAL', 'Class Projects cannot be deleted manually.');
     }
 
     const { error: delError } = await supabase
       .from('AI_Project')
       .delete()
-      .eq('projectId', projectId);
+      .eq('projectId', projectId)
+      .eq('workspaceId', project.workspaceId);
 
     if (delError) throw delError;
     return true;
@@ -450,25 +459,30 @@ class WorkspaceService {
   
   // UC-01 Alt Flow 1: Lưu trạng thái tick chọn tài liệu ngữ cảnh
   static async updateProjectActiveContext(projectId, learnerId, selectedMaterialIds) {
-    const validIds = Array.isArray(selectedMaterialIds) ? selectedMaterialIds : [];
+    const validIds = [...new Set(
+      (Array.isArray(selectedMaterialIds) ? selectedMaterialIds : [])
+        .map((id) => String(id || '').trim())
+        .filter(Boolean)
+    )];
+
     await this.assertProjectWritable(projectId, learnerId, validIds);
 
-    // 2. Set false cho tất cả tài liệu trong project
-    await supabase
-      .from('Learning_Material')
-      .update({ selectedAsContext: false })
-      .eq('projectId', projectId);
+    const { data, error } = await supabase.rpc('set_project_active_context', {
+      p_learner_id: learnerId,
+      p_project_id: projectId,
+      p_selected_material_ids: validIds
+    });
 
-    // 3. Set true cho các tài liệu được chọn
-    if (validIds.length > 0) {
-      await supabase
-        .from('Learning_Material')
-        .update({ selectedAsContext: true })
-        .eq('projectId', projectId)
-        .in('materialId', validIds);
+    if (error) {
+      console.error('[WorkspaceService] Active context transaction failed:', error);
+      throw new AppError(500, 'ACTIVE_CONTEXT_UPDATE_FAILED', 'Unable to save the active material context.');
     }
 
-    return { success: true, selectedMaterialIds: validIds };
+    const persistedIds = Array.isArray(data?.selectedMaterialIds)
+      ? data.selectedMaterialIds.map(String)
+      : [];
+
+    return { success: true, selectedMaterialIds: persistedIds };
   }
   static async deletePersonalMaterial(projectId, materialId, learnerId) {
     await this.assertProjectWritable(projectId, learnerId, [materialId]);

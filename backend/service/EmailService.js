@@ -1,9 +1,27 @@
 const transporter = require('../config/emailClient');
+const AppError = require('../error/AppError');
+
+let failNextDelivery = false;
 
 class EmailService {
+  static armNextDeliveryFailure() {
+    if (process.env.NODE_ENV === 'production') {
+      throw new AppError(404, 'NOT_FOUND', 'Not found.');
+    }
+    failNextDelivery = true;
+    return true;
+  }
+
+  static _throwIfTestFailureArmed() {
+    if (!failNextDelivery) return;
+    failNextDelivery = false;
+    throw new Error('Simulated email delivery failure for test execution.');
+  }
+
 
   // Send an email to one recipient
   static async send(to, subject, html) {
+    this._throwIfTestFailureArmed();
     await transporter.sendMail({
       from: `"AcogniX" <${process.env.EMAIL_USER}>`,
       to,
@@ -20,6 +38,7 @@ class EmailService {
       return;
     }
 
+    this._throwIfTestFailureArmed();
     await transporter.sendMail({
       from: `"AcogniX" <${process.env.EMAIL_USER}>`,
       bcc: emails,

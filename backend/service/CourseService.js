@@ -127,7 +127,14 @@ class CourseService {
     // before accepting any new enrollment request.
     const { data, error } = await supabase
       .from('Course')
-      .update({ status: CourseStatus.ARCHIVED, updatedAt: new Date() })
+      .update({
+        status: CourseStatus.ARCHIVED,
+        archivedByRole: 'EDUCATOR',
+        archivedByUserId: educatorId,
+        archiveReason: null,
+        archivedAt: new Date(),
+        updatedAt: new Date()
+      })
       .eq('courseId', courseId)
       .select()
       .single();
@@ -143,6 +150,51 @@ class CourseService {
     } catch (integrationError) {
       // WorkspaceService also self-heals from Course.status on the next load.
       console.error('[CourseService] Failed to archive Class Projects:', integrationError);
+    }
+
+    return data;
+  }
+
+  // Restore an Educator-owned course. Educators cannot restore a course archived by Admin.
+  static async unarchiveCourse(courseId, educatorId) {
+    const course = await this.getOwnedCourse(courseId, educatorId);
+
+    if (course.status !== CourseStatus.ARCHIVED) {
+      const err = new Error('COURSE_NOT_ARCHIVED');
+      err.status = 400;
+      throw err;
+    }
+
+    if (course.archivedByRole === 'SYSTEM_ADMINISTRATOR') {
+      const err = new Error('COURSE_ARCHIVED_BY_ADMIN');
+      err.status = 403;
+      throw err;
+    }
+
+    const { data, error } = await supabase
+      .from('Course')
+      .update({
+        status: CourseStatus.ACTIVE,
+        archivedByRole: null,
+        archivedByUserId: null,
+        archiveReason: null,
+        archivedAt: null,
+        updatedAt: new Date()
+      })
+      .eq('courseId', courseId)
+      .select()
+      .single();
+
+    if (error) {
+      const err = new Error('COURSE_UNARCHIVE_FAILED');
+      err.status = 500;
+      throw err;
+    }
+
+    try {
+      await WorkspaceIntegrationService.unarchiveClassProjects(courseId);
+    } catch (integrationError) {
+      console.error('[CourseService] Failed to restore Class Projects:', integrationError);
     }
 
     return data;
@@ -203,10 +255,17 @@ class CourseService {
   }
 
   // Admin Archive Course (Bypasses the Educator ownership check)
-  static async adminArchiveCourse(courseId) {
+  static async adminArchiveCourse(courseId, adminId, archiveReason = null) {
     const { data, error } = await supabase
       .from('Course')
-      .update({ status: CourseStatus.ARCHIVED, updatedAt: new Date() })
+      .update({
+        status: CourseStatus.ARCHIVED,
+        archivedByRole: 'SYSTEM_ADMINISTRATOR',
+        archivedByUserId: adminId,
+        archiveReason: archiveReason || 'Archived by System Administrator',
+        archivedAt: new Date(),
+        updatedAt: new Date()
+      })
       .eq('courseId', courseId)
       .select()
       .single();
@@ -221,6 +280,59 @@ class CourseService {
       await WorkspaceIntegrationService.archiveClassProjects(courseId);
     } catch (integrationError) {
       console.error('[CourseService] Failed to archive Class Projects:', integrationError);
+    }
+
+    return data;
+  }
+
+  // Admin can restore any archived course.
+  static async adminUnarchiveCourse(courseId) {
+    const { data: existing, error: lookupError } = await supabase
+      .from('Course')
+      .select('*')
+      .eq('courseId', courseId)
+      .maybeSingle();
+
+    if (lookupError) {
+      const err = new Error('COURSE_LOOKUP_FAILED');
+      err.status = 500;
+      throw err;
+    }
+    if (!existing) {
+      const err = new Error('COURSE_NOT_FOUND');
+      err.status = 404;
+      throw err;
+    }
+    if (existing.status !== CourseStatus.ARCHIVED) {
+      const err = new Error('COURSE_NOT_ARCHIVED');
+      err.status = 400;
+      throw err;
+    }
+
+    const { data, error } = await supabase
+      .from('Course')
+      .update({
+        status: CourseStatus.ACTIVE,
+        archivedByRole: null,
+        archivedByUserId: null,
+        archiveReason: null,
+        archivedAt: null,
+        updatedAt: new Date()
+      })
+      .eq('courseId', courseId)
+      .select()
+      .single();
+
+    if (error) {
+      const err = new Error('ADMIN_COURSE_UNARCHIVE_FAILED');
+      err.status = 500;
+      throw err;
+    }
+
+    try {
+      await WorkspaceIntegrationService.unarchiveClassProjects(courseId);
+    } catch (integrationError) {
+      console.error('[CourseService] Failed to restore Class Projects:', integrationError);
     }
 
     return data;

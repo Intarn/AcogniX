@@ -21,12 +21,6 @@ export const getWeeklyClassPerformance = async (courseId) => {
   });
 };
 
-export const getWeeklyReportNotifications = async () => {
-  return await apiRequest('/analytics/weekly-notifications', {
-    method: 'GET'
-  });
-};
-
 // Used by an authorized test/scheduler simulation for UC11 UI04.
 export const generateWeeklyClassPerformanceReport = async (courseId, generatedAt = null) => {
   return await apiRequest(`/analytics/courses/${courseId}/weekly-report/generate`, {
@@ -34,3 +28,16 @@ export const generateWeeklyClassPerformanceReport = async (courseId, generatedAt
     body: JSON.stringify(generatedAt ? { generatedAt } : {})
   });
 };
+
+export const getEducatorNotifications = async () => {
+  return await apiRequest('/analytics/notifications', {
+    method: 'GET'
+  });
+};
+
+export const markEducatorNotificationRead = async (notificationId) => {
+  return await apiRequest(`/analytics/notifications/${encodeURIComponent(notificationId)}/read`, {
+    method: 'PATCH'
+  });
+};
+

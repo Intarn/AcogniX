@@ -1,10 +1,16 @@
 // frontend/src/services/aiService.js
 import { apiRequest } from './apiClient';
 
+const createIdempotencyKey = () => {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
 
 
-export const extractDocumentText = async (materialId, file) => {
+
+export const extractDocumentText = async (projectId, materialId, file) => {
   const formData = new FormData();
+  formData.append('projectId', projectId);
   formData.append('materialId', materialId);
   formData.append('document', file); // Đúng tên field multer ở backend: 'document'
 
@@ -49,7 +55,7 @@ export const getAIConversationHistory = async (projectId, conversationId = null)
 export const generateAIQuiz = async (projectId, materialIds, questionCount = 5, difficulty = 'medium') => {
   return await apiRequest('/ai/generate-quiz', {
     method: 'POST',
-    body: JSON.stringify({ projectId, materialIds, questionCount, difficulty })
+    body: JSON.stringify({ projectId, materialIds, questionCount, difficulty, idempotencyKey: createIdempotencyKey() })
   });
 };
 
@@ -68,7 +74,7 @@ export const getSavedQuizzes = async (projectId) => {
 export const generateAIFlashcards = async (projectId, materialIds, flashcardCount = 10, length = 'short') => {
   return await apiRequest('/ai/generate-flashcards', {
     method: 'POST',
-    body: JSON.stringify({ projectId, materialIds, flashcardCount, length })
+    body: JSON.stringify({ projectId, materialIds, flashcardCount, length, idempotencyKey: createIdempotencyKey() })
   });
 };
 /**

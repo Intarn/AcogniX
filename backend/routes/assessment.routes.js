@@ -47,6 +47,16 @@ router.delete(
 );
 
 router.get(
+    '/:assessmentId/instruction-file',
+    requireAuth,
+    authorize(
+        UserRole.EDUCATOR,
+        UserRole.LEARNER
+    ),
+    AssessmentController.getInstructionFile
+);
+
+router.get(
     '/:assessmentId',
     requireAuth,
     authorize(

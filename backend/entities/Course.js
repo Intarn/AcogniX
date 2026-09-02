@@ -9,6 +9,10 @@ class Course {
     description = null,
     enrollmentCode,
     status = CourseStatus.ACTIVE,
+    archivedByRole = null,
+    archivedByUserId = null,
+    archiveReason = null,
+    archivedAt = null,
     createdAt = new Date(),
     updatedAt = new Date()
   }) {
@@ -19,6 +23,10 @@ class Course {
     this.description = description;
     this.enrollmentCode = enrollmentCode;
     this.status = status;
+    this.archivedByRole = archivedByRole;
+    this.archivedByUserId = archivedByUserId;
+    this.archiveReason = archiveReason;
+    this.archivedAt = archivedAt;
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;
   }

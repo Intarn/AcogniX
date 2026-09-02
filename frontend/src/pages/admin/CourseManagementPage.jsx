@@ -8,24 +8,49 @@ export default function CourseManagementPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchCourses();
-    }, 400);
-    return () => clearTimeout(delayDebounceFn);
-  }, [search]);
-
-  const fetchCourses = async () => {
-    setLoading(true);
+  const fetchCourses = async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const response = await getAllCoursesForAdmin(search);
       setCourses(response?.courses || []);
     } catch (error) {
       console.error('Failed to fetch courses:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
+
+  useEffect(() => {
+    let disposed = false;
+
+    const runFetch = async ({ silent = false } = {}) => {
+      if (disposed) return;
+      await fetchCourses({ silent });
+    };
+
+    const delayDebounceFn = setTimeout(() => {
+      runFetch();
+    }, 400);
+
+    const refreshSilently = () => runFetch({ silent: true });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    };
+
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const syncInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    }, 3000);
+
+    return () => {
+      disposed = true;
+      clearTimeout(delayDebounceFn);
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.clearInterval(syncInterval);
+    };
+  }, [search]);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-gray-50/50 overflow-hidden">

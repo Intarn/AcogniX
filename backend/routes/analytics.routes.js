@@ -13,7 +13,8 @@ router.use(requireAuth);
 
 router.post('/ping', authorize('LEARNER'), AnalyticsController.pingSession); // UC-03
 router.get('/me', authorize('LEARNER'), AnalyticsController.getPersonalStats); // UC-04
-router.get('/weekly-notifications', authorize('EDUCATOR'), AnalyticsController.getWeeklyReportNotifications); // UC-11
+router.get('/notifications', authorize('EDUCATOR'), AnalyticsController.getEducatorNotifications); // UC-11 weekly report notifications
+router.patch('/notifications/:notificationId/read', authorize('EDUCATOR'), AnalyticsController.markEducatorNotificationRead); // UC-11
 router.post('/courses/:courseId/weekly-report/generate', authorize('EDUCATOR'), AnalyticsController.generateWeeklyClassPerformance); // UC-11 scheduler simulation
 router.get('/courses/:courseId/weekly-report', authorize('EDUCATOR'), AnalyticsController.getWeeklyClassPerformance); // UC-11
 router.get('/courses/:courseId', authorize('EDUCATOR'), AnalyticsController.getClassPerformance); // UC-11

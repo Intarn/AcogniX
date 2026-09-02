@@ -8,7 +8,8 @@ import {
   saveAnswer,
   uploadSubmissionFiles,
   deleteSubmissionFile,
-  submitSubmissionAPI
+  submitSubmissionAPI,
+  getAssessmentInstructionFileBlob
 } from '../../services/quizService';
 import { useConfirm } from '../../contexts/ConfirmContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -109,6 +110,8 @@ export default function AssignmentSubmission() {
   const [loadError, setLoadError] = useState('');
   const [completed, setCompleted] = useState(false);
   const [downloadingInstruction, setDownloadingInstruction] = useState(false);
+  const [openingInstruction, setOpeningInstruction] = useState(false);
+  const instructionFileActionInFlightRef = useRef(false);
 
   const isResubmission = ['SUBMITTED', 'PENDING_REVIEW'].includes(submission?.status);
 
@@ -189,54 +192,122 @@ export default function AssignmentSubmission() {
     };
   }, [courseId, assessmentId, navigate]);
 
-  const handleDownloadInstruction = async (e, rawUrl, fileName) => {
+  const handleDownloadInstruction = async (e, _rawUrl, fileName) => {
     e.preventDefault();
     e.stopPropagation();
 
+    if (
+      !assessmentId ||
+      instructionFileActionInFlightRef.current
+    ) {
+      return;
+    }
+
+    instructionFileActionInFlightRef.current = true;
+
     try {
       setDownloadingInstruction(true);
-      showToast('Searching for instruction file...', 'info');
-      const result = await fetchStorageBlob(rawUrl, 'assessment-files');
 
-      if (!result) {
-        showToast('Instruction file not found in storage (NoSuchKey).', 'error');
-        return;
-      }
+      const { blob } =
+        await getAssessmentInstructionFileBlob(
+          assessmentId,
+          { download: true }
+        );
 
-      const blobUrl = window.URL.createObjectURL(result.blob);
-      const link = document.createElement('a');
+      const blobUrl =
+        window.URL.createObjectURL(blob);
+
+      const link =
+        document.createElement('a');
+
       link.href = blobUrl;
-      link.download = fileName || 'instruction-file';
+      link.download =
+        fileName ||
+        'instruction-file';
+
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-      showToast('Instruction file downloaded successfully!', 'success');
-    } catch (err) {
-      console.error('[Download Instruction Error]:', err);
-      showToast('Error downloading instruction file.', 'error');
+      link.remove();
+
+      window.URL
+        .revokeObjectURL(blobUrl);
+
+      showToast(
+        'Instruction file downloaded successfully!',
+        'success'
+      );
+    } catch (error) {
+      showToast(
+        error.message ||
+        'Unable to download instruction file.',
+        'error'
+      );
     } finally {
+      instructionFileActionInFlightRef.current = false;
       setDownloadingInstruction(false);
     }
   };
 
-  const handleOpenInstruction = async (e, rawUrl) => {
+  const handleOpenInstruction = async (e, _rawUrl) => {
     e.preventDefault();
     e.stopPropagation();
 
-    try {
-      showToast('Opening instruction file...', 'info');
-      const result = await fetchStorageBlob(rawUrl, 'assessment-files');
+    if (
+      !assessmentId ||
+      instructionFileActionInFlightRef.current
+    ) {
+      return;
+    }
 
-      if (!result) {
-        showToast('Instruction file not found in storage (NoSuchKey).', 'error');
-        return;
+    instructionFileActionInFlightRef.current = true;
+
+    const previewWindow =
+      window.open('', '_blank');
+
+    if (!previewWindow) {
+      instructionFileActionInFlightRef.current = false;
+      showToast(
+        'Unable to open the preview window. Please allow pop-ups for this site and try again.',
+        'warning'
+      );
+      return;
+    }
+
+    previewWindow.opener = null;
+
+    try {
+      setOpeningInstruction(true);
+
+      const { blob } =
+        await getAssessmentInstructionFileBlob(
+          assessmentId
+        );
+
+      const blobUrl =
+        window.URL.createObjectURL(blob);
+
+      if (!previewWindow.closed) {
+        previewWindow.location.href = blobUrl;
       }
 
-      const blobUrl = window.URL.createObjectURL(result.blob);
-      window.open(blobUrl, '_blank', 'noopener,noreferrer');
-    } catch (err) {
-      showToast('Unable to open file.', 'error');
+      window.setTimeout(
+        () =>
+          window.URL
+            .revokeObjectURL(blobUrl),
+        60_000
+      );
+    } catch (error) {
+      if (!previewWindow.closed) {
+        previewWindow.close();
+      }
+      showToast(
+        error.message ||
+        'Unable to open instruction file.',
+        'error'
+      );
+    } finally {
+      instructionFileActionInFlightRef.current = false;
+      setOpeningInstruction(false);
     }
   };
 
@@ -478,7 +549,7 @@ export default function AssignmentSubmission() {
               <button
                 type="button"
                 onClick={(e) => handleDownloadInstruction(e, assessment.instructionFileUrl, `Instruction-${assessment.title}`)}
-                disabled={downloadingInstruction}
+                disabled={downloadingInstruction || openingInstruction}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition shadow-xs disabled:opacity-50"
               >
                 <span>{downloadingInstruction ? '⏳' : '📥'}</span>
@@ -488,9 +559,11 @@ export default function AssignmentSubmission() {
               <button
                 type="button"
                 onClick={(e) => handleOpenInstruction(e, assessment.instructionFileUrl)}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold hover:bg-blue-100 transition shadow-xs"
+                disabled={downloadingInstruction || openingInstruction}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold hover:bg-blue-100 transition shadow-xs disabled:opacity-50"
               >
-                <span>👁️</span> View instruction directly
+                <span>👁️</span>
+                {openingInstruction ? 'Opening...' : 'View instruction directly'}
               </button>
             </div>
           )}

@@ -18,29 +18,49 @@ export default function ClassDetailPage() {
       setLoading(false);
       return;
     }
-    let cancelled = false;
 
-    async function loadCourse() {
+    let cancelled = false;
+    let initialLoad = true;
+
+    async function loadCourse({ silent = false } = {}) {
       try {
-        setLoading(true);
-        setLoadError('');
+        if (!silent && initialLoad) setLoading(true);
+        if (!silent) setLoadError('');
         const result = await getCourses();
-        const courses = Array.isArray(result?.courses) ? result.courses : [];
+        const courses = Array.isArray(result?.courses) ? result.courses : Array.isArray(result) ? result : [];
         const foundCourse = courses.find((item) => String(item.courseId) === String(courseId));
         if (!cancelled) {
           setCourse(foundCourse || null);
+          initialLoad = false;
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && !silent) {
           console.error('Unable to load course:', error);
           setLoadError(error.message || 'Unable to load course.');
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !silent) setLoading(false);
       }
     }
+
+    const refreshSilently = () => loadCourse({ silent: true });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    };
+
     loadCourse();
-    return () => { cancelled = true; };
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const syncInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.clearInterval(syncInterval);
+    };
   }, [courseId]);
 
   async function handleCopyEnrollmentCode() {

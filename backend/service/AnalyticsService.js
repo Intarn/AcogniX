@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const supabase = require('../config/supabaseClient');
 const AppError = require('../error/AppError');
+const NotificationService = require('./NotificationService');
 
 class AnalyticsService {
   // UC-03: Track Active Study Time
@@ -174,10 +175,10 @@ class AnalyticsService {
   }
 
   // UC-04: View Personal Statistics
-  static async getPersonalStats(learnerId, timeRange = 'Last 7 days') {
+  static async getPersonalStats(learnerId, timeRange = 'Last 7 days', startDate = null, endDate = null) {
     try {
       const now = new Date();
-      const range = this._resolvePersonalStatsRange(timeRange, now);
+      const range = this._resolvePersonalStatsRange(timeRange, now, startDate, endDate);
 
       const [sessionsRes, enrollmentsRes, submissionsRes, workspaceRes, practiceAttemptsRes] = await Promise.all([
         supabase.from('Study_Session').select('durationMinutes, startTime, endTime, courseId').eq('learnerId', learnerId),
@@ -221,9 +222,16 @@ class AnalyticsService {
       });
 
       const submissions = submissionsRes.data || [];
-      const gradedSubmissions = submissions.filter((submission) =>
-        submission.status === 'GRADED' && submission.score !== null
-      );
+      const gradedSubmissions = submissions.filter((submission) => {
+        if (submission.status !== 'GRADED' || submission.score === null || !submission.submittedAt) {
+          return false;
+        }
+
+        const submittedMs = new Date(submission.submittedAt).getTime();
+        return Number.isFinite(submittedMs)
+          && submittedMs >= range.start.getTime()
+          && submittedMs <= range.end.getTime();
+      });
 
       const practiceQuizAttempts = (practiceAttemptsRes.data || [])
         .map((row) => {
@@ -378,6 +386,8 @@ class AnalyticsService {
 
       return {
         selectedTimeRange: range.normalizedLabel,
+        selectedStartDate: range.selectedStartDate || null,
+        selectedEndDate: range.selectedEndDate || null,
         totalStudyMinutes: Math.round(totalMinutes),
         totalStudyHours: (totalMinutes / 60).toFixed(1),
         materialsStudied: materialsStudiedCount,
@@ -398,6 +408,7 @@ class AnalyticsService {
       };
     } catch (error) {
       console.error('[AnalyticsService] Error getting personal stats:', error);
+      if (error instanceof AppError || error?.statusCode) throw error;
       throw new AppError(500, 'DB_ERROR', 'Unable to load your learning statistics. Please try again.');
     }
   }
@@ -727,7 +738,20 @@ class AnalyticsService {
       throw new AppError(500, 'WEEKLY_REPORT_SAVE_FAILED', 'Unable to generate the weekly class-performance report.');
     }
 
-    return report;
+    // The report itself is the source event for the in-app notification.
+    // Notification persistence is best-effort so it cannot roll back a report
+    // that has already been generated and saved successfully.
+    let notification = null;
+    try {
+      notification = await NotificationService.createWeeklyReportNotification({ report });
+    } catch (notificationError) {
+      console.error('[AnalyticsService] Weekly report notification failed:', notificationError);
+    }
+
+    return {
+      ...report,
+      notificationId: notification?.id || null
+    };
   }
 
   static async getWeeklyReport(courseId, educatorId) {
@@ -773,60 +797,6 @@ class AnalyticsService {
     }
   }
 
-  static async listWeeklyReportNotifications(educatorId) {
-    const { data: courses, error: courseError } = await supabase
-      .from('Course')
-      .select('courseId, subjectName, courseCode')
-      .eq('educatorId', educatorId);
-
-    if (courseError) {
-      console.error('[AnalyticsService] Weekly notification course lookup error:', courseError);
-      throw new AppError(500, 'DB_ERROR', 'Unable to load weekly-report notifications.');
-    }
-
-    const ownedCourses = courses || [];
-    if (ownedCourses.length === 0) return [];
-
-    const keyToCourse = new Map(
-      ownedCourses.map((course) => [this._weeklyReportSettingKey(course.courseId), course])
-    );
-
-    const { data: settings, error: settingError } = await supabase
-      .from('System_Settings')
-      .select('setting_key, setting_value')
-      .in('setting_key', [...keyToCourse.keys()]);
-
-    if (settingError) {
-      console.error('[AnalyticsService] Weekly notification lookup error:', settingError);
-      throw new AppError(500, 'DB_ERROR', 'Unable to load weekly-report notifications.');
-    }
-
-    return (settings || [])
-      .map((row) => {
-        try {
-          const report = JSON.parse(row.setting_value || '{}');
-          const course = keyToCourse.get(row.setting_key);
-          if (!course || String(report.educatorId) !== String(educatorId)) return null;
-
-          const atRiskCount = report.stats?.atRiskStudents?.length || 0;
-          return {
-            id: report.reportId,
-            title: 'Weekly Class Performance Report',
-            message: `${course.subjectName}: ${atRiskCount} learner${atRiskCount === 1 ? '' : 's'} requiring attention.`,
-            type: 'WEEKLY_REPORT',
-            createdAt: report.generatedAt,
-            read: Boolean(report.read),
-            courseId: course.courseId,
-            link: `/educator/analytics?courseId=${encodeURIComponent(course.courseId)}&weekly=1`
-          };
-        } catch (parseError) {
-          console.error('[AnalyticsService] Skipping invalid weekly notification payload:', parseError);
-          return null;
-        }
-      })
-      .filter(Boolean)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  }
 
   static _getSessionInterval(session) {
     if (!session) return null;
@@ -883,13 +853,94 @@ class AnalyticsService {
     return totalMs;
   }
 
-  static _resolvePersonalStatsRange(timeRange, now = new Date()) {
+  static _resolvePersonalStatsRange(
+    timeRange,
+    now = new Date(),
+    startDate = null,
+    endDate = null
+  ) {
     const requested = String(timeRange || 'Last 7 days').trim();
-    const end = new Date(now);
+    const currentDate = new Date(now);
+
+    if (requested === 'Custom range') {
+      if (!startDate || !endDate) {
+        throw new AppError(
+          400,
+          'CUSTOM_DATE_RANGE_REQUIRED',
+          'Please select both From and To dates.'
+        );
+      }
+
+      const parseDateOnly = (value, endOfDay = false) => {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || '').trim());
+        if (!match) return null;
+
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        const day = Number(match[3]);
+        const parsed = new Date(year, month - 1, day);
+
+        // Reject impossible dates such as 2026-02-31 instead of allowing
+        // JavaScript Date to roll them into the next month.
+        if (
+          parsed.getFullYear() !== year ||
+          parsed.getMonth() !== month - 1 ||
+          parsed.getDate() !== day
+        ) {
+          return null;
+        }
+
+        if (endOfDay) parsed.setHours(23, 59, 59, 999);
+        else parsed.setHours(0, 0, 0, 0);
+        return parsed;
+      };
+
+      const start = parseDateOnly(startDate, false);
+      const end = parseDateOnly(endDate, true);
+
+      if (!start || !end) {
+        throw new AppError(
+          400,
+          'INVALID_DATE_RANGE',
+          'The selected date range is invalid.'
+        );
+      }
+
+      if (start.getTime() > end.getTime()) {
+        throw new AppError(
+          400,
+          'INVALID_DATE_RANGE',
+          'From date cannot be later than To date.'
+        );
+      }
+
+      const todayEnd = new Date(currentDate);
+      todayEnd.setHours(23, 59, 59, 999);
+      if (end.getTime() > todayEnd.getTime()) {
+        throw new AppError(
+          400,
+          'FUTURE_DATE_RANGE_NOT_ALLOWED',
+          'To date cannot be later than today.'
+        );
+      }
+
+      return {
+        normalizedLabel: 'Custom range',
+        selectedStartDate: String(startDate),
+        selectedEndDate: String(endDate),
+        start,
+        end: end > currentDate ? currentDate : end,
+        bucket: 'day'
+      };
+    }
+
+    const end = new Date(currentDate);
 
     if (requested === 'All time') {
       return {
         normalizedLabel: 'All time',
+        selectedStartDate: null,
+        selectedEndDate: null,
         start: new Date(0),
         end,
         bucket: 'month'
@@ -908,6 +959,8 @@ class AnalyticsService {
       normalizedLabel: isFourWeeks
         ? 'Last 4 Weeks'
         : (isThirtyDays ? 'Last 30 days' : 'Last 7 days'),
+      selectedStartDate: null,
+      selectedEndDate: null,
       start,
       end,
       bucket: 'day'

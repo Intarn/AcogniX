@@ -23,5 +23,8 @@ export const submitAssessment = async (assessmentId, answers) => {
 };
 
 export function getLearnerAssessments() {
-  return apiRequest('/assessments');
+  return apiRequest('/assessments', {
+    method: 'GET',
+    cache: 'no-store'
+  });
 }

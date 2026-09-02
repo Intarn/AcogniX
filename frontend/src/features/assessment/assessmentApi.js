@@ -186,6 +186,54 @@ export function uploadInstructionFile(
 }
 
 
+export async function getAssessmentInstructionFileBlob(
+  assessmentId,
+  { download = false } = {}
+) {
+  const API_BASE_URL =
+    import.meta.env.VITE_API_BASE_URL ||
+    'http://localhost:5000/api';
+  const token =
+    localStorage.getItem('accessToken');
+
+  const response = await fetch(
+    `${API_BASE_URL}/assessments/${encodeURIComponent(assessmentId)}/instruction-file${download ? '?download=1' : ''}`,
+    {
+      method: 'GET',
+      headers: token
+        ? { Authorization: `Bearer ${token}` }
+        : {}
+    }
+  );
+
+  if (!response.ok) {
+    const data =
+      await response
+        .json()
+        .catch(() => null);
+
+    const error = new Error(
+      data?.message ||
+      'Assessment instruction file is unavailable.'
+    );
+
+    error.status = response.status;
+    error.code = data?.code;
+    throw error;
+  }
+
+  return {
+    blob: await response.blob(),
+    contentType:
+      response.headers.get('content-type') ||
+      'application/octet-stream',
+    contentDisposition:
+      response.headers.get('content-disposition') ||
+      ''
+  };
+}
+
+
 // ==============================
 // SUBMISSIONS / GRADING
 // ==============================

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getCourses } from '../../features/classroom/courseApi';
 import {
@@ -6,14 +6,46 @@ import {
   deleteCourseMaterial,
   getCourseMaterials,
   updateCourseMaterial,
-  reorderCourseMaterials
+  reorderCourseMaterials,
+  getCourseMaterialFileBlob
 } from '../../features/classroom/courseContentApi';
+import DocumentPreviewModal from '../../components/common/DocumentPreviewModal';
+import { getFileNameFromContentDisposition, getFileNameFromResourceUrl } from '../../utils/documentPreview';
 
 function getMaterialOrder(material) {
   const order = Number(material.orderIndex);
   if (Number.isFinite(order) && order > 0) return order;
+
+  const uploadedTime = new Date(material.uploadedAt || 0).getTime();
+  if (Number.isFinite(uploadedTime) && uploadedTime > 0) {
+    // Newer uploadedAt values represent an earlier display position when the
+    // deployed schema does not yet provide an orderIndex column.
+    return -uploadedTime;
+  }
+
   const materialId = Number(material.materialId);
   return Number.isFinite(materialId) ? materialId : 0;
+}
+
+
+function getMaterialFileName(material) {
+  if (material?.originalFileName) return material.originalFileName;
+  if (material?.fileName) return material.fileName;
+
+  const resourceUrl = String(material?.resourceUrl || '').trim();
+  if (!resourceUrl || material?.resourceType !== 'FILE') return '';
+
+  try {
+    const cleanUrl = resourceUrl.split('?')[0];
+    const rawName = cleanUrl.split('/').pop() || '';
+    const decodedName = decodeURIComponent(rawName);
+
+    // Files are stored as: <timestamp>_<original-file-name>
+    return decodedName.replace(/^\d+_/, '') || decodedName;
+  } catch {
+    const rawName = resourceUrl.split('?')[0].split('/').pop() || '';
+    return rawName.replace(/^\d+_/, '');
+  }
 }
 
 function createEmptyForm() {
@@ -28,6 +60,18 @@ export default function CourseMaterialsPage() {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reordering, setReordering] = useState(false);
+  const [savingMaterial, setSavingMaterial] = useState(false);
+  const [deletingMaterial, setDeletingMaterial] = useState(false);
+  const [openingMaterialId, setOpeningMaterialId] = useState(null);
+  const [downloadingMaterialId, setDownloadingMaterialId] = useState(null);
+  const [previewMaterial, setPreviewMaterial] = useState(null);
+  const [previewFile, setPreviewFile] = useState(null);
+
+  const saveMaterialInFlightRef = useRef(false);
+  const reorderInFlightRef = useRef(false);
+  const deleteInFlightRef = useRef(false);
+  const fileActionInFlightRef = useRef(new Set());
+
   const [loadError, setLoadError] = useState('');
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -110,7 +154,7 @@ export default function CourseMaterialsPage() {
       description: material.description || '',
       resourceType: material.resourceType || 'FILE',
       file: null,
-      fileName: material.fileName || '',
+      fileName: getMaterialFileName(material),
       resourceUrl: material.resourceUrl || ''
     });
     setErrors({}); setIsModalOpen(true);
@@ -148,7 +192,12 @@ export default function CourseMaterialsPage() {
   }
 
   async function handleSaveMaterial() {
+    if (saveMaterialInFlightRef.current) return;
     if (!validateMaterial()) return;
+
+    saveMaterialInFlightRef.current = true;
+    setSavingMaterial(true);
+
     const formData = new FormData();
     formData.append('title', form.title.trim());
     formData.append('description', form.description.trim());
@@ -171,42 +220,266 @@ export default function CourseMaterialsPage() {
       closeModal();
     } catch (error) {
       alert(error.message || 'Unable to save course material.');
+    } finally {
+      saveMaterialInFlightRef.current = false;
+      setSavingMaterial(false);
     }
   }
 
   async function handleMoveMaterial(materialId, direction) {
-    if (isArchived || reordering) return;
-    const currentIndex = courseMaterials.findIndex((m) => String(m.materialId) === String(materialId));
+    if (isArchived || reorderInFlightRef.current) return;
+
+    const currentIndex = courseMaterials.findIndex(
+      (material) =>
+        String(material.materialId) ===
+        String(materialId)
+    );
+
     if (currentIndex === -1) return;
-    const targetIndex = currentIndex + direction;
-    if (targetIndex < 0 || targetIndex >= courseMaterials.length) return;
 
-    const prevMaterials = materials;
-    const reorderedList = [...courseMaterials];
-    [reorderedList[currentIndex], reorderedList[targetIndex]] = [reorderedList[targetIndex], reorderedList[currentIndex]];
-    const reordered = reorderedList.map((m, i) => ({ ...m, orderIndex: i + 1 }));
-    const reorderedMap = new Map(reordered.map((m) => [String(m.materialId), m]));
+    const targetIndex =
+      currentIndex + direction;
 
-    setMaterials((prev) => prev.map((m) => reorderedMap.get(String(m.materialId)) || m));
+    if (
+      targetIndex < 0 ||
+      targetIndex >= courseMaterials.length
+    ) {
+      return;
+    }
+
+    reorderInFlightRef.current = true;
+    setReordering(true);
+
+    const previousMaterials = materials;
+    const reorderedList =
+      [...courseMaterials];
+
+    [
+      reorderedList[currentIndex],
+      reorderedList[targetIndex]
+    ] = [
+      reorderedList[targetIndex],
+      reorderedList[currentIndex]
+    ];
+
+    const reordered =
+      reorderedList.map(
+        (material, index) => ({
+          ...material,
+          orderIndex: index + 1
+        })
+      );
+
+    const reorderedMap =
+      new Map(
+        reordered.map(
+          (material) => [
+            String(material.materialId),
+            material
+          ]
+        )
+      );
+
+    setMaterials(
+      (previous) =>
+        previous.map(
+          (material) =>
+            reorderedMap.get(
+              String(material.materialId)
+            ) || material
+        )
+    );
+
     try {
-      setReordering(true);
-      await reorderCourseMaterials(courseId, reordered.map((m) => ({ materialId: m.materialId, orderIndex: m.orderIndex })));
+      const result =
+        await reorderCourseMaterials(
+          courseId,
+          reordered.map(
+            (material) => ({
+              materialId:
+                material.materialId,
+              orderIndex:
+                material.orderIndex
+            })
+          )
+        );
+
+      if (
+        Array.isArray(
+          result?.materials
+        )
+      ) {
+        setMaterials(
+          result.materials
+        );
+      }
     } catch (error) {
-      setMaterials(prevMaterials);
-      alert(error.message || 'Unable to reorder materials.');
+      setMaterials(
+        previousMaterials
+      );
+
+      alert(
+        error.message ||
+        'Unable to reorder materials.'
+      );
     } finally {
+      reorderInFlightRef.current =
+        false;
+
       setReordering(false);
     }
   }
 
-  async function handleDeleteMaterial() {
-    if (!materialToDelete) return;
+  async function handleOpenMaterial(material) {
+    if (!material) return;
+
+    if (material.resourceType === 'LINK') {
+      if (material.resourceUrl) {
+        window.open(material.resourceUrl, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+
+    const key = String(material.materialId);
+    if (fileActionInFlightRef.current.has(key)) return;
+
+    fileActionInFlightRef.current.add(key);
+
     try {
-      await deleteCourseMaterial(materialToDelete.materialId);
-      setMaterials((prev) => prev.filter((m) => String(m.materialId) !== String(materialToDelete.materialId)));
+      setOpeningMaterialId(material.materialId);
+      const { blob, contentType, contentDisposition } =
+        await getCourseMaterialFileBlob(material.materialId);
+      const fallbackName = getFileNameFromResourceUrl(
+        material.resourceUrl,
+        getMaterialFileName(material) || material.title || 'course-material'
+      );
+
+      setPreviewFile({
+        blob,
+        contentType,
+        fileName: getFileNameFromContentDisposition(contentDisposition, fallbackName)
+      });
+      setPreviewMaterial(material);
+    } catch (error) {
+      alert(error.message || 'Unable to open Course Material.');
+    } finally {
+      fileActionInFlightRef.current.delete(key);
+      setOpeningMaterialId(null);
+    }
+  }
+
+  async function handleDownloadMaterial(material) {
+    if (
+      !material ||
+      material.resourceType !==
+        'FILE'
+    ) {
+      return;
+    }
+
+    const key =
+      String(material.materialId);
+
+    if (
+      fileActionInFlightRef.current
+        .has(key)
+    ) {
+      return;
+    }
+
+    fileActionInFlightRef.current
+      .add(key);
+
+    try {
+      setDownloadingMaterialId(
+        material.materialId
+      );
+
+      const { blob, contentDisposition } =
+        await getCourseMaterialFileBlob(
+          material.materialId,
+          { download: true }
+        );
+
+      const url =
+        window.URL
+          .createObjectURL(blob);
+
+      const link =
+        document.createElement('a');
+
+      const fallbackName = getFileNameFromResourceUrl(
+        material.resourceUrl,
+        getMaterialFileName(material) || material.title || 'course-material'
+      );
+
+      link.href = url;
+      link.download = getFileNameFromContentDisposition(
+        contentDisposition,
+        fallbackName
+      );
+
+      document.body
+        .appendChild(link);
+
+      link.click();
+      link.remove();
+
+      window.URL
+        .revokeObjectURL(url);
+    } catch (error) {
+      alert(
+        error.message ||
+        'Unable to download Course Material.'
+      );
+    } finally {
+      fileActionInFlightRef.current
+        .delete(key);
+
+      setDownloadingMaterialId(null);
+    }
+  }
+
+  async function handleDeleteMaterial() {
+    if (
+      !materialToDelete ||
+      deleteInFlightRef.current
+    ) {
+      return;
+    }
+
+    deleteInFlightRef.current = true;
+    setDeletingMaterial(true);
+
+    try {
+      await deleteCourseMaterial(
+        materialToDelete.materialId
+      );
+
+      setMaterials(
+        (previous) =>
+          previous.filter(
+            (material) =>
+              String(
+                material.materialId
+              ) !==
+              String(
+                materialToDelete.materialId
+              )
+          )
+      );
+
       setMaterialToDelete(null);
     } catch (error) {
-      alert(error.message || 'Unable to delete material.');
+      alert(
+        error.message ||
+        'Unable to delete material.'
+      );
+    } finally {
+      deleteInFlightRef.current =
+        false;
+
+      setDeletingMaterial(false);
     }
   }
 
@@ -261,8 +534,13 @@ export default function CourseMaterialsPage() {
                     <h3 className="text-sm font-black text-gray-800 truncate" title={material.title}>
                       {material.title || 'Untitled Material'}
                     </h3>
-                    {material.resourceType === 'FILE' && material.fileName && (
-                      <p className="text-[11px] font-semibold text-blue-600 mt-1 truncate" title={material.fileName}>{material.fileName}</p>
+                    {material.resourceType === 'FILE' && getMaterialFileName(material) && (
+                      <p
+                        className="text-[11px] font-semibold text-blue-600 mt-1 truncate"
+                        title={getMaterialFileName(material)}
+                      >
+                        {getMaterialFileName(material)}
+                      </p>
                     )}
                     {material.description && (
                       <p className="text-xs text-gray-500 mt-1.5 line-clamp-2 leading-relaxed">{material.description}</p>
@@ -270,14 +548,76 @@ export default function CourseMaterialsPage() {
                   </div>
                 </div>
 
-                {!isArchived && (
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button onClick={() => handleMoveMaterial(material.materialId, -1)} disabled={index === 0 || reordering} className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-2 rounded-xl hover:bg-gray-200 disabled:opacity-40 transition">↑</button>
-                    <button onClick={() => handleMoveMaterial(material.materialId, 1)} disabled={index === courseMaterials.length - 1 || reordering} className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-2 rounded-xl hover:bg-gray-200 disabled:opacity-40 transition">↓</button>
-                    <button onClick={() => openEditModal(material)} className="text-xs font-bold text-blue-600 bg-blue-50 px-4 py-2 rounded-xl hover:bg-blue-100 transition shadow-xs">Edit</button>
-                    <button onClick={() => setMaterialToDelete(material)} className="text-xs font-bold text-red-600 bg-red-50 px-4 py-2 rounded-xl hover:bg-red-100 transition shadow-xs">Delete</button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2 flex-wrap justify-end flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenMaterial(material)}
+                    disabled={
+                      String(openingMaterialId) === String(material.materialId) ||
+                      String(downloadingMaterialId) === String(material.materialId)
+                    }
+                    className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-2 rounded-xl hover:bg-blue-100 disabled:opacity-40 transition"
+                  >
+                    {String(openingMaterialId) === String(material.materialId)
+                      ? 'Opening...'
+                      : material.resourceType === 'LINK'
+                        ? 'Open Link'
+                        : 'View'}
+                  </button>
+
+                  {material.resourceType === 'FILE' && (
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadMaterial(material)}
+                      disabled={
+                        String(openingMaterialId) === String(material.materialId) ||
+                        String(downloadingMaterialId) === String(material.materialId)
+                      }
+                      className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-2 rounded-xl hover:bg-emerald-100 disabled:opacity-40 transition"
+                    >
+                      {String(downloadingMaterialId) === String(material.materialId)
+                        ? 'Downloading...'
+                        : 'Download'}
+                    </button>
+                  )}
+
+                  {!isArchived && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveMaterial(material.materialId, -1)}
+                        disabled={index === 0 || reordering || savingMaterial || deletingMaterial}
+                        className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-2 rounded-xl hover:bg-gray-200 disabled:opacity-40 transition"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveMaterial(material.materialId, 1)}
+                        disabled={index === courseMaterials.length - 1 || reordering || savingMaterial || deletingMaterial}
+                        className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-2 rounded-xl hover:bg-gray-200 disabled:opacity-40 transition"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(material)}
+                        disabled={reordering || savingMaterial || deletingMaterial}
+                        className="text-xs font-bold text-blue-600 bg-blue-50 px-4 py-2 rounded-xl hover:bg-blue-100 disabled:opacity-40 transition shadow-xs"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMaterialToDelete(material)}
+                        disabled={reordering || savingMaterial || deletingMaterial}
+                        className="text-xs font-bold text-red-600 bg-red-50 px-4 py-2 rounded-xl hover:bg-red-100 disabled:opacity-40 transition shadow-xs"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -290,7 +630,7 @@ export default function CourseMaterialsPage() {
           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col">
             <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
               <h2 className="text-base font-black text-gray-900">{editingMaterialId !== null ? 'Edit Material' : 'Add Material'}</h2>
-              <button onClick={closeModal} className="w-8 h-8 rounded-full bg-white hover:bg-gray-200 text-gray-500 flex items-center justify-center text-sm transition">✕</button>
+              <button onClick={closeModal} disabled={savingMaterial} className="w-8 h-8 rounded-full bg-white hover:bg-gray-200 text-gray-500 flex items-center justify-center text-sm transition disabled:opacity-40">✕</button>
             </div>
 
             <div className="p-6 space-y-5">
@@ -326,7 +666,7 @@ export default function CourseMaterialsPage() {
                     <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 flex items-center justify-between">
                       <div className="flex items-center gap-3 overflow-hidden">
                         <span className="text-lg">📄</span>
-                        <span className="text-xs font-bold text-blue-900 truncate">{editingMaterial?.fileName || 'Current File'}</span>
+                        <span className="text-xs font-bold text-blue-900 truncate">{getMaterialFileName(editingMaterial) || 'Current File'}</span>
                       </div>
                       <label htmlFor="upload-mat-file" className="text-xs font-bold text-blue-600 hover:underline cursor-pointer flex-shrink-0">Replace</label>
                     </div>
@@ -361,14 +701,27 @@ export default function CourseMaterialsPage() {
             </div>
 
             <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
-              <button type="button" onClick={closeModal} className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-100 transition">Cancel</button>
-              <button type="button" onClick={handleSaveMaterial} className="px-6 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition">
-                {editingMaterialId !== null ? 'Save Changes' : 'Upload Material'}
+              <button type="button" onClick={closeModal} disabled={savingMaterial} className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-100 transition disabled:opacity-40">Cancel</button>
+              <button type="button" onClick={handleSaveMaterial} disabled={savingMaterial} className="px-6 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition disabled:opacity-50">
+                {savingMaterial
+                  ? (editingMaterialId !== null ? 'Saving...' : 'Uploading...')
+                  : (editingMaterialId !== null ? 'Save Changes' : 'Upload Material')}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <DocumentPreviewModal
+        open={Boolean(previewMaterial && previewFile)}
+        title={previewMaterial?.title}
+        fileName={previewFile?.fileName}
+        blob={previewFile?.blob}
+        contentType={previewFile?.contentType}
+        onClose={() => { setPreviewMaterial(null); setPreviewFile(null); }}
+        onDownload={() => handleDownloadMaterial(previewMaterial)}
+        downloading={downloadingMaterialId === previewMaterial?.materialId}
+      />
 
       {/* DELETE CONFIRM MODAL */}
       {materialToDelete && (
@@ -381,8 +734,22 @@ export default function CourseMaterialsPage() {
               {materialToDelete.title}
             </div>
             <div className="flex justify-center gap-3 mt-6">
-              <button type="button" onClick={() => setMaterialToDelete(null)} className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition">Cancel</button>
-              <button type="button" onClick={handleDeleteMaterial} className="px-5 py-2.5 text-xs font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 shadow-md transition">Yes, Delete</button>
+              <button
+                type="button"
+                onClick={() => setMaterialToDelete(null)}
+                disabled={deletingMaterial}
+                className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteMaterial}
+                disabled={deletingMaterial}
+                className="px-5 py-2.5 text-xs font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 shadow-md transition disabled:opacity-50"
+              >
+                {deletingMaterial ? 'Deleting...' : 'Yes, Delete'}
+              </button>
             </div>
           </div>
         </div>

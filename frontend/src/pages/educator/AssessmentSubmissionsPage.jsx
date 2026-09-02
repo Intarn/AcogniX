@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getCourses } from '../../features/classroom/courseApi';
 import { getCourseMembers } from '../../features/classroom/enrollmentApi';
@@ -98,6 +98,9 @@ export default function AssessmentSubmissionsPage() {
   const [score, setScore] = useState('');
   const [feedback, setFeedback] = useState('');
   const [reviewError, setReviewError] = useState('');
+
+  const gradeInFlightRef = useRef(false);
+  const openingSubmissionInFlightRef = useRef(new Set());
 
   useEffect(() => {
     if (!courseId || !assessmentId) {
@@ -199,8 +202,14 @@ export default function AssessmentSubmissionsPage() {
 
   async function openSubmission(submission) {
     if (!submission) return;
+
+    const submissionId = String(submission.submissionId);
+    if (openingSubmissionInFlightRef.current.has(submissionId)) return;
+
+    openingSubmissionInFlightRef.current.add(submissionId);
+    setOpeningSubmissionId(submission.submissionId);
+
     try {
-      setOpeningSubmissionId(submission.submissionId);
       setReviewError('');
       const result = await getSubmissionById(submission.submissionId);
       const detailSubmission = result?.submission || result || {};
@@ -216,6 +225,7 @@ export default function AssessmentSubmissionsPage() {
     } catch (error) {
       alert(error.message || 'Unable to load submission details.');
     } finally {
+      openingSubmissionInFlightRef.current.delete(submissionId);
       setOpeningSubmissionId(null);
     }
   }
@@ -225,15 +235,17 @@ export default function AssessmentSubmissionsPage() {
   }
 
   async function handleSaveGrade() {
-    if (!selectedSubmission) return;
+    if (!selectedSubmission || gradeInFlightRef.current) return;
     const numericScore = Number(score);
     if (!Number.isFinite(numericScore) || numericScore < 0 || numericScore > Number(assessment.totalPoints)) {
       setReviewError(`Score must be between 0 and ${assessment.totalPoints}.`);
       return;
     }
 
+    gradeInFlightRef.current = true;
+    setSavingGrade(true);
+
     try {
-      setSavingGrade(true);
       setReviewError('');
       const result = await gradeSubmission(selectedSubmission.submissionId, numericScore, feedback.trim() || null);
       const graded = normalizeSubmission({ ...selectedSubmission, ...(result?.submission || {}) });
@@ -243,6 +255,7 @@ export default function AssessmentSubmissionsPage() {
     } catch (error) {
       setReviewError(error.message || 'Unable to save grade.');
     } finally {
+      gradeInFlightRef.current = false;
       setSavingGrade(false);
     }
   }
@@ -329,9 +342,13 @@ export default function AssessmentSubmissionsPage() {
                       <td className="px-6 py-4"><LearnerIdentity learner={learner} /></td>
                       <td className="px-6 py-4 text-gray-500">{formatDateTime(submission.submittedAt)}</td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${submission.isLate ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                          {submission.isLate ? 'Late' : 'On Time'}
-                        </span>
+                        {submission.submittedAt ? (
+                          <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${submission.isLate ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                            {submission.isLate ? 'Late' : 'On Time'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-gray-400">Not submitted</span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase border ${getStatusBadge(submission.status)}`}>
@@ -347,7 +364,7 @@ export default function AssessmentSubmissionsPage() {
                           disabled={String(openingSubmissionId) === String(submission.submissionId)}
                           className={`px-4 py-2 font-bold rounded-xl transition shadow-xs ${submission.status === 'PENDING_REVIEW' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700' : 'bg-blue-50 hover:bg-blue-100 text-blue-600'}`}
                         >
-                          {String(openingSubmissionId) === String(submission.submissionId) ? 'Loading...' : submission.status === 'PENDING_REVIEW' ? 'Review & Grade' : 'View Submission'}
+                          {String(openingSubmissionId) === String(submission.submissionId) ? 'Loading...' : submission.status === 'PENDING_REVIEW' ? 'Review & Grade' : submission.status === 'GRADED' ? 'Edit Grade & Feedback' : 'View Submission'}
                         </button>
                       </td>
                     </tr>
@@ -384,7 +401,7 @@ export default function AssessmentSubmissionsPage() {
 function SubmissionReviewModal({
   submission, learner, assessment, questions, score, setScore, feedback, setFeedback, error, savingGrade, isArchived, onClose, onSave
 }) {
-  const canGrade = !isArchived && !savingGrade && submission.status === 'PENDING_REVIEW';
+  const canGrade = !isArchived && !savingGrade && ['PENDING_REVIEW', 'GRADED'].includes(submission.status);
   const answers = Array.isArray(submission.answers) ? submission.answers : [];
   const files = Array.isArray(submission.files) ? submission.files : [];
 
@@ -400,13 +417,22 @@ function SubmissionReviewModal({
             <h2 className="text-base font-black text-gray-900">Submission Review & Grading</h2>
             <p className="text-xs text-gray-500 font-medium mt-0.5">{learner.displayName || learner.fullname || learner.email}</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white hover:bg-gray-100 text-gray-400 flex items-center justify-center text-sm shadow-sm">✕</button>
+          <button
+            onClick={onClose}
+            disabled={savingGrade}
+            className="w-8 h-8 rounded-full bg-white hover:bg-gray-100 text-gray-400 flex items-center justify-center text-sm shadow-sm disabled:opacity-50"
+          >
+            ✕
+          </button>
         </div>
 
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <InfoBox label="Submitted At" value={formatDateTime(submission.submittedAt)} />
-            <InfoBox label="Timeliness" value={submission.isLate ? 'Late' : 'On Time'} />
+            <InfoBox
+              label="Timeliness"
+              value={submission.submittedAt ? (submission.isLate ? 'Late' : 'On Time') : 'Not submitted'}
+            />
             <InfoBox label="Status" value={submission.status} />
             <InfoBox label="Score" value={submission.score !== null && submission.score !== undefined ? `${submission.score} / ${assessment.totalPoints}` : 'Not Graded'} />
           </div>
@@ -455,7 +481,7 @@ function SubmissionReviewModal({
             <h3 className="text-sm font-black text-gray-900">Manual Grading & Feedback</h3>
             {!canGrade && (
               <div className="p-3 bg-gray-50 rounded-xl text-xs text-gray-500 font-medium">
-                {isArchived ? 'Course is archived (read-only).' : 'This submission is already graded or not pending review.'}
+                {isArchived ? 'Course is archived (read-only).' : 'This submission is not available for manual grading.'}
               </div>
             )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -488,10 +514,16 @@ function SubmissionReviewModal({
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
-          <button onClick={onClose} className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-100 transition">Close</button>
+          <button
+            onClick={onClose}
+            disabled={savingGrade}
+            className="px-5 py-2.5 text-xs font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-100 transition disabled:opacity-50"
+          >
+            Close
+          </button>
           {canGrade && (
             <button onClick={onSave} disabled={savingGrade} className="px-6 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition disabled:opacity-50">
-              {savingGrade ? 'Saving Grade...' : 'Save Grade & Submit'}
+              {savingGrade ? 'Saving...' : submission.status === 'GRADED' ? 'Update Grade & Feedback' : 'Save Grade & Feedback'}
             </button>
           )}
         </div>

@@ -19,11 +19,11 @@ export const updateProjectActiveContext = async (projectId, selectedMaterialIds)
 };
 
 // Lấy danh sách tài liệu hoặc tạo project mới nếu cần
-export const createWorkspaceProject = async (name, workspaceId, courseId = null) => {
+export const createWorkspaceProject = async (name) => {
   try {
     return await apiRequest('/workspace/projects', {
       method: 'POST',
-      body: JSON.stringify({ name, workspaceId, courseId }) // Gửi kèm workspaceId lên Server
+      body: JSON.stringify({ name })
     });
   } catch (error) {
     console.error("Lỗi khi tạo project workspace:", error);

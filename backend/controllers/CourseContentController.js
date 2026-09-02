@@ -1,5 +1,6 @@
 // backend/controllers/CourseContentController.js
 const CourseContentService = require('../service/CourseContentService');
+const EmailService = require('../service/EmailService');
 const { UserRole } = require('../enums/AuthEnums');
 
 /**
@@ -20,6 +21,15 @@ function handleControllerError(error, res) {
 }
 
 class CourseContentController {
+  static async simulateNextEmailFailure(req, res) {
+    try {
+      EmailService.armNextDeliveryFailure();
+      return res.status(200).json({ success: true, message: 'The next email delivery will fail once.' });
+    } catch (error) {
+      return handleControllerError(error, res);
+    }
+  }
+
   static async uploadMaterial(req, res) {
     try {
       const educatorId = req.user.userId;
@@ -68,6 +78,23 @@ class CourseContentController {
     }
   }
 
+  static async reorderMaterials(req, res) {
+    try {
+      const materials = await CourseContentService.reorderMaterials(
+        req.user.userId,
+        req.params.courseId,
+        req.body.materialOrders
+      );
+
+      return res.status(200).json({
+        message: 'Course Materials reordered successfully.',
+        materials
+      });
+    } catch (error) {
+      return handleControllerError(error, res);
+    }
+  }
+
   static async getMaterials(req, res) {
     try {
       const { courseId } = req.params;
@@ -91,18 +118,29 @@ class CourseContentController {
 
   static async getMaterialFile(req, res) {
     try {
-      const result = await CourseContentService.getMaterialFileForLearner(
-        req.user.userId,
-        req.params.materialId
-      );
+      const result = req.user.role === UserRole.EDUCATOR
+        ? await CourseContentService.getMaterialFileForEducator(
+            req.user.userId,
+            req.params.materialId
+          )
+        : await CourseContentService.getMaterialFileForLearner(
+            req.user.userId,
+            req.params.materialId
+          );
 
       const disposition = req.query.download === '1' ? 'attachment' : 'inline';
-      const safeFileName = String(result.fileName || 'course-material')
-        .replace(/[^\x20-\x7E]|[\r\n"]/g, '_');
+      const originalFileName = String(result.fileName || 'course-material')
+        .replace(/[\r\n]/g, ' ')
+        .trim() || 'course-material';
+      const safeFileName = originalFileName.replace(/[^\x20-\x7E]|["]/g, '_');
+      const encodedFileName = encodeURIComponent(originalFileName);
 
       res.setHeader('Content-Type', result.mimeType || 'application/octet-stream');
       res.setHeader('Content-Length', result.buffer.length);
-      res.setHeader('Content-Disposition', `${disposition}; filename="${safeFileName}"`);
+      res.setHeader(
+        'Content-Disposition',
+        `${disposition}; filename="${safeFileName}"; filename*=UTF-8''${encodedFileName}`
+      );
       res.setHeader('X-Content-Type-Options', 'nosniff');
       return res.status(200).send(result.buffer);
     } catch (error) {

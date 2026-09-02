@@ -77,8 +77,10 @@ class AssessmentService {
 
         if (error) throw error;
 
+        const expectedQuestionType = this._getExpectedQuestionType(type);
         const savedQuestions = [];
         for (const questionInput of questions) {
+            this._assertQuestionTypeMatchesAssessment(questionInput?.type, expectedQuestionType, type);
             const question = await this._insertQuestion(
                 data.assessmentId,
                 questionInput
@@ -181,7 +183,11 @@ class AssessmentService {
             learner: learner || null,
             answers: (answerRows || []).map(row => new SubmissionAnswer(row)),
             files: Array.isArray(submission.uploadedFileUrls)
-                ? submission.uploadedFileUrls.map(filePath => this._getSubmissionFilePublicUrl(filePath))
+                ? await Promise.all(
+                    submission.uploadedFileUrls.map(
+                        filePath => this._getSubmissionFileAccessUrl(filePath)
+                    )
+                )
                 : []
         };
     }
@@ -223,6 +229,24 @@ class AssessmentService {
                     'The supplied Assessment type is invalid.'
                 );
             }
+
+            if (changes.type !== assessmentRow.type) {
+                const { data: existingQuestions, error: questionLookupError } = await supabase
+                    .from('Question')
+                    .select('questionId')
+                    .eq('assessmentId', assessmentId)
+                    .limit(1);
+
+                if (questionLookupError) throw questionLookupError;
+                if ((existingQuestions || []).length > 0) {
+                    throw new AppError(
+                        409,
+                        'ASSESSMENT_TYPE_CHANGE_REQUIRES_EMPTY_QUESTION_LIST',
+                        'Delete all Questions before changing the Assessment type.'
+                    );
+                }
+            }
+
             updateData.type = changes.type;
         }
         if (changes.totalPoints !== undefined) {
@@ -300,6 +324,13 @@ class AssessmentService {
             );
         }
 
+        const expectedQuestionType = this._getExpectedQuestionType(assessmentRow.type);
+        this._assertQuestionTypeMatchesAssessment(
+            questionInput?.type,
+            expectedQuestionType,
+            assessmentRow.type
+        );
+
         return this._insertQuestion(assessmentId, questionInput);
     }
 
@@ -363,6 +394,13 @@ class AssessmentService {
         if (!Object.values(QuestionType).includes(finalType)) {
             throw new AppError(400, 'INVALID_QUESTION_DATA', 'The supplied Question type is invalid.');
         }
+
+        const expectedQuestionType = this._getExpectedQuestionType(assessmentRow.type);
+        this._assertQuestionTypeMatchesAssessment(
+            finalType,
+            expectedQuestionType,
+            assessmentRow.type
+        );
         if (changes.type !== undefined) {
             updateData.type = finalType;
         }
@@ -383,6 +421,9 @@ class AssessmentService {
                 const optionContents = changes.options.map(option => String(option.content || '').trim());
                 if (optionContents.some(content => !content)) {
                     throw new AppError(400, 'INVALID_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice option content cannot be empty.');
+                }
+                if (new Set(optionContents.map(content => content.toLowerCase())).size !== optionContents.length) {
+                    throw new AppError(400, 'DUPLICATE_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice options must be unique.');
                 }
                 updateData.options = optionContents;
                 updateData.correctAnswer = String(correctOptions[0].content).trim();
@@ -561,9 +602,10 @@ class AssessmentService {
             );
         }
 
-        await this._assertStoredQuestionPointsMatchTotal(
+        await this._assertStoredQuestionsReadyForPublish(
             assessmentId,
-            assessmentRow.totalPoints
+            assessmentRow.totalPoints,
+            assessmentRow.type
         );
 
         const now = new Date();
@@ -657,6 +699,113 @@ class AssessmentService {
         });
 
         return this._toAssessment(data);
+    }
+
+    static async getInstructionFileForEducator(assessmentId, educatorId) {
+        const assessmentRow = await this._findAssessmentById(assessmentId);
+        await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+        return this._downloadInstructionFile(assessmentRow);
+    }
+
+    static async getInstructionFileForLearner(assessmentId, learnerId) {
+        const assessmentRow = await this._findAssessmentById(assessmentId);
+        await this._assertLearnerEnrolled(assessmentRow.courseId, learnerId);
+        return this._downloadInstructionFile(assessmentRow);
+    }
+
+    static async _downloadInstructionFile(assessmentRow) {
+        const rawUrl = String(assessmentRow?.instructionFileUrl || '').trim();
+        if (!rawUrl) {
+            throw new AppError(
+                404,
+                'INSTRUCTION_FILE_NOT_FOUND',
+                'Assessment instruction file is not available.'
+            );
+        }
+
+        const bucket = process.env.ASSESSMENT_STORAGE_BUCKET || 'materials';
+        let filePath = '';
+
+        try {
+            if (/^https?:\/\//i.test(rawUrl)) {
+                const parsedUrl = new URL(rawUrl);
+                const decodedPath = decodeURIComponent(parsedUrl.pathname);
+                const markers = [
+                    `/storage/v1/object/public/${bucket}/`,
+                    `/storage/v1/object/sign/${bucket}/`,
+                    `/storage/v1/object/${bucket}/`,
+                    `/${bucket}/`
+                ];
+                const matchedMarker = markers.find((value) => decodedPath.includes(value));
+
+                if (matchedMarker) {
+                    filePath = decodedPath.slice(
+                        decodedPath.indexOf(matchedMarker) + matchedMarker.length
+                    );
+                }
+            } else {
+                filePath = decodeURIComponent(rawUrl.split('?')[0]);
+                if (filePath.startsWith(`${bucket}/`)) {
+                    filePath = filePath.slice(bucket.length + 1);
+                }
+            }
+        } catch (_) {
+            filePath = '';
+        }
+
+        filePath = String(filePath || '').replace(/^\/+/, '').trim();
+        if (!filePath) {
+            throw new AppError(
+                410,
+                'INSTRUCTION_FILE_UNAVAILABLE',
+                'Assessment instruction file is no longer available.'
+            );
+        }
+
+        const { data: downloaded, error: downloadError } = await supabase.storage
+            .from(bucket)
+            .download(filePath);
+
+        if (downloadError || !downloaded) {
+            throw new AppError(
+                410,
+                'INSTRUCTION_FILE_UNAVAILABLE',
+                'Assessment instruction file is no longer available.'
+            );
+        }
+
+        let buffer;
+        if (Buffer.isBuffer(downloaded)) {
+            buffer = downloaded;
+        } else if (typeof downloaded.arrayBuffer === 'function') {
+            buffer = Buffer.from(await downloaded.arrayBuffer());
+        } else {
+            buffer = Buffer.from(downloaded);
+        }
+
+        if (!buffer || buffer.length === 0) {
+            throw new AppError(
+                410,
+                'INSTRUCTION_FILE_UNAVAILABLE',
+                'Assessment instruction file is empty or unavailable.'
+            );
+        }
+
+        const fileName =
+            this._getInstructionFileName(rawUrl) ||
+            'Assessment instruction file';
+        const lowerName = String(fileName).toLowerCase();
+        const mimeType = lowerName.endsWith('.pdf')
+            ? 'application/pdf'
+            : lowerName.endsWith('.docx')
+                ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                : 'application/octet-stream';
+
+        return {
+            buffer,
+            fileName,
+            mimeType
+        };
     }
 
     static async getOpenAssessment(assessmentId, learnerId) {
@@ -1013,7 +1162,11 @@ class AssessmentService {
             submission,
             answers: (answerRows || []).map(row => new SubmissionAnswer(row)),
             files: Array.isArray(submission.uploadedFileUrls)
-                ? submission.uploadedFileUrls.map(filePath => this._getSubmissionFilePublicUrl(filePath))
+                ? await Promise.all(
+                    submission.uploadedFileUrls.map(
+                        filePath => this._getSubmissionFileAccessUrl(filePath)
+                    )
+                )
                 : []
         };
     }
@@ -1045,6 +1198,20 @@ class AssessmentService {
         const assessment = this._toAssessment(synchronized);
         const now = new Date();
 
+        // Check the schedule before interpreting the Submission status. Otherwise a
+        // late-disabled Assessment incorrectly reports ALREADY_FINALIZED after the
+        // deadline instead of the actual late-submission error.
+        if (now < startTime) {
+            throw new AppError(409, 'ASSESSMENT_NOT_STARTED', 'This Assessment has not started yet.');
+        }
+        if (now > deadline && !assessmentRow.allowLateSubmission) {
+            throw new AppError(
+                409,
+                'LATE_SUBMISSION_NOT_ALLOWED',
+                'The deadline has passed and late submission is not allowed.'
+            );
+        }
+
         const canAcceptSubmission = assessment.canAcceptSubmission(now);
         const quizCanSubmit =
             assessment.type === AssessmentType.QUIZ &&
@@ -1061,19 +1228,6 @@ class AssessmentService {
                 409,
                 'SUBMISSION_ALREADY_FINALIZED',
                 'This Submission can no longer be submitted or changed.'
-            );
-        }
-
-        if (now < startTime) {
-            throw new AppError(409, 'ASSESSMENT_NOT_STARTED', 'This Assessment has not started yet.');
-        }
-
-        const isLate = now > deadline;
-        if (isLate && !assessmentRow.allowLateSubmission) {
-            throw new AppError(
-                409,
-                'LATE_SUBMISSION_NOT_ALLOWED',
-                'The deadline has passed and late submission is not allowed.'
             );
         }
 
@@ -1110,9 +1264,20 @@ class AssessmentService {
             status = SubmissionStatus.GRADED;
         }
 
-        const submittedAt = now.toISOString();
+        // Re-check using the server clock immediately before the final write. The
+        // deadline may have passed while answers/questions were being loaded.
+        const finalizeNow = new Date();
+        const isLate = finalizeNow > deadline;
+        if (isLate && !assessmentRow.allowLateSubmission) {
+            throw new AppError(
+                409,
+                'LATE_SUBMISSION_NOT_ALLOWED',
+                'The deadline has passed and late submission is not allowed.'
+            );
+        }
+        const submittedAt = finalizeNow.toISOString();
 
-        const { data, error } = await supabase
+        let updateQuery = supabase
             .from('Submission')
             .update({
                 submittedAt,
@@ -1121,10 +1286,30 @@ class AssessmentService {
                 score
             })
             .eq('submissionId', submissionId)
+            .eq('learnerId', learnerId)
+            .eq('status', submissionRow.status);
+
+        // Optimistic concurrency: two simultaneous finalize requests that read the
+        // same old row cannot both succeed, even when the resulting status value is
+        // the same (for example PENDING_REVIEW -> PENDING_REVIEW on an Assignment).
+        if (submissionRow.submittedAt) {
+            updateQuery = updateQuery.eq('submittedAt', submissionRow.submittedAt);
+        } else {
+            updateQuery = updateQuery.is('submittedAt', null);
+        }
+
+        const { data, error } = await updateQuery
             .select()
-            .single();
+            .maybeSingle();
 
         if (error) throw error;
+        if (!data) {
+            throw new AppError(
+                409,
+                'SUBMISSION_ALREADY_FINALIZED',
+                'This Submission was already finalized by another request.'
+            );
+        }
 
         let analytics = null;
         if (status === SubmissionStatus.GRADED) {
@@ -1237,11 +1422,16 @@ class AssessmentService {
 
         await this._assertCourseManagedBy(assessment.courseId, educatorId);
 
-        if (submission.status !== SubmissionStatus.PENDING_REVIEW) {
+        const editableStatuses = [
+            SubmissionStatus.PENDING_REVIEW,
+            SubmissionStatus.GRADED
+        ];
+
+        if (!editableStatuses.includes(submission.status)) {
             throw new AppError(
                 409,
-                'SUBMISSION_NOT_PENDING_REVIEW',
-                'Only a Submission pending review can be graded manually.'
+                'SUBMISSION_NOT_AVAILABLE_FOR_GRADING',
+                'Only a Submission pending review or already graded can be graded manually.'
             );
         }
 
@@ -1300,14 +1490,87 @@ class AssessmentService {
         }
     }
 
-    static async _assertStoredQuestionPointsMatchTotal(assessmentId, totalPoints) {
+    static async _assertStoredQuestionsReadyForPublish(assessmentId, totalPoints, assessmentType) {
         const { data, error } = await supabase
             .from('Question')
-            .select('points')
+            .select('content, points, type, options, correctAnswer')
             .eq('assessmentId', assessmentId);
 
         if (error) throw error;
-        this._assertQuestionPointsMatchTotal(totalPoints, data || []);
+
+        const questions = data || [];
+        if (questions.length === 0) {
+            throw new AppError(
+                400,
+                'ASSESSMENT_QUESTION_REQUIRED',
+                'Add at least one Question before publishing the Assessment.'
+            );
+        }
+
+        const expectedQuestionType = this._getExpectedQuestionType(assessmentType);
+        for (const question of questions) {
+            this._assertQuestionTypeMatchesAssessment(
+                question.type,
+                expectedQuestionType,
+                assessmentType
+            );
+
+            if (!String(question.content || '').trim()) {
+                throw new AppError(400, 'QUESTION_CONTENT_REQUIRED', 'Question content cannot be empty.');
+            }
+
+            if (expectedQuestionType === QuestionType.MULTIPLE_CHOICE) {
+                const optionContents = Array.isArray(question.options)
+                    ? question.options.map(option => String(option || '').trim())
+                    : [];
+
+                if (optionContents.length < 2 || optionContents.some(content => !content)) {
+                    throw new AppError(400, 'INVALID_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice option content cannot be empty.');
+                }
+
+                if (new Set(optionContents.map(content => content.toLowerCase())).size !== optionContents.length) {
+                    throw new AppError(400, 'DUPLICATE_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice options must be unique.');
+                }
+
+                const correctAnswer = String(question.correctAnswer || '').trim();
+                if (!correctAnswer || optionContents.filter(content => content === correctAnswer).length !== 1) {
+                    throw new AppError(400, 'INVALID_CORRECT_OPTION', 'Select exactly one correct option.');
+                }
+            }
+        }
+
+        this._assertQuestionPointsMatchTotal(totalPoints, questions);
+    }
+
+    static _getExpectedQuestionType(assessmentType) {
+        if (assessmentType === AssessmentType.QUIZ) {
+            return QuestionType.MULTIPLE_CHOICE;
+        }
+        if (assessmentType === AssessmentType.ASSIGNMENT) {
+            return QuestionType.ESSAY;
+        }
+        throw new AppError(
+            400,
+            'INVALID_ASSESSMENT_TYPE',
+            'The supplied Assessment type is invalid.'
+        );
+    }
+
+    static _assertQuestionTypeMatchesAssessment(questionType, expectedQuestionType, assessmentType) {
+        if (questionType === expectedQuestionType) return;
+
+        const expectedLabel = expectedQuestionType === QuestionType.MULTIPLE_CHOICE
+            ? 'Multiple Choice'
+            : 'Essay';
+        const assessmentLabel = assessmentType === AssessmentType.QUIZ
+            ? 'Quiz'
+            : 'Assignment';
+
+        throw new AppError(
+            400,
+            'QUESTION_TYPE_NOT_ALLOWED_FOR_ASSESSMENT',
+            `${assessmentLabel} assessments can only contain ${expectedLabel} Questions.`
+        );
     }
 
     static _validateTotalPoints(value) {
@@ -1330,9 +1593,13 @@ class AssessmentService {
     }
 
     static async _insertQuestion(assessmentId, questionInput) {
-        const { content, type, points = 0, displayOrder = 0, options = [] } = questionInput;
-        if (!content || !Object.values(QuestionType).includes(type)) {
-            throw new AppError(400, 'INVALID_QUESTION_DATA', 'Question content and type are required.');
+        const { type, points = 0, displayOrder = 0, options = [] } = questionInput || {};
+        const content = String(questionInput?.content || '').trim();
+        if (!content) {
+            throw new AppError(400, 'QUESTION_CONTENT_REQUIRED', 'Question content cannot be empty.');
+        }
+        if (!Object.values(QuestionType).includes(type)) {
+            throw new AppError(400, 'INVALID_QUESTION_DATA', 'Question type is required.');
         }
         const numericQuestionPoints = Number(points);
         if (!Number.isFinite(numericQuestionPoints) || numericQuestionPoints <= 0) {
@@ -1341,15 +1608,24 @@ class AssessmentService {
         let optionContents = [];
         let correctAnswer = null;
         if (type === QuestionType.MULTIPLE_CHOICE) {
-            const correctOptions = options.filter(option => option.isCorrect);
-            if (options.length < 2 || correctOptions.length !== 1) {
-                throw new AppError(
-                    400,
-                    'INVALID_MULTIPLE_CHOICE_OPTIONS',
-                    'A multiple-choice Question requires at least two options and exactly one correct option.'
-                );
+            if (!Array.isArray(options)) {
+                throw new AppError(400, 'INVALID_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice options must be an array.');
             }
-            optionContents = options.map(option => option.content);
+            const normalizedOptions = options.map(option => ({
+                content: String(option?.content || '').trim(),
+                isCorrect: option?.isCorrect === true
+            }));
+            const correctOptions = normalizedOptions.filter(option => option.isCorrect);
+            if (normalizedOptions.length < 2 || normalizedOptions.some(option => !option.content)) {
+                throw new AppError(400, 'INVALID_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice option content cannot be empty.');
+            }
+            if (new Set(normalizedOptions.map(option => option.content.toLowerCase())).size !== normalizedOptions.length) {
+                throw new AppError(400, 'DUPLICATE_MULTIPLE_CHOICE_OPTIONS', 'Multiple-choice options must be unique.');
+            }
+            if (correctOptions.length !== 1) {
+                throw new AppError(400, 'INVALID_CORRECT_OPTION', 'Select exactly one correct option.');
+            }
+            optionContents = normalizedOptions.map(option => option.content);
             correctAnswer = correctOptions[0].content;
         }
         const { data, error } = await supabase
@@ -1567,6 +1843,28 @@ class AssessmentService {
         } catch {
             return 'Assessment instruction file';
         }
+    }
+
+    static async _getSubmissionFileAccessUrl(filePath) {
+        if (!filePath) return null;
+        if (/^https?:\/\//i.test(filePath)) {
+            return filePath;
+        }
+
+        const bucket = process.env.ASSESSMENT_STORAGE_BUCKET || 'materials';
+        const { data, error } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(filePath, 60 * 60);
+
+        if (error) {
+            throw new AppError(
+                404,
+                'SUBMISSION_FILE_NOT_AVAILABLE',
+                'The submitted file is no longer available.'
+            );
+        }
+
+        return data?.signedUrl || filePath;
     }
 
     static _getSubmissionFilePublicUrl(filePath) {

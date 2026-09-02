@@ -12,6 +12,13 @@ export const getAdminCourseDetail = async (courseId) => {
   return await apiRequest(`/admin/courses/${courseId}`, { method: 'GET' });
 };
 
-export const adminArchiveCourse = async (courseId) => {
-  return await apiRequest(`/admin/courses/${courseId}/archive`, { method: 'POST' });
+export const adminArchiveCourse = async (courseId, reason = '') => {
+  return await apiRequest(`/admin/courses/${courseId}/archive`, {
+    method: 'POST',
+    body: JSON.stringify({ reason })
+  });
+};
+
+export const adminUnarchiveCourse = async (courseId) => {
+  return await apiRequest(`/admin/courses/${courseId}/unarchive`, { method: 'POST' });
 };

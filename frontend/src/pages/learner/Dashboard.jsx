@@ -143,10 +143,11 @@ export default function Dashboard() {
       setUploading(true);
       showToast(`Uploading: ${pendingFile.name}...`, 'info');
       const uploadRes = await uploadProjectMaterial(selectedTargetProjectId, pendingFile);
-      const materialId = uploadRes?.materialId || uploadRes?.material?.materialId || uploadRes?.id;
-      if (materialId) {
-        await extractDocumentText(materialId, pendingFile);
+      const materialId = uploadRes?.material?.materialId;
+      if (!materialId) {
+        throw new Error('Upload succeeded but materialId was not returned.');
       }
+      await extractDocumentText(selectedTargetProjectId, materialId, pendingFile);
       showToast('Materials uploaded and context extracted successfully!', 'success');
       setShowUploadModal(false);
       setPendingFile(null);

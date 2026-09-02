@@ -443,9 +443,19 @@ export default function Notes() {
             </button>
           </div>
 
-          <span className="text-xs text-gray-400 font-semibold italic ml-auto">
-            {saveStatus}
-          </span>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-xs text-gray-400 font-semibold italic">
+              {saveStatus}
+            </span>
+            <button
+              type="button"
+              onClick={handleSaveNote}
+              disabled={!selectedProjectId || isSaving}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-sm transition whitespace-nowrap"
+            >
+              {isSaving ? 'Saving...' : 'Save Note'}
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-10 max-w-4xl w-full mx-auto space-y-6">
@@ -467,8 +477,8 @@ export default function Notes() {
             className="text-sm text-gray-800 leading-relaxed outline-none min-h-[420px] prose max-w-none focus:ring-0"
           />
 
-          <div className="pt-6 border-t border-gray-100 flex items-center justify-between">
-            {activeNoteId ? (
+          {activeNoteId && (
+            <div className="pt-6 border-t border-gray-100 flex items-center">
               <button
                 type="button"
                 onClick={handleDeleteNote}
@@ -476,17 +486,8 @@ export default function Notes() {
               >
                 Delete this note
               </button>
-            ) : <div />}
-
-            <button
-              type="button"
-              onClick={handleSaveNote}
-              disabled={!selectedProjectId || isSaving}
-              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold px-8 py-3 rounded-2xl shadow-md transition ml-auto"
-            >
-              {isSaving ? 'Saving...' : 'Save Note'}
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </main>

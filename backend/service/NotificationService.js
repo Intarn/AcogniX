@@ -1,5 +1,6 @@
 const supabase = require('../config/supabaseClient');
 const EmailService = require('./EmailService');
+const AppError = require('../error/AppError');
 
 
 class NotificationService {
@@ -571,6 +572,126 @@ class NotificationService {
         });
     });
   }
+
+  // =========================================================
+  // UC-11: EDUCATOR IN-APP WEEKLY REPORT NOTIFICATIONS
+  //
+  // Store each notification as its own row. This avoids the lost-update race
+  // caused by reading/modifying/writing one JSON array in System_Settings.
+  // =========================================================
+
+  static _mapNotificationRow(row) {
+    if (!row) return null;
+
+    return {
+      id: row.notificationId,
+      type: row.type,
+      title: row.title,
+      message: row.message,
+      courseId: row.courseId,
+      reportId: row.sourceId,
+      createdAt: row.createdAt,
+      readAt: row.readAt || null,
+      read: Boolean(row.readAt),
+      targetUrl: row.targetUrl
+    };
+  }
+
+  static async createWeeklyReportNotification({ report }) {
+    if (!report?.reportId || !report?.educatorId || !report?.courseId) {
+      throw new AppError(
+        400,
+        'INVALID_WEEKLY_REPORT_NOTIFICATION',
+        'Weekly report notification data is incomplete.'
+      );
+    }
+
+    const row = {
+      recipientId: report.educatorId,
+      type: 'WEEKLY_CLASS_PERFORMANCE',
+      sourceId: String(report.reportId),
+      courseId: report.courseId,
+      title: 'Weekly class-performance report ready',
+      message: report.courseCode
+        ? `${report.courseName} (${report.courseCode})`
+        : report.courseName,
+      targetUrl: `/educator/analytics?courseId=${encodeURIComponent(String(report.courseId))}&weekly=1`,
+      createdAt: report.generatedAt || new Date().toISOString(),
+      readAt: null
+    };
+
+    const { data, error } = await supabase
+      .from('Notification')
+      .upsert([row], { onConflict: 'recipientId,type,sourceId' })
+      .select('notificationId, type, sourceId, courseId, title, message, targetUrl, createdAt, readAt')
+      .single();
+
+    if (error) {
+      console.error('[NotificationService] Notification persistence failed:', error);
+      throw new AppError(500, 'NOTIFICATION_SAVE_FAILED', 'Unable to save the notification.');
+    }
+
+    return this._mapNotificationRow(data);
+  }
+
+  static async getEducatorNotifications(educatorId) {
+    const { data, error } = await supabase
+      .from('Notification')
+      .select('notificationId, type, sourceId, courseId, title, message, targetUrl, createdAt, readAt')
+      .eq('recipientId', educatorId)
+      .order('createdAt', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error('[NotificationService] Notification lookup failed:', error);
+      throw new AppError(500, 'NOTIFICATION_LOAD_FAILED', 'Unable to load notifications.');
+    }
+
+    const notifications = (data || [])
+      .map(row => this._mapNotificationRow(row))
+      .filter(Boolean);
+
+    return {
+      notifications,
+      unreadCount: notifications.filter(item => item.read !== true).length
+    };
+  }
+
+  static async markEducatorNotificationRead(educatorId, notificationId) {
+    const readAt = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('Notification')
+      .update({ readAt })
+      .eq('notificationId', notificationId)
+      .eq('recipientId', educatorId)
+      .select('notificationId, type, sourceId, courseId, title, message, targetUrl, createdAt, readAt')
+      .maybeSingle();
+
+    if (error) {
+      console.error('[NotificationService] Notification update failed:', error);
+      throw new AppError(500, 'NOTIFICATION_UPDATE_FAILED', 'Unable to update the notification.');
+    }
+    if (!data) {
+      throw new AppError(404, 'NOTIFICATION_NOT_FOUND', 'Notification not found.');
+    }
+
+    const { count, error: countError } = await supabase
+      .from('Notification')
+      .select('notificationId', { count: 'exact', head: true })
+      .eq('recipientId', educatorId)
+      .is('readAt', null);
+
+    if (countError) {
+      console.error('[NotificationService] Notification unread-count lookup failed:', countError);
+      throw new AppError(500, 'NOTIFICATION_LOAD_FAILED', 'Unable to load notifications.');
+    }
+
+    return {
+      notification: this._mapNotificationRow(data),
+      unreadCount: Number(count || 0)
+    };
+  }
+
 }
 
 

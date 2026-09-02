@@ -59,9 +59,13 @@ function createApp(io) {
   return app;
 }
 
+let dataInitialized = false;
+
 async function initializeData() {
+  if (dataInitialized) return;
   console.log("Initializing system data...");
   scheduleWeeklyReports();
+  dataInitialized = true;
   console.log("System data initialized.");
 }
 
@@ -74,6 +78,8 @@ async function main() {
   const app = createApp(io); // Truyền io vào hàm createApp
   server.on('request', app);
 
+  await initializeData();
+
   server.listen(PORT, () => {
     console.log("===================================================");
     console.log(`AcogniX Backend running at: http://localhost:${PORT}`);
@@ -81,4 +87,11 @@ async function main() {
   });
 }
 
-main();
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('Failed to start AcogniX Backend:', error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { createApp, initializeData, main };

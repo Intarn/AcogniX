@@ -24,8 +24,8 @@ const sendEmailWithRetry = async (to, subject, html, retries = 3) => {
 };
 
 // Shared implementation used by the real schedule and by controlled tests.
-// The report is persisted before email delivery, so an email failure does not
-// remove the in-app weekly notification or detailed report.
+// The weekly report is persisted before email delivery, so an email failure
+// does not remove the generated report itself.
 const runWeeklyReportsNow = async (generatedAt = new Date()) => {
   console.log('[CRON] Starting automated weekly class performance reports...');
 
@@ -71,7 +71,7 @@ const runWeeklyReportsNow = async (generatedAt = new Date()) => {
                   .join('')
                 : '<li>All students are currently meeting expectations.</li>'}
             </ul>
-            <p>Open AcogniX notifications to view the detailed weekly insights.</p>
+            <p>Open AcogniX Analytics to view the latest class performance information.</p>
           </div>
         `;
 

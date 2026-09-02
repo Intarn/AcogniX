@@ -191,8 +191,18 @@ export default function AnalyticsPage() {
       getInfrastructureErrorLogs(50)
     ]);
 
-    if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
-    else setRefreshError('Some infrastructure data could not be refreshed.');
+    if (healthResult.status === 'fulfilled') {
+      const latestHealth = healthResult.value;
+      setHealth(latestHealth);
+
+      // A previous successful reconnect message must not remain visible after
+      // a later database failure/degraded health result.
+      if (latestHealth?.databaseStatus !== 'ONLINE') {
+        setDbActionMessage('');
+      }
+    } else {
+      setRefreshError('Some infrastructure data could not be refreshed.');
+    }
 
     if (usageResult.status === 'fulfilled') setUsage(usageResult.value);
     if (analyticsResult.status === 'fulfilled') setAnalytics({ ...EMPTY_ANALYTICS, ...analyticsResult.value });

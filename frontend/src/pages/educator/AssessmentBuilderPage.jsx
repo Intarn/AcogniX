@@ -1,5 +1,5 @@
 // frontend/src/pages/educator/AssessmentBuilderPage.jsx
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getCourses } from '../../features/classroom/courseApi';
 import {
@@ -8,6 +8,7 @@ import {
   deleteAssessmentQuestion,
   getAssessmentById,
   getAssessmentQuestions,
+  getAssessmentInstructionFileBlob,
   publishAssessment,
   scheduleAssessment,
   updateAssessment,
@@ -77,15 +78,18 @@ async function fetchStorageBlob(rawUrl, defaultBucket = 'assessment-files') {
   return null;
 }
 
-function createEmptyQuestionForm() {
+function createEmptyQuestionForm(questionType = 'MULTIPLE_CHOICE') {
   return {
-    type: 'MULTIPLE_CHOICE',
+    type: questionType,
     content: '',
     points: 10,
-    options: [
-      { optionId: 1, content: '', isCorrect: true },
-      { optionId: 2, content: '', isCorrect: false }
-    ]
+    options:
+      questionType === 'MULTIPLE_CHOICE'
+        ? [
+            { optionId: 1, content: '', isCorrect: true },
+            { optionId: 2, content: '', isCorrect: false }
+          ]
+        : []
   };
 }
 
@@ -174,6 +178,7 @@ export default function AssessmentBuilderPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState('QUIZ');
+  const expectedQuestionType = type === 'QUIZ' ? 'MULTIPLE_CHOICE' : 'ESSAY';
   const [totalPoints, setTotalPoints] = useState(100);
   const [startTime, setStartTime] = useState('');
   const [deadline, setDeadline] = useState('');
@@ -184,7 +189,19 @@ export default function AssessmentBuilderPage() {
   const [status, setStatus] = useState('DRAFT');
   const [questions, setQuestions] = useState([]);
   const [errors, setErrors] = useState({});
+  const [savingAssessment, setSavingAssessment] = useState(false);
+  const [savingQuestion, setSavingQuestion] = useState(false);
+  const [deletingQuestionIds, setDeletingQuestionIds] = useState([]);
   const [downloadingExisting, setDownloadingExisting] = useState(false);
+  const [openingExisting, setOpeningExisting] = useState(false);
+  const [autoDistributing, setAutoDistributing] = useState(false);
+
+  const saveAssessmentInFlightRef = useRef(false);
+  const saveQuestionInFlightRef = useRef(false);
+  const tempQuestionSequenceRef = useRef(0);
+  const deleteQuestionInFlightRef = useRef(new Set());
+  const existingFileActionInFlightRef = useRef(false);
+  const autoDistributeInFlightRef = useRef(false);
 
   const [questionModalOpen, setQuestionModalOpen] = useState(false);
   const [editingQuestionId, setEditingQuestionId] = useState(null);
@@ -270,28 +287,49 @@ export default function AssessmentBuilderPage() {
   const handleDownloadExistingFile = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!existingInstructionFileUrl) return;
+
+    if (
+      !assessmentId ||
+      existingFileActionInFlightRef.current
+    ) {
+      return;
+    }
+
+    existingFileActionInFlightRef.current = true;
 
     try {
       setDownloadingExisting(true);
-      showToast('Downloading instruction file...', 'info');
-      const result = await fetchStorageBlob(existingInstructionFileUrl, 'assessment-files');
-      if (!result) {
-        showToast('The instruction file could not be found in storage (NoSuchKey).', 'error');
-        return;
-      }
-      const blobUrl = window.URL.createObjectURL(result.blob);
-      const link = document.createElement('a');
+
+      const { blob } =
+        await getAssessmentInstructionFileBlob(
+          assessmentId,
+          { download: true }
+        );
+
+      const blobUrl =
+        window.URL.createObjectURL(blob);
+
+      const link =
+        document.createElement('a');
+
       link.href = blobUrl;
-      link.download = `Assessment-${title || 'instruction-file'}`;
+      link.download =
+        `Assessment-${assessmentId}-Instruction`;
+
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-      showToast('Instruction file downloaded successfully.', 'success');
-    } catch (err) {
-      showToast('Unable to download the file.', 'error');
+      link.remove();
+
+      window.URL
+        .revokeObjectURL(blobUrl);
+    } catch (error) {
+      showToast(
+        error.message ||
+        'Unable to download instruction file.',
+        'error'
+      );
     } finally {
+      existingFileActionInFlightRef.current = false;
       setDownloadingExisting(false);
     }
   };
@@ -299,19 +337,63 @@ export default function AssessmentBuilderPage() {
   const handleOpenExistingFile = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!existingInstructionFileUrl) return;
+
+    if (
+      !assessmentId ||
+      existingFileActionInFlightRef.current
+    ) {
+      return;
+    }
+
+    existingFileActionInFlightRef.current = true;
+
+    const previewWindow =
+      window.open('', '_blank');
+
+    if (!previewWindow) {
+      existingFileActionInFlightRef.current = false;
+      showToast(
+        'Unable to open the preview window. Please allow pop-ups for this site and try again.',
+        'warning'
+      );
+      return;
+    }
+
+    previewWindow.opener = null;
 
     try {
-      showToast('Opening instruction file...', 'info');
-      const result = await fetchStorageBlob(existingInstructionFileUrl, 'assessment-files');
-      if (!result) {
-        showToast('The instruction file could not be found in storage (NoSuchKey).', 'error');
-        return;
+      setOpeningExisting(true);
+
+      const { blob } =
+        await getAssessmentInstructionFileBlob(
+          assessmentId
+        );
+
+      const blobUrl =
+        window.URL.createObjectURL(blob);
+
+      if (!previewWindow.closed) {
+        previewWindow.location.href = blobUrl;
       }
-      const blobUrl = window.URL.createObjectURL(result.blob);
-      window.open(blobUrl, '_blank', 'noopener,noreferrer');
-    } catch (err) {
-      showToast('Unable to open the file.', 'error');
+
+      window.setTimeout(
+        () =>
+          window.URL
+            .revokeObjectURL(blobUrl),
+        60_000
+      );
+    } catch (error) {
+      if (!previewWindow.closed) {
+        previewWindow.close();
+      }
+      showToast(
+        error.message ||
+        'Unable to open instruction file.',
+        'error'
+      );
+    } finally {
+      existingFileActionInFlightRef.current = false;
+      setOpeningExisting(false);
     }
   };
 
@@ -320,29 +402,76 @@ export default function AssessmentBuilderPage() {
   }, [questions]);
 
   async function handleAutoDistribute() {
-    const updated = autoDistributePoints(totalPoints, questions);
+    if (autoDistributeInFlightRef.current) return;
+
+    const updated =
+      autoDistributePoints(
+        totalPoints,
+        questions
+      );
+
     setQuestions(updated);
     updateError('questionPoints');
 
-    if (!isEditMode || updated.length === 0) return;
+    if (
+      !isEditMode ||
+      updated.length === 0
+    ) {
+      return;
+    }
+
+    autoDistributeInFlightRef.current = true;
+    setAutoDistributing(true);
 
     try {
       await Promise.all(
-        updated.map((question) =>
-          updateAssessmentQuestion(assessmentId, question.questionId, {
-            points: Number(question.points)
-          })
+        updated.map(
+          (question) =>
+            updateAssessmentQuestion(
+              assessmentId,
+              question.questionId,
+              {
+                points:
+                  Number(
+                    question.points
+                  )
+              }
+            )
         )
       );
-      showToast('Question points distributed successfully.', 'success');
+
+      showToast(
+        'Question points distributed successfully.',
+        'success'
+      );
     } catch (error) {
-      showToast(error.message || 'Unable to distribute question points.', 'error');
-      const questionResult = await getAssessmentQuestions(assessmentId).catch(() => ({ questions: [] }));
+      showToast(
+        error.message ||
+        'Unable to distribute question points.',
+        'error'
+      );
+
+      const questionResult =
+        await getAssessmentQuestions(
+          assessmentId
+        ).catch(
+          () => ({
+            questions: []
+          })
+        );
+
       setQuestions(
-        Array.isArray(questionResult?.questions)
-          ? questionResult.questions.map(normalizeQuestion)
+        Array.isArray(
+          questionResult?.questions
+        )
+          ? questionResult.questions.map(
+              normalizeQuestion
+            )
           : []
       );
+    } finally {
+      autoDistributeInFlightRef.current = false;
+      setAutoDistributing(false);
     }
   }
 
@@ -400,8 +529,14 @@ export default function AssessmentBuilderPage() {
       if (startTime && deadline && new Date(deadline) <= new Date(startTime)) {
         nextErrors.deadline = 'Deadline must be after the start time.';
       }
-      if (questions.length === 0 && !instructionFile && !existingInstructionFileUrl) {
-        nextErrors.content = 'Add at least one question or attach an instruction file before publishing.';
+      if (questions.length === 0) {
+        nextErrors.content = 'Add at least one question before publishing.';
+      }
+      if (questions.some((question) => question.type !== expectedQuestionType)) {
+        nextErrors.content =
+          type === 'QUIZ'
+            ? 'Quiz assessments can only contain Multiple Choice questions.'
+            : 'Assignment assessments can only contain Essay questions.';
       }
     }
     setErrors(nextErrors);
@@ -409,8 +544,13 @@ export default function AssessmentBuilderPage() {
   }
 
   async function saveAssessment(targetStatus) {
+    if (saveAssessmentInFlightRef.current) return;
+
     const publishing = targetStatus === 'SCHEDULED';
     if (!validateAssessment({ publishing })) return;
+
+    saveAssessmentInFlightRef.current = true;
+    setSavingAssessment(true);
 
     const startTimeIso = startTime ? new Date(startTime).toISOString() : null;
     const deadlineIso = deadline ? new Date(deadline).toISOString() : null;
@@ -474,12 +614,15 @@ export default function AssessmentBuilderPage() {
     } catch (error) {
       console.error('[Save Assessment Error]:', error);
       showToast(error.message || 'Unable to save the assessment.', 'error');
+    } finally {
+      saveAssessmentInFlightRef.current = false;
+      setSavingAssessment(false);
     }
   }
 
   function openAddQuestion() {
     setEditingQuestionId(null);
-    setQuestionForm(createEmptyQuestionForm());
+    setQuestionForm(createEmptyQuestionForm(expectedQuestionType));
     setQuestionErrors({});
     setQuestionModalOpen(true);
   }
@@ -487,10 +630,15 @@ export default function AssessmentBuilderPage() {
   function openEditQuestion(question) {
     setEditingQuestionId(question.questionId);
     setQuestionForm({
-      type: question.type,
+      type: expectedQuestionType,
       content: question.content,
       points: question.points,
-      options: Array.isArray(question.options) ? question.options.map((opt) => ({ ...opt })) : []
+      options:
+        expectedQuestionType === 'MULTIPLE_CHOICE'
+          ? (Array.isArray(question.options) && question.options.length >= 2
+              ? question.options.map((opt) => ({ ...opt }))
+              : createEmptyQuestionForm('MULTIPLE_CHOICE').options)
+          : []
     });
     setQuestionErrors({});
     setQuestionModalOpen(true);
@@ -499,7 +647,7 @@ export default function AssessmentBuilderPage() {
   function closeQuestionModal() {
     setQuestionModalOpen(false);
     setEditingQuestionId(null);
-    setQuestionForm(createEmptyQuestionForm());
+    setQuestionForm(createEmptyQuestionForm(expectedQuestionType));
     setQuestionErrors({});
   }
 
@@ -508,18 +656,25 @@ export default function AssessmentBuilderPage() {
     setQuestionErrors((previous) => ({ ...previous, [field]: null }));
   }
 
-  function changeQuestionType(nextType) {
-    if (nextType === 'MULTIPLE_CHOICE') {
-      setQuestionForm((previous) => ({
-        ...previous,
-        type: 'MULTIPLE_CHOICE',
-        options:
-          previous.options.length >= 2 ? previous.options : createEmptyQuestionForm().options
-      }));
-    } else {
-      setQuestionForm((previous) => ({ ...previous, type: 'ESSAY', options: [] }));
+  function handleAssessmentTypeChange(nextType) {
+    if (nextType === type) return;
+
+    if (questions.length > 0) {
+      showToast(
+        'Delete all questions before changing the Assessment Type.',
+        'warning'
+      );
+      return;
     }
-    setQuestionErrors({});
+
+    setType(nextType);
+    setErrors((previous) => ({ ...previous, content: null, questionPoints: null }));
+    if (questionModalOpen) {
+      const nextQuestionType = nextType === 'QUIZ' ? 'MULTIPLE_CHOICE' : 'ESSAY';
+      setEditingQuestionId(null);
+      setQuestionForm(createEmptyQuestionForm(nextQuestionType));
+      setQuestionErrors({});
+    }
   }
 
   function addOption() {
@@ -567,16 +722,16 @@ export default function AssessmentBuilderPage() {
     if (!Number.isFinite(points) || points <= 0) {
       nextErrors.points = 'Question points must be greater than 0.';
     }
-    if (questionForm.type === 'MULTIPLE_CHOICE') {
+    if (expectedQuestionType === 'MULTIPLE_CHOICE') {
       if (questionForm.options.length < 2) {
         nextErrors.options = 'A multiple-choice question requires at least two options.';
-      }
-      if (questionForm.options.some((opt) => !opt.content.trim())) {
+      } else if (questionForm.options.some((opt) => !opt.content.trim())) {
         nextErrors.options = 'All answer options must contain text.';
-      }
-      const correctCount = questionForm.options.filter((opt) => opt.isCorrect).length;
-      if (correctCount !== 1) {
-        nextErrors.options = 'Select exactly one correct answer.';
+      } else {
+        const correctCount = questionForm.options.filter((opt) => opt.isCorrect).length;
+        if (correctCount !== 1) {
+          nextErrors.options = 'Select exactly one correct answer.';
+        }
       }
     }
     setQuestionErrors(nextErrors);
@@ -586,32 +741,113 @@ export default function AssessmentBuilderPage() {
   async function handleDeleteQuestion(question) {
     if (!question) return;
 
-    if (!isEditMode || String(question.questionId || '').startsWith('temp-question-')) {
-      setQuestions((previous) => previous.filter((item) => item !== question));
-      updateError('questionPoints');
+    const questionKey =
+      String(
+        question.questionId || ''
+      );
+
+    if (
+      deleteQuestionInFlightRef.current
+        .has(questionKey)
+    ) {
       return;
     }
 
-    try {
-      await deleteAssessmentQuestion(assessmentId, question.questionId);
-      setQuestions((previous) =>
-        previous.filter((item) => String(item.questionId) !== String(question.questionId))
+    if (
+      !isEditMode ||
+      questionKey.startsWith(
+        'temp-question-'
+      )
+    ) {
+      setQuestions(
+        (previous) =>
+          previous.filter(
+            (item) =>
+              item !== question
+          )
       );
-      updateError('questionPoints');
-      showToast('Question deleted successfully.', 'success');
+
+      updateError(
+        'questionPoints'
+      );
+
+      return;
+    }
+
+    deleteQuestionInFlightRef.current
+      .add(questionKey);
+
+    setDeletingQuestionIds(
+      (previous) => [
+        ...previous,
+        questionKey
+      ]
+    );
+
+    try {
+      await deleteAssessmentQuestion(
+        assessmentId,
+        question.questionId
+      );
+
+      setQuestions(
+        (previous) =>
+          previous.filter(
+            (item) =>
+              String(
+                item.questionId
+              ) !==
+              questionKey
+          )
+      );
+
+      updateError(
+        'questionPoints'
+      );
+
+      showToast(
+        'Question deleted successfully.',
+        'success'
+      );
     } catch (error) {
-      showToast(error.message || 'Unable to delete the question.', 'error');
+      showToast(
+        error.message ||
+        'Unable to delete the question.',
+        'error'
+      );
+    } finally {
+      deleteQuestionInFlightRef.current
+        .delete(questionKey);
+
+      setDeletingQuestionIds(
+        (previous) =>
+          previous.filter(
+            (id) =>
+              String(id) !==
+              questionKey
+          )
+      );
     }
   }
 
   async function saveQuestion() {
+    if (saveQuestionInFlightRef.current) return;
     if (!validateQuestion()) return;
+
+    saveQuestionInFlightRef.current = true;
+    setSavingQuestion(true);
+
     const editingIndex =
       editingQuestionId !== null
         ? questions.findIndex((q) => String(q.questionId) === String(editingQuestionId))
         : -1;
+    const normalizedQuestionForm = {
+      ...questionForm,
+      type: expectedQuestionType,
+      options: expectedQuestionType === 'MULTIPLE_CHOICE' ? questionForm.options : []
+    };
     const payload = buildQuestionPayload(
-      questionForm,
+      normalizedQuestionForm,
       editingIndex >= 0 ? editingIndex : questions.length
     );
 
@@ -625,7 +861,7 @@ export default function AssessmentBuilderPage() {
                     ...q,
                     ...payload,
                     options:
-                      questionForm.type === 'MULTIPLE_CHOICE'
+                      expectedQuestionType === 'MULTIPLE_CHOICE'
                         ? questionForm.options.map((opt) => ({ ...opt, content: opt.content.trim() }))
                         : []
                   }
@@ -636,15 +872,27 @@ export default function AssessmentBuilderPage() {
           closeQuestionModal();
           return;
         }
-        const newQuestion = {
-          ...payload,
-          questionId: `temp-question-${Date.now()}-${questions.length + 1}`,
-          options:
-            questionForm.type === 'MULTIPLE_CHOICE'
-              ? questionForm.options.map((opt) => ({ ...opt, content: opt.content.trim() }))
-              : []
-        };
-        setQuestions((prev) => [...prev, newQuestion]);
+        tempQuestionSequenceRef.current += 1;
+        const temporaryQuestionId = `temp-question-${Date.now()}-${tempQuestionSequenceRef.current}`;
+
+        setQuestions((prev) => {
+          const nextDisplayOrder = prev.length + 1;
+          const newQuestion = {
+            ...payload,
+            questionId: temporaryQuestionId,
+            displayOrder: nextDisplayOrder,
+            options:
+              expectedQuestionType === 'MULTIPLE_CHOICE'
+                ? questionForm.options.map((opt) => ({
+                    ...opt,
+                    content: opt.content.trim()
+                  }))
+                : []
+          };
+
+          return [...prev, newQuestion];
+        });
+
         updateError('questionPoints');
         closeQuestionModal();
         return;
@@ -663,11 +911,20 @@ export default function AssessmentBuilderPage() {
 
       const result = await addAssessmentQuestion(assessmentId, payload);
       const newQ = normalizeQuestion(result.question);
-      setQuestions((prev) => [...prev, newQ]);
+      setQuestions((prev) => [
+        ...prev,
+        {
+          ...newQ,
+          displayOrder: newQ.displayOrder || prev.length + 1
+        }
+      ]);
       updateError('questionPoints');
       closeQuestionModal();
     } catch (error) {
       showToast(error.message || 'Unable to save the question.', 'error');
+    } finally {
+      saveQuestionInFlightRef.current = false;
+      setSavingQuestion(false);
     }
   }
 
@@ -701,16 +958,18 @@ export default function AssessmentBuilderPage() {
           <button
             type="button"
             onClick={() => saveAssessment('DRAFT')}
-            className="text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-4 py-2.5 rounded-xl transition"
+            disabled={savingAssessment}
+            className="text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-4 py-2.5 rounded-xl transition disabled:opacity-50"
           >
-            Save Draft
+            {savingAssessment ? 'Saving...' : 'Save Draft'}
           </button>
           <button
             type="button"
             onClick={() => saveAssessment('SCHEDULED')}
-            className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-xl shadow-md transition"
+            disabled={savingAssessment}
+            className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-xl shadow-md transition disabled:opacity-50"
           >
-            Publish Assessment
+            {savingAssessment ? 'Processing...' : 'Publish Assessment'}
           </button>
         </div>
       </div>
@@ -752,7 +1011,7 @@ export default function AssessmentBuilderPage() {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setType('QUIZ')}
+                  onClick={() => handleAssessmentTypeChange('QUIZ')}
                   className={`p-4 rounded-2xl border text-left transition-all ${type === 'QUIZ' ? 'border-blue-600 bg-blue-50/50 shadow-xs' : 'border-gray-200 bg-gray-50'}`}
                 >
                   <p className="text-xs font-black text-gray-900">⚡ Quiz</p>
@@ -760,7 +1019,7 @@ export default function AssessmentBuilderPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setType('ASSIGNMENT')}
+                  onClick={() => handleAssessmentTypeChange('ASSIGNMENT')}
                   className={`p-4 rounded-2xl border text-left transition-all ${type === 'ASSIGNMENT' ? 'border-blue-600 bg-blue-50/50 shadow-xs' : 'border-gray-200 bg-gray-50'}`}
                 >
                   <p className="text-xs font-black text-gray-900">📋 Assignment</p>
@@ -774,6 +1033,7 @@ export default function AssessmentBuilderPage() {
               <label className="block text-xs font-bold text-gray-700 mb-1.5">Instruction File (PDF, DOCX)</label>
               <input
                 type="file"
+                accept=".pdf,.docx"
                 onChange={(e) => {
                   setInstructionFile(e.target.files?.[0] || null);
                   setErrors((prev) => ({ ...prev, content: null }));
@@ -788,7 +1048,7 @@ export default function AssessmentBuilderPage() {
                     <button
                       type="button"
                       onClick={handleDownloadExistingFile}
-                      disabled={downloadingExisting}
+                      disabled={downloadingExisting || openingExisting}
                       className="text-xs font-bold text-emerald-600 hover:underline disabled:opacity-50"
                     >
                       {downloadingExisting ? 'Downloading...' : '📥 Download'}
@@ -797,9 +1057,10 @@ export default function AssessmentBuilderPage() {
                     <button
                       type="button"
                       onClick={handleOpenExistingFile}
-                      className="text-xs font-bold text-blue-600 hover:underline"
+                      disabled={openingExisting || downloadingExisting}
+                      className="text-xs font-bold text-blue-600 hover:underline disabled:opacity-50"
                     >
-                      👁️ View
+                      {openingExisting ? 'Opening...' : '👁️ View'}
                     </button>
                   </div>
                 </div>
@@ -853,14 +1114,28 @@ export default function AssessmentBuilderPage() {
                       <button
                         type="button"
                         onClick={() => handleDeleteQuestion(q)}
-                        className="text-xs font-bold text-red-500 hover:underline"
+                        disabled={deletingQuestionIds.some(
+                          (id) =>
+                            String(id) ===
+                            String(q.questionId)
+                        )}
+                        className="text-xs font-bold text-red-500 hover:underline disabled:opacity-50"
                       >
-                        Delete
+                        {deletingQuestionIds.some(
+                          (id) =>
+                            String(id) ===
+                            String(q.questionId)
+                        )
+                          ? 'Deleting...'
+                          : 'Delete'}
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
+            )}
+            {errors.content && (
+              <p className="text-[11px] font-bold text-red-500">{errors.content}</p>
             )}
           </div>
         </div>
@@ -874,9 +1149,10 @@ export default function AssessmentBuilderPage() {
                 <button
                   type="button"
                   onClick={handleAutoDistribute}
-                  className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition"
+                  disabled={autoDistributing}
+                  className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Distribute Evenly
+                  {autoDistributing ? 'Distributing...' : 'Distribute Evenly'}
                 </button>
               )}
             </div>
@@ -963,28 +1239,18 @@ export default function AssessmentBuilderPage() {
               {questionErrors.content && <p className="text-[10px] font-bold text-red-500 mt-1">{questionErrors.content}</p>}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Question Type</label>
-                <select
-                  value={questionForm.type}
-                  onChange={(e) => changeQuestionType(e.target.value)}
-                  className="w-full text-xs font-bold border border-gray-200 rounded-2xl p-3 outline-none"
-                >
-                  <option value="MULTIPLE_CHOICE">Multiple Choice</option>
-                  <option value="ESSAY">Essay</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Question Points</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={questionForm.points}
-                  onChange={(e) => updateQuestionField('points', e.target.value)}
-                  className="w-full text-xs font-bold border border-gray-200 rounded-2xl p-3 outline-none"
-                />
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Question Points</label>
+              <input
+                type="number"
+                min="1"
+                value={questionForm.points}
+                onChange={(e) => updateQuestionField('points', e.target.value)}
+                className="w-full text-xs font-bold border border-gray-200 rounded-2xl p-3 outline-none"
+              />
+              {questionErrors.points && (
+                <p className="text-[10px] font-bold text-red-500 mt-1">{questionErrors.points}</p>
+              )}
             </div>
 
             {questionForm.type === 'MULTIPLE_CHOICE' && (
@@ -1014,12 +1280,19 @@ export default function AssessmentBuilderPage() {
                     )}
                   </div>
                 ))}
+                {questionErrors.options && (
+                  <p className="text-[10px] font-bold text-red-500 mt-1">
+                    {questionErrors.options}
+                  </p>
+                )}
               </div>
             )}
 
             <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
               <button type="button" onClick={closeQuestionModal} className="px-4 py-2 text-xs font-bold bg-gray-100 rounded-xl">Cancel</button>
-              <button type="button" onClick={saveQuestion} className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md">Save Question</button>
+              <button type="button" onClick={saveQuestion} disabled={savingQuestion} className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md disabled:opacity-50">
+                {savingQuestion ? 'Saving...' : 'Save Question'}
+              </button>
             </div>
           </div>
         </div>

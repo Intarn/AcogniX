@@ -9,6 +9,14 @@ class ChatRequest(BaseModel):
     materialIds: List[str] = Field(default_factory=list)
 
 
+class ChatCitation(BaseModel):
+    materialId: str
+    documentId: str
+    chunkId: str
+    page: Optional[int] = None
+
+
 class ChatResponse(BaseModel):
-    conversationId: str
+    conversationId: Optional[str] = None
     reply: str
+    citations: List[ChatCitation] = Field(default_factory=list)
