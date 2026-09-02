@@ -235,7 +235,7 @@ export default function Assessments() {
             const canAttempt = isOpen || (isClosed && allowsLate);
             const submissionStatus = asmt.submission?.status || null;
             const hasSubmitted = ['SUBMITTED', 'PENDING_REVIEW', 'GRADED'].includes(submissionStatus);
-            const canReview = hasSubmitted || (isClosed && !allowsLate);
+            const canReview = hasSubmitted;
 
             return (
               <div

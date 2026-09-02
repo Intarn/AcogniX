@@ -556,11 +556,15 @@ export default function AssessmentBuilderPage() {
     const publishing = targetStatus === 'SCHEDULED';
     if (!validateAssessment({ publishing })) return;
 
-    if (publishing && !allowLateSubmission) {
+    // This confirmation applies to BOTH Quiz and Assignment publishing.
+    // Save Draft never shows the warning.
+    if (publishing && allowLateSubmission === false) {
+      const assessmentLabel = type === 'QUIZ' ? 'Quiz' : 'Assignment';
       const confirmed = await confirm({
         title: 'Late submissions are disabled',
         message:
-          'Allow Late Submission is currently turned off. Learners will not be able to submit after the deadline. Publish with late submissions disabled?',
+          `Allow Late Submission is turned off for this ${assessmentLabel}. ` +
+          'Learners will not be able to submit after the deadline. Do you want to publish anyway?',
         confirmLabel: 'Publish anyway',
         cancelLabel: 'Go back',
         tone: 'danger'

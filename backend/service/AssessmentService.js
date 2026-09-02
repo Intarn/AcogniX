@@ -135,11 +135,24 @@ class AssessmentService {
     static async getAssessmentSubmissions(assessmentId, educatorId) {
         const assessmentRow = await this._findAssessmentById(assessmentId);
         await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
+
+        // Late-disabled assessments must not leave expired drafts visible to the Educator.
+        if (synchronized.status === AssessmentStatus.CLOSED && !synchronized.allowLateSubmission) {
+            await this._discardExpiredDraftsForAssessment(assessmentId);
+        }
+
+        const finalizedStatuses = [
+            SubmissionStatus.SUBMITTED,
+            SubmissionStatus.PENDING_REVIEW,
+            SubmissionStatus.GRADED
+        ];
 
         const { data, error } = await supabase
             .from('Submission')
             .select('*')
             .eq('assessmentId', assessmentId)
+            .in('status', finalizedStatuses)
             .order('submittedAt', { ascending: false });
 
         if (error) throw error;
@@ -160,6 +173,20 @@ class AssessmentService {
 
         const assessmentRow = await this._findAssessmentById(submissionRow.assessmentId);
         await this._assertCourseManagedBy(assessmentRow.courseId, educatorId);
+        const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
+
+        if (
+            submissionRow.status === SubmissionStatus.IN_PROGRESS &&
+            synchronized.status === AssessmentStatus.CLOSED &&
+            !synchronized.allowLateSubmission
+        ) {
+            await this._discardSubmission(submissionRow);
+            throw new AppError(404, 'SUBMISSION_NOT_FOUND', 'The Submission could not be found.');
+        }
+
+        if (submissionRow.status === SubmissionStatus.IN_PROGRESS) {
+            throw new AppError(404, 'SUBMISSION_NOT_FOUND', 'The Submission could not be found.');
+        }
 
         const { data: answerRows, error: answerError } = await supabase
             .from('SubmissionAnswer')
@@ -605,8 +632,7 @@ class AssessmentService {
         await this._assertStoredQuestionsReadyForPublish(
             assessmentId,
             assessmentRow.totalPoints,
-            assessmentRow.type,
-            assessmentRow.instructionFileUrl
+            assessmentRow.type
         );
 
         const now = new Date();
@@ -899,6 +925,19 @@ class AssessmentService {
         const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
         const assessment = this._toAssessment(synchronized);
 
+        if (
+            submission.status === SubmissionStatus.IN_PROGRESS &&
+            assessment.status === AssessmentStatus.CLOSED &&
+            !assessment.allowLateSubmission
+        ) {
+            await this._discardSubmission(submission);
+            throw new AppError(
+                409,
+                'LATE_SUBMISSION_NOT_ALLOWED',
+                'The deadline has passed. This unfinished attempt was discarded because late submission is not allowed.'
+            );
+        }
+
         const canAcceptSubmission = assessment.canAcceptSubmission();
         const editableQuiz =
             assessment.type === AssessmentType.QUIZ &&
@@ -984,6 +1023,19 @@ class AssessmentService {
         const assessmentRow = await this._findAssessmentById(submission.assessmentId);
         const synchronized = await this._synchronizeAssessmentStatus(assessmentRow);
         const assessment = this._toAssessment(synchronized);
+
+        if (
+            submission.status === SubmissionStatus.IN_PROGRESS &&
+            assessment.status === AssessmentStatus.CLOSED &&
+            !assessment.allowLateSubmission
+        ) {
+            await this._discardSubmission(submission);
+            throw new AppError(
+                409,
+                'LATE_SUBMISSION_NOT_ALLOWED',
+                'The deadline has passed. This unfinished attempt was discarded because late submission is not allowed.'
+            );
+        }
 
         const canAcceptSubmission = assessment.canAcceptSubmission();
         const editableAssignment =
@@ -1130,22 +1182,30 @@ class AssessmentService {
         const hasFinalizedSubmission = submissionRow && finalizedStatuses.includes(submissionRow.status);
         const assessmentClosed = assessment.status === AssessmentStatus.CLOSED;
 
-        if (!assessmentClosed && !hasFinalizedSubmission) {
+        // If late submission is disabled, an unfinished attempt expires at the deadline.
+        // Remove it and do not expose a review page for work that was never submitted.
+        if (
+            submissionRow &&
+            submissionRow.status === SubmissionStatus.IN_PROGRESS &&
+            assessmentClosed &&
+            !assessment.allowLateSubmission
+        ) {
+            await this._discardSubmission(submissionRow);
             throw new AppError(
                 409,
                 'ASSESSMENT_NOT_REVIEWABLE',
-                'This Assessment cannot be reviewed yet.'
+                'This Assessment was not submitted before the deadline and cannot be reviewed.'
             );
         }
 
-        if (!submissionRow) {
-            return {
-                assessment,
-                questions,
-                submission: null,
-                answers: [],
-                files: []
-            };
+        if (!hasFinalizedSubmission) {
+            throw new AppError(
+                409,
+                'ASSESSMENT_NOT_REVIEWABLE',
+                assessmentClosed
+                    ? 'This Assessment was not submitted before the deadline and cannot be reviewed.'
+                    : 'This Assessment cannot be reviewed yet.'
+            );
         }
 
         const { data: answerRows, error: answerError } = await supabase
@@ -1206,10 +1266,13 @@ class AssessmentService {
             throw new AppError(409, 'ASSESSMENT_NOT_STARTED', 'This Assessment has not started yet.');
         }
         if (now > deadline && !assessmentRow.allowLateSubmission) {
+            if (submissionRow.status === SubmissionStatus.IN_PROGRESS) {
+                await this._discardSubmission(submissionRow);
+            }
             throw new AppError(
                 409,
                 'LATE_SUBMISSION_NOT_ALLOWED',
-                'The deadline has passed and late submission is not allowed.'
+                'The deadline has passed. This unfinished attempt was discarded because late submission is not allowed.'
             );
         }
 
@@ -1270,10 +1333,13 @@ class AssessmentService {
         const finalizeNow = new Date();
         const isLate = finalizeNow > deadline;
         if (isLate && !assessmentRow.allowLateSubmission) {
+            if (submissionRow.status === SubmissionStatus.IN_PROGRESS) {
+                await this._discardSubmission(submissionRow);
+            }
             throw new AppError(
                 409,
                 'LATE_SUBMISSION_NOT_ALLOWED',
-                'The deadline has passed and late submission is not allowed.'
+                'The deadline passed before submission completed. This unfinished attempt was discarded.'
             );
         }
         const submittedAt = finalizeNow.toISOString();
@@ -1377,7 +1443,18 @@ class AssessmentService {
         const assessment = this._toAssessment(synchronized);
 
         if (assessment && assessment.status !== AssessmentStatus.DRAFT) {
-            const submissionRow = submissionByAssessmentId.get(String(assessment.assessmentId)) || null;
+            let submissionRow = submissionByAssessmentId.get(String(assessment.assessmentId)) || null;
+
+            if (
+                submissionRow &&
+                submissionRow.status === SubmissionStatus.IN_PROGRESS &&
+                assessment.status === AssessmentStatus.CLOSED &&
+                !assessment.allowLateSubmission
+            ) {
+                await this._discardSubmission(submissionRow);
+                submissionRow = null;
+            }
+
             assessments.push({
             ...assessment,
             submission: submissionRow
@@ -1491,7 +1568,7 @@ class AssessmentService {
         }
     }
 
-    static async _assertStoredQuestionsReadyForPublish(assessmentId, totalPoints, assessmentType, instructionFileUrl = null) {
+    static async _assertStoredQuestionsReadyForPublish(assessmentId, totalPoints, assessmentType) {
         const { data, error } = await supabase
             .from('Question')
             .select('content, points, type, options, correctAnswer')
@@ -1501,20 +1578,10 @@ class AssessmentService {
 
         const questions = data || [];
         if (questions.length === 0) {
-            const isFileBasedAssignment =
-                assessmentType === AssessmentType.ASSIGNMENT &&
-                Boolean(String(instructionFileUrl || '').trim());
-
-            if (isFileBasedAssignment) {
-                return;
-            }
-
             throw new AppError(
                 400,
-                'ASSESSMENT_CONTENT_REQUIRED',
-                assessmentType === AssessmentType.ASSIGNMENT
-                    ? 'Add at least one Essay Question or upload an instruction file before publishing the Assessment.'
-                    : 'Add at least one Question before publishing the Assessment.'
+                'ASSESSMENT_QUESTION_REQUIRED',
+                'Add at least one Question before publishing the Assessment.'
             );
         }
 
@@ -1725,6 +1792,56 @@ class AssessmentService {
             throw new AppError(403, 'COURSE_MEMBERSHIP_REQUIRED', 'You must be an approved member of the Course to access this Assessment.');
         }
         return data;
+    }
+
+    static async _discardExpiredDraftsForAssessment(assessmentId) {
+        const { data: drafts, error } = await supabase
+            .from('Submission')
+            .select('*')
+            .eq('assessmentId', assessmentId)
+            .eq('status', SubmissionStatus.IN_PROGRESS);
+
+        if (error) throw error;
+        for (const draft of drafts || []) {
+            await this._discardSubmission(draft);
+        }
+    }
+
+    static async _discardSubmission(submissionRow) {
+        if (!submissionRow?.submissionId) return;
+        const submissionId = submissionRow.submissionId;
+        const uploadedFileUrls = Array.isArray(submissionRow.uploadedFileUrls)
+            ? submissionRow.uploadedFileUrls.filter(Boolean)
+            : [];
+
+        // Remove uploaded assignment files first. Storage cleanup is best-effort; DB
+        // cleanup must still happen so an expired attempt cannot appear as submitted work.
+        if (uploadedFileUrls.length > 0) {
+            try {
+                const bucket = process.env.ASSESSMENT_STORAGE_BUCKET || 'materials';
+                const { error: storageError } = await supabase.storage
+                    .from(bucket)
+                    .remove(uploadedFileUrls);
+                if (storageError) {
+                    console.warn('[AssessmentService] Failed to remove expired submission files:', storageError.message);
+                }
+            } catch (storageError) {
+                console.warn('[AssessmentService] Failed to remove expired submission files:', storageError.message);
+            }
+        }
+
+        const { error: answerError } = await supabase
+            .from('SubmissionAnswer')
+            .delete()
+            .eq('submissionId', submissionId);
+        if (answerError) throw answerError;
+
+        const { error: submissionError } = await supabase
+            .from('Submission')
+            .delete()
+            .eq('submissionId', submissionId)
+            .eq('status', SubmissionStatus.IN_PROGRESS);
+        if (submissionError) throw submissionError;
     }
 
     static async _assertOwnedSubmission(submissionId, learnerId) {

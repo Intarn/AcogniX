@@ -469,7 +469,7 @@ function SubmissionReviewModal({
                       <span className="text-base">📎</span>
                       <span className="text-xs font-bold text-gray-800 truncate">{file.name}</span>
                     </div>
-                    <span className="text-xs font-bold text-blue-600 group-hover:underline flex-shrink-0 ml-4">Download ↗</span>
+                    <span className="text-xs font-bold text-blue-600 group-hover:underline flex-shrink-0 ml-4">Open ↗</span>
                   </a>
                 ))}
               </div>
