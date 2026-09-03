@@ -599,12 +599,17 @@ export default function AssessmentBuilderPage() {
           await uploadInstructionFile(newAssessmentId, instructionFile);
         }
 
-        // Step 3: Configure the schedule and publish if requested.
+        // Step 3: Save schedule values without publishing when the educator chooses Draft.
+        // IMPORTANT: scheduleAssessment() changes the status to SCHEDULED, so it must
+        // never be called from the Save Draft path.
         if (publishing && startTimeIso && deadlineIso && newAssessmentId) {
           await scheduleAssessment(newAssessmentId, startTimeIso, deadlineIso);
           await publishAssessment(newAssessmentId);
-        } else if (startTimeIso && deadlineIso && newAssessmentId) {
-          await scheduleAssessment(newAssessmentId, startTimeIso, deadlineIso);
+        } else if (newAssessmentId) {
+          await updateAssessment(newAssessmentId, {
+            startTime: startTimeIso,
+            deadline: deadlineIso
+          });
         }
 
         showToast(publishing ? 'Assessment published successfully.' : 'Draft saved successfully.', 'success');
@@ -622,13 +627,14 @@ export default function AssessmentBuilderPage() {
         description: description.trim() || null,
         type,
         totalPoints: Number(totalPoints),
-        allowLateSubmission
+        allowLateSubmission,
+        // Draft saves persist the schedule fields while keeping status=DRAFT.
+        // Publishing below is the only path that promotes the assessment.
+        ...(publishing ? {} : { startTime: startTimeIso, deadline: deadlineIso })
       });
 
-      if (startTimeIso && deadlineIso) {
+      if (publishing && startTimeIso && deadlineIso) {
         await scheduleAssessment(assessmentId, startTimeIso, deadlineIso);
-      }
-      if (publishing) {
         await publishAssessment(assessmentId);
       }
 
