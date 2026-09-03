@@ -423,6 +423,14 @@ export default function AssignmentSubmission() {
       );
       setCompleted(true);
     } catch (error) {
+      if (error?.code === 'LATE_SUBMISSION_NOT_ALLOWED') {
+        showToast(
+          'The deadline has passed. Your unfinished assignment was discarded because late submission is not allowed.',
+          'error'
+        );
+        navigate(`/learner/courses/${courseId}/assessments`);
+        return;
+      }
       showToast(error.message || 'Unable to submit assignment.', 'error');
     } finally {
       setSubmitting(false);

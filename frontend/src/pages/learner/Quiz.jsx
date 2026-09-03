@@ -101,6 +101,14 @@ export default function Quiz() {
       setIsCompleted(true);
       showToast('Exam submitted successfully!', 'success');
     } catch (err) {
+      if (err?.code === 'LATE_SUBMISSION_NOT_ALLOWED') {
+        showToast(
+          'The deadline has passed. Your unfinished quiz was discarded because late submission is not allowed.',
+          'error'
+        );
+        navigate('/learner/assessments');
+        return;
+      }
       showToast('Error submitting: ' + err.message, 'error');
     } finally {
       setSubmitting(false);

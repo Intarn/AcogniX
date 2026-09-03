@@ -310,7 +310,7 @@ export default function CourseAssessments() {
               const canAttempt = isOpen || (isClosed && allowsLate);
               const submissionStatus = assessment.submission?.status || null;
               const hasSubmitted = ['SUBMITTED', 'PENDING_REVIEW', 'GRADED'].includes(submissionStatus);
-              const canReview = hasSubmitted || (isClosed && !allowsLate);
+              const canReview = hasSubmitted;
               const isDownloading =
                 String(downloadingId) ===
                 String(assessment.assessmentId);

@@ -299,6 +299,9 @@ export default function UserManagementPage() {
                               className="min-w-0 max-w-full bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-gray-700 outline-none focus:border-blue-500 cursor-pointer disabled:opacity-50"
                               aria-label={`Role for ${user.email}`}
                             >
+                              {isAdministrator && (
+                                <option value="SYSTEM_ADMINISTRATOR">Administrator</option>
+                              )}
                               <option value="LEARNER">Learner</option>
                               <option value="EDUCATOR">Educator</option>
                             </select>
