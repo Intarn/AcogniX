@@ -283,6 +283,39 @@ class AssessmentService {
             updateData.allowLateSubmission = Boolean(changes.allowLateSubmission);
         }
 
+        // Persist schedule values on a Draft WITHOUT promoting it to SCHEDULED.
+        // Promotion is intentionally handled only by scheduleAssessment()/publishAssessment().
+        if (changes.startTime !== undefined || changes.deadline !== undefined) {
+            const nextStartTime = changes.startTime !== undefined
+                ? changes.startTime
+                : assessmentRow.startTime;
+            const nextDeadline = changes.deadline !== undefined
+                ? changes.deadline
+                : assessmentRow.deadline;
+
+            if ((nextStartTime && !nextDeadline) || (!nextStartTime && nextDeadline)) {
+                throw new AppError(
+                    400,
+                    'INCOMPLETE_ASSESSMENT_SCHEDULE',
+                    'Both start time and deadline are required.'
+                );
+            }
+
+            if (nextStartTime && nextDeadline) {
+                this._validateSchedule(nextStartTime, nextDeadline);
+                updateData.startTime = new Date(nextStartTime).toISOString();
+                updateData.deadline = new Date(nextDeadline).toISOString();
+            } else {
+                updateData.startTime = null;
+                updateData.deadline = null;
+            }
+
+            // A Draft stays a Draft even when it already has a complete schedule.
+            if (assessmentRow.status === AssessmentStatus.DRAFT) {
+                updateData.status = AssessmentStatus.DRAFT;
+            }
+        }
+
         // Draft edits may temporarily have question points that do not match Total Points.
         // The invariant is enforced by publishAssessment().
 
