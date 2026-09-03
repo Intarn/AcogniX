@@ -204,9 +204,7 @@ AcogniX/
 │   ├── error/
 │   ├── middleware/
 │   ├── routes/
-│   ├── service/
-│   └── tests/
-│       └── unit/
+│   └── service/
 │
 ├── frontend/
 │   ├── index.html
@@ -238,6 +236,12 @@ AcogniX/
 │   ├── middleware/
 │   ├── schemas/
 │   ├── services/
+│   └── tests/
+│
+├── automated_tests/
+│   ├── package.json
+│   ├── playwright.config.*
+│   ├── fixtures/
 │   └── tests/
 │
 └── dist/
@@ -349,6 +353,9 @@ A Supabase Dashboard invitation is not required simply to run the project locall
 
 # 7. Installation
 
+> **Quick first-time setup:** clone/extract the repository → `npm install` at root → create/activate `ai_service/.venv` → `pip install -r ai_service/requirements.txt` from the AI-service environment → configure both `.env` files → ensure the required Supabase project objects exist → start the two terminals described in Section 10.
+
+
 ## 7.1 Clone the repository
 
 ```bash
@@ -376,19 +383,7 @@ npm install
 
 The checked-in `package.json` is the source of truth for Node.js dependencies and scripts. Do not install the package names from the root `requirements.txt` with `pip`; that file contains Node/npm package names in the current project snapshot.
 
-If the backend reports:
-
-```text
-Cannot find module 'form-data'
-```
-
-install the missing direct dependency with:
-
-```bash
-npm install form-data
-```
-
-Then commit the resulting `package.json` and `package-lock.json` change so other environments install the same dependency consistently.
+`form-data` is declared as a direct dependency because the Node.js backend imports it in the AI-service client. A normal `npm install` installs it automatically; no extra package-install command should be necessary.
 
 ## 7.3 Create the AI-service Python virtual environment
 
@@ -517,6 +512,11 @@ AI_SERVICE_INTERNAL_SECRET=CHANGE_THIS_TO_A_SHARED_SECRET
 
 # Workspace integration
 ENABLE_WORKSPACE_INTEGRATION=true
+
+# Playwright automated-test learner account
+# Required only when running the current automated_tests suite.
+LEARNER_EMAIL=YOUR_TEST_LEARNER_EMAIL
+LEARNER_PASSWORD=YOUR_TEST_LEARNER_PASSWORD
 ```
 
 Important:
@@ -603,6 +603,23 @@ Depending on the feature and access model, browser file access may use a public 
 
 # 10. Run the Application
 
+## 10.1 Before starting
+
+For a **first-time clone**, complete these items before running the servers:
+
+1. Run `npm install` in the project root.
+2. Create `ai_service/.venv` and run `pip install -r requirements.txt` inside `ai_service/`.
+3. Create the root `.env` and `ai_service/.env` using Section 8.
+4. Make sure the configured Supabase project already contains the schema, RPC functions, authentication setup, and storage buckets described in Section 9.
+5. Install Tesseract plus `eng` and `vie` language data if OCR features will be used.
+6. Confirm the two `AI_SERVICE_INTERNAL_SECRET` values are identical.
+7. Run `npm run build` again whenever a `VITE_*` value changes.
+
+> The repository does not create a new Supabase project automatically. A user who does not have access to the team's configured Supabase project must initialize an equivalent database/auth/storage setup before the full application can work.
+
+## 10.2 Normal startup
+
+
 The checked-in npm scripts relevant to normal startup are:
 
 ```text
@@ -612,7 +629,7 @@ npm start      → node app.js
 
 The current project serves the built React frontend through the Node.js application, so the complete system only needs **two terminals**.
 
-## Terminal 1 — AI Microservice
+### Terminal 1 — AI Microservice
 
 Open a terminal in the project root, enter the AI service folder, activate its Python virtual environment, then start FastAPI.
 
@@ -648,7 +665,7 @@ Expected healthy response:
 
 Keep this terminal running.
 
-## Terminal 2 — Build Frontend and Start Main Application
+### Terminal 2 — Build Frontend and Start Main Application
 
 Open another terminal in the **project root** and run:
 
@@ -673,7 +690,7 @@ http://localhost:5000/api
 
 There is no separate Vite development terminal required for the normal project startup flow. The `npm run dev` script is available only when a separate Vite development server is intentionally needed.
 
-## Recommended startup order
+### Recommended startup order
 
 ```text
 1. Supabase project is available
@@ -920,20 +937,101 @@ http://localhost:5000
 
 # 16. Testing
 
-The application should be verified against the project test cases and through browser-level system testing before release. The current `package.json` does **not** define the generic scripts `npm test`, `npm run test:watch`, or `npm run test:coverage`, so this README does not instruct users to run commands that are not present in the checked-in manifest.
+AcogniX currently uses a separate **Playwright** project in `automated_tests/` for the checked-in PA5 browser tests. These tests are separate from the commands required to start the application.
 
-The current package manifest contains PA5 helper scripts (`test:pa5*`). They are auxiliary QA commands and are not required to start AcogniX. Use them only when the corresponding `qa/` runner files are included in the checked-out project.
+## 16.1 First-time automated-test setup
 
-For the AI microservice, run Python tests only when the current `ai_service/` snapshot includes its test suite and required test dependencies.
+The current automated tests require a valid Learner account. Add the following values to the **project-root `.env`**:
 
-## 16.1 Manual system verification
+```env
+LEARNER_EMAIL=your_learner_email
+LEARNER_PASSWORD=your_learner_password
+```
+
+From the AcogniX root directory, install the normal application dependencies:
+
+```bash
+npm install
+```
+
+Then install the test-project dependencies and Chromium:
+
+```bash
+cd automated_tests
+npm install
+npx playwright install chromium
+cd ..
+```
+
+## 16.2 Start AcogniX for the current automated tests
+
+For the currently documented UC01 and UC04 Playwright tests, the AI microservice is **not required**.
+
+Open **Terminal 1** in the AcogniX root directory:
+
+```bash
+npm run build
+npm start
+```
+
+Keep that terminal running. The application should be available at:
+
+```text
+http://localhost:5000
+```
+
+## 16.3 Run all Playwright tests
+
+Open **Terminal 2** in the AcogniX root directory:
+
+```bash
+cd automated_tests
+npx playwright test --headed
+```
+
+## 16.4 Run a single use case
+
+UC01:
+
+```bash
+npx playwright test tests/uc01.spec.js --headed
+```
+
+UC04:
+
+```bash
+npx playwright test tests/uc04.spec.js --headed
+```
+
+## 16.5 Run a specific scenario
+
+Examples:
+
+```bash
+npx playwright test tests/uc01.spec.js -g "UC01-UI02" --headed
+npx playwright test tests/uc01.spec.js -g "UC01-UI03" --headed
+npx playwright test tests/uc01.spec.js -g "UC01-UI12" --headed
+npx playwright test tests/uc04.spec.js -g "UC04-UI01" --headed
+npx playwright test tests/uc04.spec.js -g "UC04-UI02" --headed
+npx playwright test tests/uc04.spec.js -g "UC04-UI04" --headed
+```
+
+## 16.6 Open the Playwright report
+
+After a test run:
+
+```bash
+npx playwright show-report
+```
+
+## 16.7 Manual system verification
 
 Before a final release, verify at minimum:
 
 - Authentication, Forgot Password, session behavior, and role access.
 - Course creation, enrollment, members, archive, and restore synchronization.
 - Course materials and announcements.
-- Assessment creation, publishing, Quiz/Assignment rules, and deadline boundaries.
+- Assessment Draft/Publish behavior, Quiz/Assignment rules, scheduling, and deadline boundaries.
 - Quiz submission and assignment-file submission.
 - Educator submission review, grading, score changes, and feedback updates.
 - AI Workspace upload, extraction, project context, AI Tutor, practice quizzes, and flashcards.
@@ -947,11 +1045,26 @@ Before a final release, verify at minimum:
 
 # 17. Troubleshooting
 
-## `Cannot find module 'form-data'`
+## `npm install` fails or dependencies are inconsistent
+
+Use the checked-in `package.json` and `package-lock.json` from the same commit. From the project root:
 
 ```bash
-npm install form-data
+npm install
 ```
+
+If the local installation is corrupted, remove `node_modules` and install again. Do not use the root `requirements.txt` with `pip`; Python dependencies belong to `ai_service/requirements.txt`.
+
+
+## `Cannot find module 'form-data'`
+
+The current `package.json` declares `form-data` directly. Run:
+
+```bash
+npm install
+```
+
+If the error remains, make sure `package.json` and `package-lock.json` are from the same commit and reinstall `node_modules`.
 
 ## Missing Supabase backend credentials
 
