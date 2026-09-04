@@ -14,7 +14,6 @@ CREATE TABLE public."User" (
 
 ALTER TABLE public."User" ENABLE ROW LEVEL SECURITY;
 
--- Cho phép tất cả mọi người được đọc/ghi vào bảng này (Tạm thời để test backend dễ dàng)
 CREATE POLICY "Allow all operations for backend" ON public."User"
   FOR ALL USING (true);
 
