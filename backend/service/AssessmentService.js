@@ -1882,6 +1882,7 @@ class AssessmentService {
             .from('Submission')
             .select('*')
             .eq('submissionId', submissionId)
+            .eq('learnerId', learnerId)
             .maybeSingle();
 
         if (error) throw error;
