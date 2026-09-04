@@ -203,8 +203,18 @@ AcogniX/
 │   ├── enums/
 │   ├── error/
 │   ├── middleware/
+│   ├── migrations/
 │   ├── routes/
 │   └── service/
+│ 
+├── db/
+│   ├── role.sql
+│   ├── course_f2a.sql
+│   ├── core_tables.sql
+│   ├── support_ticket.sql
+│   ├── add_ai_feature_tables.sql
+│   ├── Add_rag_pgvector.sql
+│   └── trigger_indexes.sql
 │
 ├── frontend/
 │   ├── index.html
@@ -620,12 +630,7 @@ Execute the complete contents of these files once in the following order:
 5. `db/add_ai_feature_tables.sql`
 6. `db/Add_rag_pgvector.sql`
 
-Do not execute the following historical files during a new-project setup:
-
-- `db/UC03_04_11_20_History.sql`
-- `db/Add_match_chucks_function.sql`
-
-The history script creates obsolete pluralized tables such as `Study_Sessions`, while the current application uses `Study_Session`. The old match-function script also contains an older RPC signature.
+These six files contain the current base schema required for a new-project setup. After they have been executed successfully, continue with Step 4 before applying the migrations in Step 5.
 
 ### Step 4 — Create current compatibility objects
 
