@@ -73,3 +73,6 @@ uploads/temp/
 dist
 dist/frontend/index.html
 dist/assets
+
+automated_tests/playwright-report/index.html
+automated_tests/test-results/.last-run.json

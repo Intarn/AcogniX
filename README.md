@@ -192,7 +192,7 @@ AcogniX/
 ├── package.json
 ├── package-lock.json
 ├── requirements.txt        # legacy/root package list; not Python requirements
-├── .env
+├── .env                    # create locally; never commit
 │
 ├── backend/
 │   ├── config/
@@ -226,7 +226,7 @@ AcogniX/
 │       └── main.jsx
 │
 ├── ai_service/
-│   ├── .env
+│   ├── .env                # create locally; never commit
 │   ├── main.py
 │   ├── config.py
 │   ├── db.py
@@ -239,6 +239,7 @@ AcogniX/
 │   └── tests/
 │
 ├── automated_tests/
+│   ├── package-lock.json
 │   ├── package.json
 │   ├── playwright.config.*
 │   ├── fixtures/
@@ -337,23 +338,31 @@ For an unknown email address, the public response remains generic so the endpoin
 
 Install or prepare the following before running AcogniX:
 
-1. **Node.js 22+ and npm** (recommended for the current dependency set)
-2. **Python 3 and pip**
-3. **Git** if cloning from GitHub
-4. **Tesseract OCR** if scanned PDF/image OCR is required
-5. Access to the configured **Supabase project**
-6. A valid **Gemini API key**
-7. Gmail credentials if email delivery is required
+1. **Node.js 22.12.0 or later and npm**
+2. **Python 3.11** and pip.
+3. **Git** if cloning from GitHub.
+4. A **Supabase account** and permission to create a new Supabase project.
+5. A valid **Gemini API key** for AI Tutor, document embeddings, practice quizzes, and flashcards.
+6. **Tesseract OCR** with English and Vietnamese language data if scanned-document OCR is required.
+7. A Gmail account with a valid **Google App Password** if email-dependent features are required.
 
-A Supabase Dashboard invitation is not required simply to run the project locally, but the correct environment variables and project credentials must be available.
+The complete local application uses:
 
-> Keep the Supabase service-role key private. Never expose it in frontend code or commit it to a public repository.
+```text
+React frontend
+        ↓
+Node.js/Express application
+        ↓
+Supabase + FastAPI AI Microservice
+        ↓
+Google Gemini
+```
 
 ---
 
 # 7. Installation
 
-> **Quick first-time setup:** clone/extract the repository → `npm install` at root → create/activate `ai_service/.venv` → `pip install -r ai_service/requirements.txt` from the AI-service environment → configure both `.env` files → ensure the required Supabase project objects exist → start the two terminals described in Section 10.
+> **Quick first-time setup:** clone or extract the repository → run `npm install` at the project root → create and activate `ai_service/.venv` → install `ai_service/requirements.txt` → configure both `.env` files → create and initialize the required Supabase project by following Section 9 → start the two terminals described in Section 10.
 
 
 ## 7.1 Clone the repository
@@ -484,11 +493,16 @@ Example:
 ```env
 # Main server
 PORT=5000
+
+# Use development for local setup.
+# Set to production only in a deployed production environment.
 NODE_ENV=development
 
 # Supabase
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
+
+# Browser-safe Supabase key used by the backend authentication client
 SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 
 # Assessment storage
@@ -510,8 +524,9 @@ EMAIL_APP_PASSWORD=YOUR_GMAIL_APP_PASSWORD
 AI_SERVICE_URL=http://127.0.0.1:8000
 AI_SERVICE_INTERNAL_SECRET=CHANGE_THIS_TO_A_SHARED_SECRET
 
-# Workspace integration
-ENABLE_WORKSPACE_INTEGRATION=true
+# Gemini
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY_1
+PA5_BACKUP_GEMINI_API_KEY=YOUR_GEMINI_API_KEY_2
 
 # Playwright automated-test learner account
 # Required only when running the current automated_tests suite.
@@ -522,10 +537,13 @@ LEARNER_PASSWORD=YOUR_TEST_LEARNER_PASSWORD
 Important:
 
 - `SUPABASE_SERVICE_ROLE_KEY` is a backend-only secret.
-- Never expose `SUPABASE_SERVICE_ROLE_KEY` through any `VITE_*` variable.
-- `VITE_*` variables are intentionally browser-visible.
-- `AI_SERVICE_INTERNAL_SECRET` must match the Python AI microservice value.
-- Run `npm run build` again after changing a `VITE_*` variable because Vite embeds these values at build time.
+- `SUPABASE_PUBLISHABLE_KEY` and `VITE_SUPABASE_ANON_KEY` should use the same browser-safe publishable/anon key from the configured Supabase project.
+- Never place the service-role key in any `VITE_*` variable.
+- `VITE_*` values are embedded into the frontend during `npm run build`.
+- Rebuild the frontend after changing a `VITE_*` value.
+- `AI_SERVICE_INTERNAL_SECRET` must be identical in the root `.env` and `ai_service/.env`.
+- `EMAIL_USER` and `EMAIL_APP_PASSWORD` are required for Forgot Password, account notifications, and administrator deletion verification.
+- The Playwright account variables are not required for normal application startup.
 
 ## 8.2 AI Microservice `.env`
 
@@ -538,8 +556,11 @@ AcogniX/ai_service/.env
 Example:
 
 ```env
+PORT=8000
+
 # Gemini
-GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY_1
+PA5_BACKUP_GEMINI_API_KEY=YOUR_GEMINI_API_KEY_2
 
 # Supabase
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
@@ -550,15 +571,163 @@ AI_SERVICE_INTERNAL_SECRET=CHANGE_THIS_TO_A_SHARED_SECRET
 
 # Optional Windows OCR path
 TESSERACT_CMD=C:/Program Files/Tesseract-OCR/tesseract.exe
-```
 
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLIC_KEY
+VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_OR_PUBLIC_KEY
+```
+The AI service reads these variables during startup. Missing `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, or `AI_SERVICE_INTERNAL_SECRET` prevents the AI service from starting.
+
+The Gemini API key must have access to the generation and embedding models used by the current source code.
 ---
 
 # 9. Supabase Requirements
 
 The project expects an existing Supabase project containing the required database schema, RPC functions, authentication configuration, and storage buckets.
 
-## 9.1 AI-related database objects
+## 9.1 First-time setup for a new Supabase project
+
+The following procedure is required only when the user does not have access to the team's existing Supabase project and needs to create a new project.
+
+> Run this procedure only on a new, empty Supabase project. Some base SQL files contain `DROP TABLE` statements and must not be executed on a populated database.
+
+### Step 1 — Create the project
+
+1. Create a new project from the Supabase Dashboard.
+2. Wait until the project becomes available.
+3. Open the project's **Connect** dialog or **Settings → API Keys**.
+4. Copy the Project URL, browser-safe publishable key, and backend service-role key used by the current project.
+5. Add those values to the environment files described in Section 8.
+
+### Step 2 — Enable pgvector
+
+Open the Supabase SQL Editor and run:
+
+```sql
+create extension if not exists vector with schema public;
+```
+
+The vector extension must be enabled before creating `Document_Chunk` because the application uses `vector(768)` embeddings.
+
+### Step 3 — Create the base schema
+
+Execute the complete contents of these files once in the following order:
+
+1. `db/role.sql`
+2. `db/course_f2a.sql`
+3. `db/core_tables.sql`
+4. `db/support_ticket.sql`
+5. `db/add_ai_feature_tables.sql`
+6. `db/Add_rag_pgvector.sql`
+
+Do not execute the following historical files during a new-project setup:
+
+- `db/UC03_04_11_20_History.sql`
+- `db/Add_match_chucks_function.sql`
+
+The history script creates obsolete pluralized tables such as `Study_Sessions`, while the current application uses `Study_Session`. The old match-function script also contains an older RPC signature.
+
+### Step 4 — Create current compatibility objects
+
+After creating the base schema, run:
+
+```sql
+create table if not exists public."System_Settings" (
+  id uuid primary key default gen_random_uuid(),
+  setting_key text not null unique,
+  setting_value text not null,
+  description text,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public."Study_Session" (
+  "sessionId" uuid primary key,
+  "learnerId" uuid not null
+    references public."User"("userId")
+    on delete cascade,
+  "courseId" uuid
+    references public."Course"("courseId")
+    on delete set null,
+  "startTime" timestamptz not null,
+  "endTime" timestamptz not null,
+  "durationMinutes" integer not null default 0
+    check ("durationMinutes" >= 0)
+);
+
+create index if not exists "Study_Session_learner_time_idx"
+  on public."Study_Session" (
+    "learnerId",
+    "startTime",
+    "endTime"
+  );
+
+create index if not exists "Study_Session_course_idx"
+  on public."Study_Session" ("courseId");
+
+alter table public."CourseMaterial"
+  add column if not exists "orderIndex" integer;
+
+alter table public."Conversation"
+  add column if not exists "updatedAt"
+  timestamptz not null default now();
+
+alter table public."Practice_Quiz"
+  add column if not exists "createdAt"
+  timestamptz not null default now();
+
+alter table public."Flashcard_Set"
+  add column if not exists "createdAt"
+  timestamptz not null default now();
+
+alter table public."System_Settings"
+  enable row level security;
+
+alter table public."Study_Session"
+  enable row level security;
+
+revoke all
+  on table public."System_Settings"
+  from anon, authenticated;
+
+revoke all
+  on table public."Study_Session"
+  from anon, authenticated;
+
+grant select, insert, update, delete
+  on table public."System_Settings"
+  to service_role;
+
+grant select, insert, update, delete
+  on table public."Study_Session"
+  to service_role;
+
+notify pgrst, 'reload schema';
+```
+
+### Step 5 — Apply the migrations
+
+Execute the complete contents of these migration files once in the following order:
+
+1. `backend/migrations/20260831_add_course_archive_metadata.sql`
+2. `backend/migrations/20260901_course_material_storage_metadata.sql`
+3. `backend/migrations/20260901_create_notification_table.sql`
+4. `backend/migrations/20260901_hash_user_session_tokens.sql`
+5. `backend/migrations/20260901_set_project_active_context.sql`
+6. `backend/migrations/20260901_ai_generation_transactions.sql`
+7. `backend/migrations/20260901_match_document_chunks_threshold.sql`
+8. `backend/migrations/20260901_submission_uniqueness.sql`
+9. `backend/migrations/20260902_submission_answer_uniqueness.sql`
+10. `backend/migrations/20260902_two_factor_atomic_consume.sql`
+
+Finally, execute:
+
+```text
+db/trigger_indexes.sql
+```
+
+Run `db/trigger_indexes.sql` only once on a new project because its trigger statements do not all use `IF NOT EXISTS`.
+
+## 9.2 AI-related database objects
 
 The AI service references tables including:
 
@@ -586,7 +755,7 @@ The AI source expects document embeddings compatible with:
 768 dimensions
 ```
 
-## 9.2 Storage buckets
+## 9.3 Storage buckets
 
 The backend references storage buckets including:
 
@@ -597,7 +766,32 @@ avatars
 assessment-files
 ```
 
-Depending on the feature and access model, browser file access may use a public URL or a signed URL. Configure Supabase Storage permissions consistently with the backend implementation.
+Create the buckets with the following visibility:
+
+| Bucket | Visibility | Purpose |
+|---|---|---|
+| `materials` | Public | Course and personal learning materials |
+| `announcements` | Public | Announcement attachments |
+| `avatars` | Public | User profile images |
+| `assessment-files` | Public | Assessment instructions and learner submissions |
+
+The buckets can be created from the Supabase Storage Dashboard or by running:
+
+```sql
+insert into storage.buckets
+  (id, name, public, file_size_limit)
+values
+  ('materials', 'materials', true, 52428800),
+  ('announcements', 'announcements', true, 52428800),
+  ('avatars', 'avatars', true, 5242880),
+  ('assessment-files', 'assessment-files', true, 52428800)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit;
+```
+
+Assessment uploads and application-level access checks are handled by the Node.js backend using the service-role key. The current `assessment-files` bucket is public, so anyone who knows a valid public object URL can access that file directly. The service-role key must never be exposed to the browser.
 
 ---
 
@@ -610,12 +804,12 @@ For a **first-time clone**, complete these items before running the servers:
 1. Run `npm install` in the project root.
 2. Create `ai_service/.venv` and run `pip install -r requirements.txt` inside `ai_service/`.
 3. Create the root `.env` and `ai_service/.env` using Section 8.
-4. Make sure the configured Supabase project already contains the schema, RPC functions, authentication setup, and storage buckets described in Section 9.
+4. If using a new Supabase project, complete the database and Storage initialization procedure in Section 9. If using the team's existing project, verify that all required objects are already available.
 5. Install Tesseract plus `eng` and `vie` language data if OCR features will be used.
 6. Confirm the two `AI_SERVICE_INTERNAL_SECRET` values are identical.
 7. Run `npm run build` again whenever a `VITE_*` value changes.
 
-> The repository does not create a new Supabase project automatically. A user who does not have access to the team's configured Supabase project must initialize an equivalent database/auth/storage setup before the full application can work.
+> The npm and Python installation commands do not create the Supabase project automatically. A new user must either receive access to the team's configured Supabase project or complete the new-project initialization procedure in Section 9.
 
 ## 10.2 Normal startup
 
@@ -706,6 +900,35 @@ X-Internal-Secret
 ```
 
 and the shared `AI_SERVICE_INTERNAL_SECRET`.
+
+## 10.3 Create the first application accounts
+
+Learner and Educator accounts can be created from the public Sign Up page.
+
+System Administrator accounts cannot be created through public registration. To create the first System Administrator:
+
+1. Start the application.
+2. Register the intended administrator account as a Learner.
+3. Open the Supabase SQL Editor.
+4. Replace the example email below with the registered account email and run:
+
+```sql
+update public."User"
+set
+  role = 'SYSTEM_ADMINISTRATOR',
+  "updatedAt" = now()
+where lower(email) = lower('admin@example.com');
+```
+
+5. Confirm that exactly one row was updated.
+6. Sign out and sign in again.
+7. The account should be redirected to the System Administrator dashboard.
+
+For complete manual verification, create separate accounts for:
+
+- one System Administrator;
+- one Educator;
+- one Learner.
 
 ---
 
@@ -821,12 +1044,11 @@ ASSIGNMENT
 
 ## 13.2 Assignment
 
-An assignment can be publishable when it contains an appropriate assignment task, such as:
-
-- at least one valid essay/open-response question, or
-- a valid instruction/reference file according to the current assessment flow.
-
-An empty assignment with neither a valid task nor usable instruction content must not be published.
+- An Assignment must contain at least one valid Essay/open-response question before it can be published.
+- An instruction/reference file is optional.
+- An instruction file does not replace the required Essay question.
+- Learners may enter text responses and upload supporting files where supported.
+- An Assignment without a valid Essay question must remain a Draft and must not be published.
 
 ## 13.3 Allow Late Submission
 
@@ -887,7 +1109,9 @@ PATCH /api/analytics/notifications/:notificationId/read
 GET   /api/analytics/courses/:courseId/weekly-report
 ```
 
-The scheduled weekly-report process is implemented in the backend cron/reporting flow. The explicit generate endpoint can also be useful for controlled verification of the reporting pipeline.
+The scheduled weekly-report process is implemented in the backend cron/reporting flow. The automatic weekly class-performance report scheduler runs only when `NODE_ENV=production`.
+
+When running locally, `NODE_ENV` may be unset or set to `development`. In this case, the automatic scheduler is disabled, but educators can still use the authorized generate endpoint to verify the reporting flow manually. Production mode also disables development/test-only failure-simulation endpoints.
 
 When a weekly report notification is available:
 
@@ -1239,9 +1463,10 @@ Additional recommendations:
 - Keep authorization checks in the backend even when the frontend hides or disables an action.
 - Validate assessment deadlines and submission eligibility on the server.
 - Do not expose service-role credentials to the browser.
-- Use signed URLs for protected files where private access is required.
+- Use a private bucket together with signed URLs when protected file access is required.
 - Validate uploaded file type and size before processing.
 - Revoke or rotate credentials immediately if they are accidentally committed.
+- The current `assessment-files` bucket is public. Assessment instructions and learner submission files stored in this bucket must not be considered private or access-controlled by Storage RLS when downloaded through a public object URL.
 
 ---
 
